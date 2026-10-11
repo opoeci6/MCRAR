@@ -1,0 +1,18 @@
+# Copy to config/settings.toml (gitignored) to override defaults.
+# Precedence: constructor args > MCRAR_* environment variables > this file > defaults.
+# Relative paths are resolved against the repo root (MCRAR_HOME).
+
+# true: only commercially usable models and data are allowed; non-commercial parts are opt-in.
+commercial_mode = true
+
+# data_dir = "data"
+# models_dir = "models"
+# cache_dir = ".cache"
+# secrets_dir = ".secrets"
+
+# "file" (dev default, .secrets/secrets.toml) | "keyring" (OS credential store, needs the
+# 'keyring' extra) | "env" (read-only; use MCRAR_SECRET_<NAME> variables)
+secrets_backend = "file"
+
+api_host = "127.0.0.1"
+api_port = 8000
