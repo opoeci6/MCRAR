@@ -13,7 +13,7 @@ from mcrar.audio.features import (
 )
 from mcrar.audio.io import AudioSource, load_audio
 
-ANALYSIS_VERSION = "audio-v1"
+ANALYSIS_VERSION = "audio-v2"
 
 
 @dataclass(frozen=True)

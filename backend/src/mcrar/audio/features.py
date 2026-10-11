@@ -32,10 +32,15 @@ ONSET_DELTA = 0.3
 # Key confidence: a margin (best - runner-up correlation) of this size gives confidence 1.
 KEY_MARGIN_FULL = 0.15
 
-# Energy heuristic constants (placeholder; ML may refine later).
-ENERGY_LUFS_QUIET = -40.0  # maps to 0
-ENERGY_LUFS_LOUD = -5.0  # maps to 1
-ENERGY_ONSET_RATE_MAX = 8.0  # onsets/second mapped to 1
+# Energy heuristic constants (placeholder; ML may refine later). Calibrated for audio-v2 on 190
+# real Jamendo tracks across 16 genres: real music sits at about -25..-11 LUFS and 3.5..7
+# onsets/s, so the wider audio-v1 ranges squeezed every track into 0.4..0.8. The genre order is
+# unchanged (classical/ambient lowest, techno/metal highest); the 10th..90th percentile went
+# from 0.49..0.80 to 0.30..0.83.
+ENERGY_LUFS_QUIET = -30.0  # maps to 0
+ENERGY_LUFS_LOUD = -8.0  # maps to 1
+ENERGY_ONSET_RATE_MIN = 3.0  # onsets/second mapped to 0
+ENERGY_ONSET_RATE_MAX = 7.0  # onsets/second mapped to 1
 
 NOTE_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
@@ -220,13 +225,13 @@ def estimate_energy(
     """Heuristic perceived energy in [0, 1] (placeholder that ML may refine later).
 
     energy = mean(loudness_term, onset_term) where
-      loudness_term = LUFS mapped ENERGY_LUFS_QUIET..ENERGY_LUFS_LOUD (-40..-5) to 0..1
+      loudness_term = LUFS mapped ENERGY_LUFS_QUIET..ENERGY_LUFS_LOUD (-30..-8) to 0..1
         (mean RMS dBFS is used when LUFS is unavailable);
-      onset_term = onsets/second mapped 0..ENERGY_ONSET_RATE_MAX (8) to 0..1.
+      onset_term = onsets/second mapped ENERGY_ONSET_RATE_MIN..ENERGY_ONSET_RATE_MAX (3..7) to 0..1.
     """
     y = _as_mono(y)
     loud = loudness if loudness is not None else estimate_loudness(y, sr)
     level = loud.loudness_lufs if loud.loudness_lufs is not None else loud.rms_db
     loudness_term = _scale(level, ENERGY_LUFS_QUIET, ENERGY_LUFS_LOUD)
-    onset_term = _scale(onset_rate(y, sr), 0.0, ENERGY_ONSET_RATE_MAX)
+    onset_term = _scale(onset_rate(y, sr), ENERGY_ONSET_RATE_MIN, ENERGY_ONSET_RATE_MAX)
     return float((loudness_term + onset_term) / 2.0)
