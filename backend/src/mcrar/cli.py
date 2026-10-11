@@ -1,4 +1,4 @@
-"""`mcrar` command line: config, secrets, doctor, analyze."""
+"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog."""
 
 from __future__ import annotations
 
@@ -287,3 +287,279 @@ def analyze(
     width = max(len(label) for label, _ in rows)
     for label, value in rows:
         typer.echo(f"{label:<{width}}  {value}")
+
+
+# -- ingest and catalog ----------------------------------------------------------------------
+
+ingest_app = typer.Typer(help="Add tracks to the catalog.", no_args_is_help=True)
+catalog_app = typer.Typer(help="Inspect the catalog.", no_args_is_help=True)
+app.add_typer(ingest_app, name="ingest")
+app.add_typer(catalog_app, name="catalog")
+
+EXIT_INTERRUPTED = 130
+MAX_FAILURES_SHOWN = 20
+
+
+def _line(text: str = "", *, err: bool = False) -> None:
+    """Echo text that may hold arbitrary titles without ever failing on a narrow console."""
+    stream = sys.stderr if err else sys.stdout
+    encoding = getattr(stream, "encoding", None) or "utf-8"
+    typer.echo(text.encode(encoding, "replace").decode(encoding), err=err)
+
+
+def _jamendo_client(settings: Settings, use_cache: bool):  # noqa: ANN202 - lazy import
+    """Build the Jamendo client (a seam for tests)."""
+    from mcrar.sources import JamendoClient
+
+    return JamendoClient.from_settings(settings, use_cache=use_cache)
+
+
+def _print_progress(event) -> None:  # noqa: ANN001 - IngestEvent, imported lazily
+    if event.kind not in ("track_done", "track_skipped", "track_failed"):
+        return
+    total = event.total if event.total is not None else "?"
+    prefix = f"[{event.index}/{total}]"
+    if event.kind == "track_done":
+        _line(f"{prefix} ok  {event.title} — {event.message}")
+    elif event.kind == "track_skipped":
+        _line(f"{prefix} skip  {event.title} — {event.message}")
+    else:
+        _line(f"{prefix} failed: {event.title} — {event.message}")
+
+
+def _print_summary(report) -> None:  # noqa: ANN001 - IngestReport, imported lazily
+    state = f" ({report.aborted})" if report.aborted else ""
+    _line(
+        f"\nFinished{state} in {report.elapsed_s:.1f}s: {report.seen} seen "
+        f"({report.new} new, {report.updated} updated), {report.processed} processed, "
+        f"{report.skipped} skipped, {report.failed} failed"
+    )
+    for failure in report.failures[:MAX_FAILURES_SHOWN]:
+        where = f"{failure.title} ({failure.source_id})"
+        _line(f"  failed [{failure.stage}] {where}: {failure.message}")
+    hidden = len(report.failures) - MAX_FAILURES_SHOWN
+    if hidden > 0:
+        _line(f"  ... and {hidden} more; see: mcrar catalog failures")
+
+
+def _ingest_exit(report) -> None:  # noqa: ANN001
+    if report.aborted == "interrupted":
+        _line("Interrupted; run the same command again to resume.", err=True)
+        raise typer.Exit(EXIT_INTERRUPTED)
+
+
+@ingest_app.command("jamendo")
+def ingest_jamendo_cmd(
+    tags: Annotated[str | None, typer.Option(help="Comma-separated tags; all must match.")] = None,
+    fuzzytags: Annotated[
+        str | None, typer.Option(help="Comma-separated tags; any may match.")
+    ] = None,
+    search: Annotated[str | None, typer.Option(help="Free-text search.")] = None,
+    vocal: Annotated[bool, typer.Option("--vocal", help="Only vocal tracks.")] = False,
+    instrumental: Annotated[
+        bool, typer.Option("--instrumental", help="Only instrumental tracks.")
+    ] = False,
+    commercial_only: Annotated[
+        bool, typer.Option("--commercial-only", help="Only licences allowing commercial use.")
+    ] = False,
+    order: Annotated[str | None, typer.Option(help="Jamendo order, e.g. popularity_month.")] = None,
+    limit: Annotated[int, typer.Option(min=1, help="Maximum number of tracks.")] = 100,
+    force: Annotated[bool, typer.Option("--force", help="Re-analyse up-to-date tracks.")] = False,
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Bypass the Jamendo response cache.")
+    ] = False,
+) -> None:
+    """Fetch tracks from Jamendo, store their metadata and licences, and analyse the audio."""
+    from contextlib import closing
+
+    from mcrar.catalog import open_catalog
+    from mcrar.ingest import JamendoQuery, ingest_jamendo
+    from mcrar.sources import JamendoError
+
+    if vocal and instrumental:
+        raise _fail("--vocal and --instrumental are mutually exclusive")
+
+    def split(value: str | None) -> list[str] | None:
+        return [t.strip() for t in value.split(",") if t.strip()] if value else None
+
+    query = JamendoQuery(
+        tags=split(tags),
+        fuzzytags=split(fuzzytags),
+        search=search,
+        vocalinstrumental="vocal" if vocal else "instrumental" if instrumental else None,
+        commercial_only=commercial_only,
+        order=order,
+    )
+    settings = _settings()
+    try:
+        client = _jamendo_client(settings, not no_cache)
+    except (JamendoError, SecretError) as exc:
+        raise _fail(str(exc), 1) from None
+    with closing(client), open_catalog(settings) as repo:
+        problem: str | None = None
+        try:
+            report = ingest_jamendo(
+                client, repo, query=query, limit=limit, force=force, on_progress=_print_progress
+            )
+        except JamendoError as exc:
+            report, problem = getattr(exc, "report", None), str(exc)
+        except Exception as exc:  # never show a traceback
+            report, problem = getattr(exc, "report", None), f"ingest failed ({type(exc).__name__})"
+        if report is not None:
+            _print_summary(report)
+        usage = client.usage()
+        _line(f"Jamendo API requests in {usage['month']}: {usage['requests']}")
+    if problem is not None:
+        raise _fail(problem, 1)
+    _ingest_exit(report)
+
+
+@ingest_app.command("local")
+def ingest_local_cmd(
+    path: Annotated[Path, typer.Argument(help="Folder of audio files (searched recursively).")],
+    license: Annotated[  # noqa: A002
+        str | None,
+        typer.Option("--license", help="Licence code or URL for every file, e.g. CC0."),
+    ] = None,
+    force: Annotated[bool, typer.Option("--force", help="Re-analyse up-to-date tracks.")] = False,
+) -> None:
+    """Add a folder of audio files; licences come from mcrar-license.toml sidecar files."""
+    from mcrar.catalog import open_catalog
+    from mcrar.ingest import ingest_local
+
+    if not path.is_dir():
+        raise _fail(f"folder not found: {path}", 1)
+    settings = _settings()
+    with open_catalog(settings) as repo:
+        try:
+            report = ingest_local(
+                path, repo, license_override=license, force=force, on_progress=_print_progress
+            )
+        except ValueError as exc:  # an unrecognised --license, raised before any work
+            raise _fail(str(exc), 2) from None
+        except Exception as exc:  # never show a traceback
+            partial = getattr(exc, "report", None)
+            if partial is not None:
+                _print_summary(partial)
+            raise _fail(f"ingest failed ({type(exc).__name__})", 1) from None
+        _print_summary(report)
+    _ingest_exit(report)
+
+
+def _open_repo():  # noqa: ANN202
+    from mcrar.catalog import open_catalog
+
+    return open_catalog(_settings())
+
+
+@catalog_app.command("stats")
+def catalog_stats(as_json: bool = typer.Option(False, "--json", help="Print JSON.")) -> None:
+    """Counts of tracks, features, embeddings and ingest failures."""
+    with _open_repo() as repo:
+        stats = repo.stats()
+    if as_json:
+        typer.echo(json.dumps(stats, indent=2))
+        return
+
+    def pairs(mapping: dict[str, int]) -> str:
+        return ", ".join(f"{k}={v}" for k, v in sorted(mapping.items())) or "none"
+
+    features = stats["features"]
+    _line(f"Tracks:           {stats['tracks']}")
+    _line(f"  by source:      {pairs(stats['tracks_by_source'])}")
+    _line(f"  by risk:        {pairs(stats['tracks_by_risk'])}")
+    _line(
+        f"With features:    {features['tracks_with_features']} ({features['coverage'] * 100:.0f}%)"
+    )
+    _line(f"Embeddings:       {pairs(stats['embeddings_by_model'])}")
+    _line(f"Ingest failures:  {pairs(stats['ingest_failures_by_stage'])}")
+
+
+def _yes_no(value: bool | None) -> str:
+    return "n/a" if value is None else "yes" if value else "no"
+
+
+@catalog_app.command("show")
+def catalog_show(
+    track_id: Annotated[int, typer.Argument(metavar="ID", help="Catalog track id.")],
+    as_json: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """Show a track with its licence, features and ingest status."""
+    from dataclasses import asdict
+
+    with _open_repo() as repo:
+        track = repo.get_track(track_id)
+        if track is None:
+            raise _fail(f"no track with id {track_id}", 1)
+        features = repo.get_features(track_id)
+        ingest = repo.ingest_entries(track.source, track.source_id)
+    if as_json:
+        data = {
+            "track": asdict(track),
+            "features": features,
+            "ingest": [asdict(e) for e in ingest],
+        }
+        typer.echo(json.dumps(data, indent=2, ensure_ascii=False))
+        return
+    _line(f"Track {track.id} ({track.source} {track.source_id})")
+    for label, value in (
+        ("Title", track.title),
+        ("Artist", track.artist),
+        ("Album", track.album),
+        ("Duration", None if track.duration_s is None else f"{track.duration_s:.1f} s"),
+        ("Page", track.source_url),
+        ("File", track.local_path),
+    ):
+        if value is not None:
+            _line(f"  {label + ':':<10}{value}")
+    _line("License")
+    _line(f"  Code:        {track.license_code or 'n/a'}  ({track.license_family or 'n/a'})")
+    _line(f"  Risk:        {track.risk}")
+    _line(f"  Commercial:  {_yes_no(track.commercial_ok)}")
+    _line(f"  Derivatives: {_yes_no(track.derivatives_ok)}")
+    _line(f"  Share-alike: {_yes_no(track.share_alike)}")
+    _line(f"  Attribution: {_yes_no(track.attribution_required)}")
+    if track.license_url:
+        _line(f"  URL:         {track.license_url}")
+    if track.commercial_license_url:
+        _line(f"  Commercial license: {track.commercial_license_url}")
+    if track.attribution_text:
+        _line(f"  Credit:      {track.attribution_text}")
+    _line("Features")
+    if features is None:
+        _line("  (not analysed)")
+    else:
+        key = f"{features['key']} {features['mode']}" if features["key"] else "n/a"
+        _line(f"  BPM:         {_fmt(features['bpm'], '.1f')}")
+        _line(f"  Key:         {key}")
+        _line(f"  Loudness:    {_fmt(features['loudness_lufs'], '.1f', ' LUFS')}")
+        _line(f"  Energy:      {_fmt(features['energy'], '.2f')}")
+        _line(f"  Version:     {features['analysis_version']}")
+    _line("Ingest")
+    if not ingest:
+        _line("  (no entries)")
+    for entry in ingest:
+        extra = f" - {entry.message}" if entry.message else ""
+        _line(f"  {entry.stage}: {entry.status} (attempts {entry.attempts}){extra}")
+
+
+@catalog_app.command("failures")
+def catalog_failures(
+    stage: Annotated[str | None, typer.Option(help="Only this stage, e.g. analysis.")] = None,
+    as_json: bool = typer.Option(False, "--json", help="Print JSON."),
+) -> None:
+    """List tracks whose last ingest attempt failed."""
+    from dataclasses import asdict
+
+    with _open_repo() as repo:
+        entries = repo.failed_items(stage)
+    if as_json:
+        typer.echo(json.dumps([asdict(e) for e in entries], indent=2, ensure_ascii=False))
+        return
+    if not entries:
+        typer.echo("(no failures)")
+    for entry in entries:
+        _line(
+            f"{entry.stage}\t{entry.source}/{entry.source_id}\tattempts={entry.attempts}"
+            f"\t{entry.message or ''}"
+        )

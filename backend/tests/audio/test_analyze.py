@@ -32,7 +32,7 @@ def test_analyze_120_bpm_c_major(demo_wav: Path) -> None:
     assert f.duration_s == pytest.approx(8.0, abs=0.01)
     assert f.sample_rate == synth.SR
     assert f.channels == 1
-    assert f.analysis_version == ANALYSIS_VERSION == "audio-v1"
+    assert f.analysis_version == ANALYSIS_VERSION == "audio-v2"
 
 
 def test_analyze_is_deterministic(demo_wav: Path) -> None:
@@ -74,7 +74,7 @@ def test_cli_json(demo_wav: Path) -> None:
     assert result.exit_code == 0, result.output
     data = json.loads(result.output)
     assert data["key"] == "C"
-    assert data["analysis_version"] == "audio-v1"
+    assert data["analysis_version"] == "audio-v2"
     assert data["bpm"] == pytest.approx(120, abs=2)
 
 
