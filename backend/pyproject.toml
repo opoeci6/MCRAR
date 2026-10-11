@@ -1,0 +1,41 @@
+[project]
+name = "mcrar"
+version = "0.1.0"
+description = "ML music recommender for listeners and indie game devs"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi",
+    "pydantic",
+    "pydantic-settings",
+    "tomli-w",
+    "typer",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+keyring = ["keyring"]
+
+[project.scripts]
+mcrar = "mcrar.cli:app"
+
+[dependency-groups]
+dev = [
+    "httpx",
+    "pytest",
+    "ruff",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

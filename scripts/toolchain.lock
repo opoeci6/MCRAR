@@ -1,0 +1,13 @@
+# Pinned project-local toolchain. KEY=VALUE, read by PowerShell and bash.
+# Hashes are hard-coded on purpose: bootstrap never fetches them at runtime.
+#
+# uv 0.13.0, asset uv-x86_64-pc-windows-msvc.zip
+#   sha256 from https://github.com/astral-sh/uv/releases/download/0.13.0/uv-x86_64-pc-windows-msvc.zip.sha256
+UV_VERSION=0.13.0
+UV_SHA256=088962f9e7b7bd9ea740c04c650b2a21c8928c345bd99ac24350dc924dba656c
+# Node.js 24 LTS (Krypton), asset node-v24.21.0-win-x64.zip
+#   sha256 from https://nodejs.org/dist/v24.21.0/SHASUMS256.txt
+NODE_VERSION=24.21.0
+NODE_SHA256=158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541
+# Managed Python (installed by uv into .tools/python)
+PYTHON_VERSION=3.11
