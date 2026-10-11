@@ -1,4 +1,4 @@
-"""`mcrar` command line: config, secrets, doctor."""
+"""`mcrar` command line: config, secrets, doctor, analyze."""
 
 from __future__ import annotations
 
@@ -6,6 +6,8 @@ import json
 import os
 import shutil
 import sys
+from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -238,3 +240,50 @@ def doctor() -> None:
         )
         raise typer.Exit(1)
     typer.echo("\nToolchain is project-local.")
+
+
+def _fmt(value: object, spec: str = "", unit: str = "") -> str:
+    if value is None:
+        return "n/a"
+    return f"{value:{spec}}{unit}"
+
+
+@app.command()
+def analyze(
+    path: Annotated[Path, typer.Argument(help="Audio file (WAV, FLAC, OGG, MP3).")],
+    as_json: bool = typer.Option(False, "--json", help="Print JSON instead of a table."),
+    max_seconds: float = typer.Option(
+        240.0, "--max-seconds", min=0.1, help="Analyse only the first N seconds."
+    ),
+) -> None:
+    """Extract DSP features (BPM, key, loudness, energy) from an audio file."""
+    from mcrar.audio import AudioError, analyze_audio  # lazy: librosa/numba import is slow
+
+    if not path.is_file():
+        raise _fail(f"file not found: {path}", 1)
+    try:
+        features = analyze_audio(path, max_seconds=max_seconds)
+    except AudioError as exc:
+        raise _fail(str(exc), 1) from None
+    except Exception as exc:  # never show a traceback for a bad input file
+        raise _fail(f"analysis failed ({type(exc).__name__})", 1) from None
+    if as_json:
+        typer.echo(json.dumps(features.to_dict(), indent=2))
+        return
+    rows = [
+        ("BPM", _fmt(features.bpm, ".1f")),
+        ("BPM (raw)", _fmt(features.bpm_raw, ".1f")),
+        ("BPM confidence", _fmt(features.bpm_confidence, ".2f")),
+        ("Key", f"{features.key} {features.mode}" if features.key else "n/a"),
+        ("Key confidence", _fmt(features.key_confidence, ".2f")),
+        ("Loudness", _fmt(features.loudness_lufs, ".1f", " LUFS")),
+        ("RMS", _fmt(features.rms_db, ".1f", " dBFS")),
+        ("Energy", _fmt(features.energy, ".2f")),
+        ("Duration", _fmt(features.duration_s, ".1f", " s")),
+        ("Sample rate", f"{features.sample_rate} Hz"),
+        ("Channels", str(features.channels)),
+        ("Analysis version", features.analysis_version),
+    ]
+    width = max(len(label) for label, _ in rows)
+    for label, value in rows:
+        typer.echo(f"{label:<{width}}  {value}")
