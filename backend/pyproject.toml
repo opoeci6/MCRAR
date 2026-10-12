@@ -35,6 +35,8 @@ ml = [
     "einops",
     "sentencepiece",
     "muq",
+    "scikit-learn>=1.9.1",
+    "gdown>=6.4.2",
 ]
 
 [project.scripts]

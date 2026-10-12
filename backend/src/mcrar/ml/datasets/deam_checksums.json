@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "checksum_source": "observed",
+  "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+  "observers": [
+    "owner (opoeci6)",
+    "collaborator (Codex)"
+  ],
+  "owner_observation_date": "2026-10-11",
+  "collaborator_observation_date": "2026-10-11 (America/Halifax)",
+  "files": {
+    "DEAM_audio.zip": {
+      "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+      "bytes": 1343203527,
+      "members": 1803,
+      "mp3": 1802,
+      "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+      "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+      "etag": "\"500fa8c7-5403ee60831c0\"",
+      "observation_date": "2026-10-12T02:51:52.592901+00:00",
+      "crc_failures": 0
+    },
+    "DEAM_Annotations.zip": {
+      "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+      "bytes": 4735283,
+      "members": 3619,
+      "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+      "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+      "etag": "\"484133-54a62c4597240\"",
+      "observation_date": "2026-10-12T02:51:55.250234+00:00",
+      "crc_failures": 0
+    }
+  }
+}
