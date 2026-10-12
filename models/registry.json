@@ -1,0 +1,1848 @@
+{
+  "schema": 1,
+  "embedder": "clap@195c3a3",
+  "label_sets": {
+    "genre": {
+      "kind": "single_label",
+      "labels": [
+        "blues",
+        "classical",
+        "country",
+        "easy-listening",
+        "electronic",
+        "experimental",
+        "folk",
+        "hip-hop",
+        "instrumental",
+        "international",
+        "jazz",
+        "old-time-historic",
+        "pop",
+        "rock",
+        "soul-rnb",
+        "spoken"
+      ],
+      "display": {
+        "blues": "Blues",
+        "classical": "Classical",
+        "country": "Country",
+        "easy-listening": "Easy Listening",
+        "electronic": "Electronic",
+        "experimental": "Experimental",
+        "folk": "Folk",
+        "hip-hop": "Hip-Hop",
+        "instrumental": "Instrumental",
+        "international": "International",
+        "jazz": "Jazz",
+        "old-time-historic": "Old-Time / Historic",
+        "pop": "Pop",
+        "rock": "Rock",
+        "soul-rnb": "Soul Rnb",
+        "spoken": "Spoken"
+      },
+      "entries": [
+        {
+          "id": "genre-logreg@2b67df0",
+          "method": "head",
+          "variant": "logreg",
+          "file": "heads/genre-logreg@2b67df0.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 2572,
+            "primary": "macro_f1",
+            "macro_f1": 0.510646140073709,
+            "accuracy": 0.7146189735614308,
+            "top3_accuracy": 0.8950233281493002,
+            "primary_ci95": [
+              0.48493694789507247,
+              0.532897005379398
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.025641246627825045,
+            "accuracy_ci95": [
+              0.6955579315707621,
+              0.7328926905132193
+            ]
+          },
+          "created_at": "2026-10-12T03:51:28.034426Z",
+          "commercial_ok": true,
+          "data_license": "CC BY 4.0",
+          "dataset_provenance": {
+            "name": "fma-medium",
+            "checksums": {
+              "fma_metadata.zip": {
+                "sha1": "f0df49ffe5f2a6008d7dc83c6915b31835dfe733"
+              },
+              "fma_medium.zip": {
+                "sha1": "c67b69ea232021025fca9231fc1c7c1a063ab50b"
+              }
+            },
+            "checksum_source": "https://github.com/mdeff/fma#data",
+            "data_license": "CC BY 4.0 (metadata); per-track CC audio"
+          },
+          "training_seconds": 4.515999999999622,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 19904,
+            "validation": 2504,
+            "test": 2572
+          },
+          "train_data": "fma-medium (official split)",
+          "calibration_data": "fma-medium validation split"
+        },
+        {
+          "id": "genre-mlp@78365bc",
+          "method": "head",
+          "variant": "mlp",
+          "file": "heads/genre-mlp@78365bc.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 2572,
+            "primary": "macro_f1",
+            "macro_f1": 0.5079913932441069,
+            "accuracy": 0.718895800933126,
+            "top3_accuracy": 0.9012441679626749,
+            "primary_ci95": [
+              0.481936491084309,
+              0.5311806623502017
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.01664317385358721,
+            "accuracy_ci95": [
+              0.701389968895801,
+              0.7364016329704509
+            ]
+          },
+          "created_at": "2026-10-12T03:51:34.196148Z",
+          "commercial_ok": true,
+          "data_license": "CC BY 4.0",
+          "dataset_provenance": {
+            "name": "fma-medium",
+            "checksums": {
+              "fma_metadata.zip": {
+                "sha1": "f0df49ffe5f2a6008d7dc83c6915b31835dfe733"
+              },
+              "fma_medium.zip": {
+                "sha1": "c67b69ea232021025fca9231fc1c7c1a063ab50b"
+              }
+            },
+            "checksum_source": "https://github.com/mdeff/fma#data",
+            "data_license": "CC BY 4.0 (metadata); per-track CC audio"
+          },
+          "training_seconds": 4.625,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 19904,
+            "validation": 2504,
+            "test": 2572
+          },
+          "train_data": "fma-medium (official split)",
+          "calibration_data": "fma-medium validation split",
+          "architecture": {
+            "hidden": 256,
+            "activation": "relu",
+            "dropout": 0.2,
+            "epochs_limit": 100,
+            "patience": 12,
+            "optimizer": "Adam"
+          }
+        },
+        {
+          "id": "genre-zeroshot-calibrated@70d0591",
+          "method": "zeroshot",
+          "variant": "zeroshot-calibrated",
+          "file": "heads/genre-zeroshot-calibrated@70d0591.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 2572,
+            "primary": "macro_f1",
+            "macro_f1": 0.25795850546707133,
+            "accuracy": 0.4187402799377916,
+            "top3_accuracy": 0.7017884914463453,
+            "primary_ci95": [
+              0.24301004032994133,
+              0.27166131336298655
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.03401983579154334,
+            "accuracy_ci95": [
+              0.4000777604976672,
+              0.43779160186625193
+            ]
+          },
+          "created_at": "2026-10-12T03:51:45.838200Z",
+          "commercial_ok": true,
+          "data_license": "CC BY 4.0",
+          "dataset_provenance": {
+            "name": "fma-medium",
+            "checksums": {
+              "fma_metadata.zip": {
+                "sha1": "f0df49ffe5f2a6008d7dc83c6915b31835dfe733"
+              },
+              "fma_medium.zip": {
+                "sha1": "c67b69ea232021025fca9231fc1c7c1a063ab50b"
+              }
+            },
+            "checksum_source": "https://github.com/mdeff/fma#data",
+            "data_license": "CC BY 4.0 (metadata); per-track CC audio"
+          },
+          "training_seconds": 10.03099999999904,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 19904,
+            "validation": 2504,
+            "test": 2572
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/genre.toml",
+          "calibration_data": "fma-medium validation split"
+        },
+        {
+          "id": "genre-zeroshot-unsupervised@5def5e4",
+          "method": "zeroshot",
+          "variant": "zeroshot-unsupervised",
+          "file": "heads/genre-zeroshot-unsupervised@5def5e4.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 2572,
+            "primary": "macro_f1",
+            "macro_f1": 0.2628471494944684,
+            "accuracy": 0.37791601866251945,
+            "top3_accuracy": 0.6364696734059098,
+            "primary_ci95": [
+              0.24530715120365013,
+              0.2778014262827627
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.17096578492891637,
+            "accuracy_ci95": [
+              0.3596325816485226,
+              0.39502332814930013
+            ]
+          },
+          "created_at": "2026-10-12T03:51:59.334737Z",
+          "commercial_ok": true,
+          "data_license": "FMA per-track Creative Commons audio; CC BY 4.0 metadata; labels unused",
+          "dataset_provenance": {
+            "name": "fma-medium",
+            "checksums": {
+              "fma_metadata.zip": {
+                "sha1": "f0df49ffe5f2a6008d7dc83c6915b31835dfe733"
+              },
+              "fma_medium.zip": {
+                "sha1": "c67b69ea232021025fca9231fc1c7c1a063ab50b"
+              }
+            },
+            "checksum_source": "https://github.com/mdeff/fma#data",
+            "data_license": "CC BY 4.0 (metadata); per-track CC audio"
+          },
+          "training_seconds": 11.015999999999622,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 19904,
+            "validation": 2504,
+            "test": 2572
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/genre.toml",
+          "reference_data": "FMA-medium training audio embeddings (no labels), slope 1"
+        }
+      ]
+    },
+    "moodtheme": {
+      "kind": "multi_label",
+      "labels": [
+        "action",
+        "adventure",
+        "advertising",
+        "background",
+        "ballad",
+        "calm",
+        "children",
+        "christmas",
+        "commercial",
+        "cool",
+        "corporate",
+        "dark",
+        "deep",
+        "documentary",
+        "drama",
+        "dramatic",
+        "dream",
+        "emotional",
+        "energetic",
+        "epic",
+        "fast",
+        "film",
+        "fun",
+        "funny",
+        "game",
+        "groovy",
+        "happy",
+        "heavy",
+        "holiday",
+        "hopeful",
+        "inspiring",
+        "love",
+        "meditative",
+        "melancholic",
+        "melodic",
+        "motivational",
+        "movie",
+        "nature",
+        "party",
+        "positive",
+        "powerful",
+        "relaxing",
+        "retro",
+        "romantic",
+        "sad",
+        "sexy",
+        "slow",
+        "soft",
+        "soundscape",
+        "space",
+        "sport",
+        "summer",
+        "trailer",
+        "travel",
+        "upbeat",
+        "uplifting"
+      ],
+      "display": {
+        "action": "Action",
+        "adventure": "Adventure",
+        "advertising": "Advertising",
+        "background": "Background",
+        "ballad": "Ballad",
+        "calm": "Calm",
+        "children": "Children",
+        "christmas": "Christmas",
+        "commercial": "Commercial",
+        "cool": "Cool",
+        "corporate": "Corporate",
+        "dark": "Dark",
+        "deep": "Deep",
+        "documentary": "Documentary",
+        "drama": "Drama",
+        "dramatic": "Dramatic",
+        "dream": "Dream",
+        "emotional": "Emotional",
+        "energetic": "Energetic",
+        "epic": "Epic",
+        "fast": "Fast",
+        "film": "Film",
+        "fun": "Fun",
+        "funny": "Funny",
+        "game": "Game",
+        "groovy": "Groovy",
+        "happy": "Happy",
+        "heavy": "Heavy",
+        "holiday": "Holiday",
+        "hopeful": "Hopeful",
+        "inspiring": "Inspiring",
+        "love": "Love",
+        "meditative": "Meditative",
+        "melancholic": "Melancholic",
+        "melodic": "Melodic",
+        "motivational": "Motivational",
+        "movie": "Movie",
+        "nature": "Nature",
+        "party": "Party",
+        "positive": "Positive",
+        "powerful": "Powerful",
+        "relaxing": "Relaxing",
+        "retro": "Retro",
+        "romantic": "Romantic",
+        "sad": "Sad",
+        "sexy": "Sexy",
+        "slow": "Slow",
+        "soft": "Soft",
+        "soundscape": "Soundscape",
+        "space": "Space",
+        "sport": "Sport",
+        "summer": "Summer",
+        "trailer": "Trailer",
+        "travel": "Travel",
+        "upbeat": "Upbeat",
+        "uplifting": "Uplifting"
+      },
+      "entries": [
+        {
+          "id": "moodtheme-logreg@66e2e4d",
+          "method": "head",
+          "variant": "logreg",
+          "file": "heads/moodtheme-logreg@66e2e4d.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 4231,
+            "primary": "macro_pr_auc",
+            "macro_pr_auc": 0.13143394916357157,
+            "macro_roc_auc": 0.7461892758213404,
+            "pr_auc_labels": 56,
+            "roc_auc_labels": 56,
+            "primary_ci95": [
+              0.12904861538229145,
+              0.14250739756542985
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.0024030621527812183
+          },
+          "created_at": "2026-10-12T05:07:17.043921Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC-SA 4.0",
+          "dataset_provenance": {
+            "name": "mtg-moodtheme",
+            "commit": "cafd8e20c265ed84f1e61f1c875327971f43a62f",
+            "data_license": "CC BY-NC-SA 4.0",
+            "checksums": {
+              "autotagging_moodtheme_audio-low-00.tar": "848b0e7e65604f9d6060adf671a2e9373762a909a0c32bc60eb2d1634126a993",
+              "autotagging_moodtheme_audio-low-01.tar": "ffca4bd7d43b5d80acf297aeacd37526d80b2286d9dd81b8dd9ac8073f86dd6d",
+              "autotagging_moodtheme_audio-low-02.tar": "3309a9a6f86187e7534428bec75147c453073916ee03f2475bc2b76fd00cbdb2",
+              "autotagging_moodtheme_audio-low-03.tar": "41be67be39f2162639f15c58d15cfa91c0ca34357b598df550cdc16320d372c5",
+              "autotagging_moodtheme_audio-low-04.tar": "18143ea1ab2c993b4e748c71a7ac091882de71320880669b40cd99eca0f74a8b",
+              "autotagging_moodtheme_audio-low-05.tar": "79ddc7db048d124bea94544bf18d68ba058fbfdc44db3b4adf58e7e3db32000f",
+              "autotagging_moodtheme_audio-low-06.tar": "b3825bda9e96f2a5608bf255db451ecfa9227684638234ba2c37957aca87ae1c",
+              "autotagging_moodtheme_audio-low-07.tar": "685dfcd0e7417f78fcfb43e7953e4109fe71df7280e863fdf0682facda622bce",
+              "autotagging_moodtheme_audio-low-08.tar": "e8085bec463164cc8303b27225fec60fc8ba6c17422f357356e204805e23561c",
+              "autotagging_moodtheme_audio-low-09.tar": "1d959a35fd0f3cb305cab5fd0d2897c9f6b12431b2fc032c50f82714ac86d32f",
+              "autotagging_moodtheme_audio-low-10.tar": "f42e2bcdee8acad306a6b17331e0bacef805ce0e5a8b81739c9e5edb7e744eff",
+              "autotagging_moodtheme_audio-low-11.tar": "9f8d0e93eec6d036bd4285cfbc4a94ad18a693ecf905ded37bc12159c5a1e257",
+              "autotagging_moodtheme_audio-low-12.tar": "53d7b13471c71d3053a1cdb8cee8b5ce9b0e590ca6255c87bac9df21c92b507b",
+              "autotagging_moodtheme_audio-low-13.tar": "278c0f3bea63c4dccbcd8caed87d723d3c7d333ae5c7487b6817af99ad09f3f7",
+              "autotagging_moodtheme_audio-low-14.tar": "6e0516a795699b6e9409f121b8a8a7425c0790fec82f815106b2fb3d2391cf83",
+              "autotagging_moodtheme_audio-low-15.tar": "36a96c9a079df3cccf75f36a0a52a47713e819a3162f61d351be2bf8122abb9d",
+              "autotagging_moodtheme_audio-low-16.tar": "b3e8cad3d4e754565ab96b48a857617417c0a6cfb658ce8f61a81afa56eefcbf",
+              "autotagging_moodtheme_audio-low-17.tar": "32e47e4e17ab20c34d5df0f9c7a731a5bbf3891a685624dff73beeb71aa7af1a",
+              "autotagging_moodtheme_audio-low-18.tar": "e0e68c06816efdcda700f405aadb1b1703fba387d94315646219b6cda8776a88",
+              "autotagging_moodtheme_audio-low-19.tar": "5d8c4af7eca639b75c320dded2a7a13330ec309041957a824f5d8741f9cfda4b",
+              "autotagging_moodtheme_audio-low-20.tar": "0b0a96ef5feb94cfe54479128553581a4621be50022a867c24bfff47ad26e413",
+              "autotagging_moodtheme_audio-low-21.tar": "edaa593e9a9e0a37b2d3ad4f74d84ad7aa5b7c13d0508d10359959e89a022bec",
+              "autotagging_moodtheme_audio-low-22.tar": "bd50def5cd40cb98b8c503162334c541380a11bdf6c2ec5868b675049755436a",
+              "autotagging_moodtheme_audio-low-23.tar": "39de0eee7226ea0fdebccf5b7def6d3e60c6973b24761f5cd7dc9ec271979450",
+              "autotagging_moodtheme_audio-low-24.tar": "430b035dbaddb45213b77b5bc1438a89942fe2b8b0e741a22d95f86778f73a4b",
+              "autotagging_moodtheme_audio-low-25.tar": "ce513d89366c81ee5ac6f65c709227b1a19566d1e4b438ca875d63d78b8e45d2",
+              "autotagging_moodtheme_audio-low-26.tar": "1eef3d394e6c69476777ecd5447cf453c88e64aac6a8ff7a94244babf14a3279",
+              "autotagging_moodtheme_audio-low-27.tar": "fca959a3c8235542f7c50251cc9082c69b0acea3913981e0504825f88207a577",
+              "autotagging_moodtheme_audio-low-28.tar": "763cff772ca73317b97b8b58026a85cb39f8a76460bbb8a43e142517cdaa6268",
+              "autotagging_moodtheme_audio-low-29.tar": "ce14ce2641006f6e131c97044344187c252a9f600dd49f295282cb1b34f1036d",
+              "autotagging_moodtheme_audio-low-30.tar": "1b4a0ca7ca6f69a119f15b71dcc6580e2d6d82522de3f7eca284c0c100284891",
+              "autotagging_moodtheme_audio-low-31.tar": "2a448f3ab79419f89b9bb2b651c253dd66823045baa9e3e9b46ddac053f1a0b0",
+              "autotagging_moodtheme_audio-low-32.tar": "6c86fe1baf8d6774302a83c4aadd9a17d82489646e042d20fdc821a75e38b60f",
+              "autotagging_moodtheme_audio-low-33.tar": "b3e853529b0490b42081be26c5c2cfd7f866c1eb79a91c7c2baab1bdfc698726",
+              "autotagging_moodtheme_audio-low-34.tar": "c046d69027e4781e648e8346d98c1987cafede4787e280afcd6763b43565d5b8",
+              "autotagging_moodtheme_audio-low-35.tar": "c7c67d8bc1f7721fe78485ad32b1877e384db06f2b1bc6e32ebea18e19ba716b",
+              "autotagging_moodtheme_audio-low-36.tar": "a99ff2e92f9845881e2dce4ad2d49b2c57c873c061445b1b5c3643211cb4d810",
+              "autotagging_moodtheme_audio-low-37.tar": "9897bd7d482702570fabee346bec527bb09d86e32d40d02815961b4a18e6e729",
+              "autotagging_moodtheme_audio-low-38.tar": "aaa2ac4bd7ff13b30d785553c3c690faea34ca63618a19c2a1474119a386d1be",
+              "autotagging_moodtheme_audio-low-39.tar": "6960cff7830ded8c0292127766cb17279b2bce43d402c0d7f326cf88eff2740f",
+              "autotagging_moodtheme_audio-low-40.tar": "b677c6defada2f83c7b0574c4bbe068374d604b0ef2b8f120e17f980c6f09f6c",
+              "autotagging_moodtheme_audio-low-41.tar": "6b3074d7a508fc344c88fe22f59ef1188f7b5c06a412f860b210d949728014c8",
+              "autotagging_moodtheme_audio-low-42.tar": "5e354b4fa96eb935e0c430830550162c3b5eff996ad4f41fa50d2ee3d9d58ebd",
+              "autotagging_moodtheme_audio-low-43.tar": "c81e5249e5a01abe9349b7a1b34c8b57804163f8b22a7edc8914b609526485b3",
+              "autotagging_moodtheme_audio-low-44.tar": "803a6308fb6f9dfac42a6bb76aa85cda06fd660f40bac767977424522be662b1",
+              "autotagging_moodtheme_audio-low-45.tar": "5b6e72dc4b5d20b85a321220487efbff766163d8e16c682a342fb6b968d37d6e",
+              "autotagging_moodtheme_audio-low-46.tar": "b078b19d63581ee132155a0b18d65b9304ac1856b8883e7dfc8676d0c7b7429e",
+              "autotagging_moodtheme_audio-low-47.tar": "64b9f9c22250c1e8f98fe46592290384d2c63404a956ef6e9a3881ea4df9dde2",
+              "autotagging_moodtheme_audio-low-48.tar": "d84e5915d2ce76bebcbaaeedb1e1ed75c0b042bbafb6079230b84a57214cdfd3",
+              "autotagging_moodtheme_audio-low-49.tar": "efc8a551c0f5ebe97ccd9401079dcda61029f0999208e28d27404d28a9c8fb05",
+              "autotagging_moodtheme_audio-low-50.tar": "f421715e847b155b63f267865ddc36573da985cac1938bdf515f5482741f3c40",
+              "autotagging_moodtheme_audio-low-51.tar": "f93c37d156bb0d6b31697435da62d3cf277981d8d524d5d21bfbe54a2a1494ce",
+              "autotagging_moodtheme_audio-low-52.tar": "04e5af15e24e55acef06cbe972e87ea7cb3d078d5432f7cc814b8d74ecb4bad5",
+              "autotagging_moodtheme_audio-low-53.tar": "462e9190583fa71782ad42b2c28ffb018f89bcfd3fb1b4e3612d431dc5f0e526",
+              "autotagging_moodtheme_audio-low-54.tar": "152edf8fbdfb3905001532b7317d32c54cfa9c568f4e8999f3028c5bd3447f8d",
+              "autotagging_moodtheme_audio-low-55.tar": "8f2e7fb4e1161c4df2f48db67daa5ced3c538219e8ac39b5bef2cd6b2162c6ba",
+              "autotagging_moodtheme_audio-low-56.tar": "4ac4f1949654e2dff9f3c972b3fed8aad551cad5b3695c8199b7df4db4a59b68",
+              "autotagging_moodtheme_audio-low-57.tar": "10506ed5fecbf58d2218537696e0b7e3dc4a37f45e8a5e89ab2a5e5522fa310a",
+              "autotagging_moodtheme_audio-low-58.tar": "908e0df00a148aac08ca907e8b06396387ea568fc4392724a093eaf2e16586ef",
+              "autotagging_moodtheme_audio-low-59.tar": "e9e64ef0015667ddb44f30d05ede1ec899ccd08f2ea88acdbda11ff55024bfe4",
+              "autotagging_moodtheme_audio-low-60.tar": "2f09537136a3367b78fcf5262f555ea98f4dd6536333a808f4a6e53fc1978e95",
+              "autotagging_moodtheme_audio-low-61.tar": "25dadc1f544af8416a29f8071937f8f6ab61a817e84e601eaedb23b64d7a663b",
+              "autotagging_moodtheme_audio-low-62.tar": "f7d9ea10db0935ccdc2b12de90f754325337d41ce39f11279aa35217828335b7",
+              "autotagging_moodtheme_audio-low-63.tar": "fc7a6037e41480edc8d255e99da7976e2809538b6e58b516ad7cd01155ff1c89",
+              "autotagging_moodtheme_audio-low-64.tar": "c86f2ee0019640ed5bfdf3087b65857a32165edcf0beccf72be67423a5d8842b",
+              "autotagging_moodtheme_audio-low-65.tar": "788a8b9a178c5e4485b49a58c13924c665e443681fe646509841ec9907686153",
+              "autotagging_moodtheme_audio-low-66.tar": "37011e7637a74a2bbd482d054da7045798cae70289da6bcfa9424270b2961201",
+              "autotagging_moodtheme_audio-low-67.tar": "88c13e96c0f46ca67f27d40c7171937671d08a2590b2c4d8f20dfba90c8d08c3",
+              "autotagging_moodtheme_audio-low-68.tar": "067c567f61b375eefa1a18b3e7f640f7868e39f546ed233cd5fae81cf2633436",
+              "autotagging_moodtheme_audio-low-69.tar": "87a451f8b77124f795b6a16c1d0a8aaaffde8727679f17de23239911da52f83d",
+              "autotagging_moodtheme_audio-low-70.tar": "fee384d8d24901e7362335cb6c77fdefc9ccb524dd5f5c5462c9046f241788aa",
+              "autotagging_moodtheme_audio-low-71.tar": "0e13531d220410e8f689e14f2a278bac7fb2de1fa14bf56a308cc54b7e38c32b",
+              "autotagging_moodtheme_audio-low-72.tar": "e21665b6c715efb595a7898807951de352541aa591c4291cba48014a47fbce50",
+              "autotagging_moodtheme_audio-low-73.tar": "daf72287fde1f23b9e66196cdb094ae44d9ed60848c9b9bf86ee21c932a3bc9f",
+              "autotagging_moodtheme_audio-low-74.tar": "078a6cf9106d4bef824685d0c0b2a7816f555736db6d08bf7ce421c74cd406a2",
+              "autotagging_moodtheme_audio-low-75.tar": "507c72256a08f3efe0a2c419a0cbdb3e7ac963e7f8a12527f7c7511073f48c03",
+              "autotagging_moodtheme_audio-low-76.tar": "ca8a358d3c9410d975bafbcd2c313dd2a9ed7c84ba2cb2df6197d36e4dcd77c9",
+              "autotagging_moodtheme_audio-low-77.tar": "35ce9a1896daf749b0a35e090c315d79e91affcf4683f1bfc567608b172bf1ec",
+              "autotagging_moodtheme_audio-low-78.tar": "604861b2bcde7415c8f98706db9034b93efa0dbd793f3c88c51cc465a2cfce8c",
+              "autotagging_moodtheme_audio-low-79.tar": "fa1659ea46fbf27f5d887467972defe0bed4ced8e1240f8b6f3965d53c88761b",
+              "autotagging_moodtheme_audio-low-80.tar": "3c74d0a23e929cfa6bedb57e700d49ac5910a1bbb48ab036b2ce58e665f7b8b3",
+              "autotagging_moodtheme_audio-low-81.tar": "b601f46d2ff88a0a41a87aa5006028d89e1d5767d0e6b468be40108da746f8ad",
+              "autotagging_moodtheme_audio-low-82.tar": "4ddb7238e67b7420975ca7426c2f1dde055b2209f42f39af9b9f928c6c7a2e86",
+              "autotagging_moodtheme_audio-low-83.tar": "849c3efcfc7c9288b4b9469ba71b23019c636bb10712a2d6a94f2e762d9058f4",
+              "autotagging_moodtheme_audio-low-84.tar": "a965f1f02fb8c209503c6797d787341716b182087ed675125b5264cf6e3399e2",
+              "autotagging_moodtheme_audio-low-85.tar": "3dcc3af7b314721350c9ab0bacab680aa99544c5d260254ee8f5f3e8572010e3",
+              "autotagging_moodtheme_audio-low-86.tar": "1bf2cb131d0f996278c72405bc93d2184327871c254e0f3236fcc673650e0835",
+              "autotagging_moodtheme_audio-low-87.tar": "fb2ecd269cceaad2a9943b14d0c74196baac211377d82d5b4611790845d413d4",
+              "autotagging_moodtheme_audio-low-88.tar": "02906550067f4ae452f008b5116ac506f10268ac4b4416101875360b1c7ecc57",
+              "autotagging_moodtheme_audio-low-89.tar": "7af1527e993b69f1a8f000ca70e57cd9a7bee14a4a998d298ee66d8a48ee2f99",
+              "autotagging_moodtheme_audio-low-90.tar": "4c3253d90c715a0672d3b79cddcf916e3ee2215228b253c4cc6d3c3aca841a04",
+              "autotagging_moodtheme_audio-low-91.tar": "8fd14662eb0b7d19d1b98df338c6eea67377da9f87bbe5fbe83cdf94fa356ea3",
+              "autotagging_moodtheme_audio-low-92.tar": "4c3f237ca8b0e5c3cf610c21012c103c70bc633ecc63a7e9f12010ab9061cab1",
+              "autotagging_moodtheme_audio-low-93.tar": "46805b4f0a2ce38060bfc341f2baad898e8f9e6ea0101678174ff7e182e534b1",
+              "autotagging_moodtheme_audio-low-94.tar": "d4f112055119b2b0e111cf29e4d0842580084de4e8c466985259a450c4a8f180",
+              "autotagging_moodtheme_audio-low-95.tar": "167a24a7f0934c2256e82d06fae5fa70214f260976eca4e39104bf09d7e82e37",
+              "autotagging_moodtheme_audio-low-96.tar": "4ebfcf786b6cc6a0a15d9b8c3209ed4b480870427601c93ca860f500944894d3",
+              "autotagging_moodtheme_audio-low-97.tar": "3ed39f0bc9666815709d4a79cafca7ea260590d8f9f3140cf27ac9e72673253d",
+              "autotagging_moodtheme_audio-low-98.tar": "9cab0c3dc46712b5256821cf04dcf64a16d8586d73487254e0c1812eea84df21",
+              "autotagging_moodtheme_audio-low-99.tar": "5d58783ffcd6860ed1e3f2ebb6f69e623bb588a4bee8003f5fe97a271c4987a5"
+            },
+            "checksum_algorithm": "sha256",
+            "checksum_source": "https://github.com/MTG/mtg-jamendo-dataset/tree/cafd8e20c265ed84f1e61f1c875327971f43a62f/data/download",
+            "audio_release": {
+              "tracks": 18486,
+              "tags": 59
+            },
+            "split0": {
+              "tracks": 17982,
+              "tags": 56,
+              "train": 9949,
+              "validation": 3802,
+              "test": 4231
+            },
+            "membership_confirmation": "https://github.com/opoeci6/MCRAR/issues/2#issuecomment-6117456637"
+          },
+          "training_seconds": 31.93699999999808,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 9949,
+            "validation": 3802,
+            "test": 4231
+          },
+          "train_data": "mtg-moodtheme (official split)",
+          "calibration_data": "mtg-moodtheme validation split"
+        },
+        {
+          "id": "moodtheme-mlp@b2ac67d",
+          "method": "head",
+          "variant": "mlp",
+          "file": "heads/moodtheme-mlp@b2ac67d.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 4231,
+            "primary": "macro_pr_auc",
+            "macro_pr_auc": 0.1444834713765562,
+            "macro_roc_auc": 0.7648399919029503,
+            "pr_auc_labels": 56,
+            "roc_auc_labels": 56,
+            "primary_ci95": [
+              0.14129939630433344,
+              0.15550392506439217
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.00225473063033238
+          },
+          "created_at": "2026-10-12T05:07:53.443853Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC-SA 4.0",
+          "dataset_provenance": {
+            "name": "mtg-moodtheme",
+            "commit": "cafd8e20c265ed84f1e61f1c875327971f43a62f",
+            "data_license": "CC BY-NC-SA 4.0",
+            "checksums": {
+              "autotagging_moodtheme_audio-low-00.tar": "848b0e7e65604f9d6060adf671a2e9373762a909a0c32bc60eb2d1634126a993",
+              "autotagging_moodtheme_audio-low-01.tar": "ffca4bd7d43b5d80acf297aeacd37526d80b2286d9dd81b8dd9ac8073f86dd6d",
+              "autotagging_moodtheme_audio-low-02.tar": "3309a9a6f86187e7534428bec75147c453073916ee03f2475bc2b76fd00cbdb2",
+              "autotagging_moodtheme_audio-low-03.tar": "41be67be39f2162639f15c58d15cfa91c0ca34357b598df550cdc16320d372c5",
+              "autotagging_moodtheme_audio-low-04.tar": "18143ea1ab2c993b4e748c71a7ac091882de71320880669b40cd99eca0f74a8b",
+              "autotagging_moodtheme_audio-low-05.tar": "79ddc7db048d124bea94544bf18d68ba058fbfdc44db3b4adf58e7e3db32000f",
+              "autotagging_moodtheme_audio-low-06.tar": "b3825bda9e96f2a5608bf255db451ecfa9227684638234ba2c37957aca87ae1c",
+              "autotagging_moodtheme_audio-low-07.tar": "685dfcd0e7417f78fcfb43e7953e4109fe71df7280e863fdf0682facda622bce",
+              "autotagging_moodtheme_audio-low-08.tar": "e8085bec463164cc8303b27225fec60fc8ba6c17422f357356e204805e23561c",
+              "autotagging_moodtheme_audio-low-09.tar": "1d959a35fd0f3cb305cab5fd0d2897c9f6b12431b2fc032c50f82714ac86d32f",
+              "autotagging_moodtheme_audio-low-10.tar": "f42e2bcdee8acad306a6b17331e0bacef805ce0e5a8b81739c9e5edb7e744eff",
+              "autotagging_moodtheme_audio-low-11.tar": "9f8d0e93eec6d036bd4285cfbc4a94ad18a693ecf905ded37bc12159c5a1e257",
+              "autotagging_moodtheme_audio-low-12.tar": "53d7b13471c71d3053a1cdb8cee8b5ce9b0e590ca6255c87bac9df21c92b507b",
+              "autotagging_moodtheme_audio-low-13.tar": "278c0f3bea63c4dccbcd8caed87d723d3c7d333ae5c7487b6817af99ad09f3f7",
+              "autotagging_moodtheme_audio-low-14.tar": "6e0516a795699b6e9409f121b8a8a7425c0790fec82f815106b2fb3d2391cf83",
+              "autotagging_moodtheme_audio-low-15.tar": "36a96c9a079df3cccf75f36a0a52a47713e819a3162f61d351be2bf8122abb9d",
+              "autotagging_moodtheme_audio-low-16.tar": "b3e8cad3d4e754565ab96b48a857617417c0a6cfb658ce8f61a81afa56eefcbf",
+              "autotagging_moodtheme_audio-low-17.tar": "32e47e4e17ab20c34d5df0f9c7a731a5bbf3891a685624dff73beeb71aa7af1a",
+              "autotagging_moodtheme_audio-low-18.tar": "e0e68c06816efdcda700f405aadb1b1703fba387d94315646219b6cda8776a88",
+              "autotagging_moodtheme_audio-low-19.tar": "5d8c4af7eca639b75c320dded2a7a13330ec309041957a824f5d8741f9cfda4b",
+              "autotagging_moodtheme_audio-low-20.tar": "0b0a96ef5feb94cfe54479128553581a4621be50022a867c24bfff47ad26e413",
+              "autotagging_moodtheme_audio-low-21.tar": "edaa593e9a9e0a37b2d3ad4f74d84ad7aa5b7c13d0508d10359959e89a022bec",
+              "autotagging_moodtheme_audio-low-22.tar": "bd50def5cd40cb98b8c503162334c541380a11bdf6c2ec5868b675049755436a",
+              "autotagging_moodtheme_audio-low-23.tar": "39de0eee7226ea0fdebccf5b7def6d3e60c6973b24761f5cd7dc9ec271979450",
+              "autotagging_moodtheme_audio-low-24.tar": "430b035dbaddb45213b77b5bc1438a89942fe2b8b0e741a22d95f86778f73a4b",
+              "autotagging_moodtheme_audio-low-25.tar": "ce513d89366c81ee5ac6f65c709227b1a19566d1e4b438ca875d63d78b8e45d2",
+              "autotagging_moodtheme_audio-low-26.tar": "1eef3d394e6c69476777ecd5447cf453c88e64aac6a8ff7a94244babf14a3279",
+              "autotagging_moodtheme_audio-low-27.tar": "fca959a3c8235542f7c50251cc9082c69b0acea3913981e0504825f88207a577",
+              "autotagging_moodtheme_audio-low-28.tar": "763cff772ca73317b97b8b58026a85cb39f8a76460bbb8a43e142517cdaa6268",
+              "autotagging_moodtheme_audio-low-29.tar": "ce14ce2641006f6e131c97044344187c252a9f600dd49f295282cb1b34f1036d",
+              "autotagging_moodtheme_audio-low-30.tar": "1b4a0ca7ca6f69a119f15b71dcc6580e2d6d82522de3f7eca284c0c100284891",
+              "autotagging_moodtheme_audio-low-31.tar": "2a448f3ab79419f89b9bb2b651c253dd66823045baa9e3e9b46ddac053f1a0b0",
+              "autotagging_moodtheme_audio-low-32.tar": "6c86fe1baf8d6774302a83c4aadd9a17d82489646e042d20fdc821a75e38b60f",
+              "autotagging_moodtheme_audio-low-33.tar": "b3e853529b0490b42081be26c5c2cfd7f866c1eb79a91c7c2baab1bdfc698726",
+              "autotagging_moodtheme_audio-low-34.tar": "c046d69027e4781e648e8346d98c1987cafede4787e280afcd6763b43565d5b8",
+              "autotagging_moodtheme_audio-low-35.tar": "c7c67d8bc1f7721fe78485ad32b1877e384db06f2b1bc6e32ebea18e19ba716b",
+              "autotagging_moodtheme_audio-low-36.tar": "a99ff2e92f9845881e2dce4ad2d49b2c57c873c061445b1b5c3643211cb4d810",
+              "autotagging_moodtheme_audio-low-37.tar": "9897bd7d482702570fabee346bec527bb09d86e32d40d02815961b4a18e6e729",
+              "autotagging_moodtheme_audio-low-38.tar": "aaa2ac4bd7ff13b30d785553c3c690faea34ca63618a19c2a1474119a386d1be",
+              "autotagging_moodtheme_audio-low-39.tar": "6960cff7830ded8c0292127766cb17279b2bce43d402c0d7f326cf88eff2740f",
+              "autotagging_moodtheme_audio-low-40.tar": "b677c6defada2f83c7b0574c4bbe068374d604b0ef2b8f120e17f980c6f09f6c",
+              "autotagging_moodtheme_audio-low-41.tar": "6b3074d7a508fc344c88fe22f59ef1188f7b5c06a412f860b210d949728014c8",
+              "autotagging_moodtheme_audio-low-42.tar": "5e354b4fa96eb935e0c430830550162c3b5eff996ad4f41fa50d2ee3d9d58ebd",
+              "autotagging_moodtheme_audio-low-43.tar": "c81e5249e5a01abe9349b7a1b34c8b57804163f8b22a7edc8914b609526485b3",
+              "autotagging_moodtheme_audio-low-44.tar": "803a6308fb6f9dfac42a6bb76aa85cda06fd660f40bac767977424522be662b1",
+              "autotagging_moodtheme_audio-low-45.tar": "5b6e72dc4b5d20b85a321220487efbff766163d8e16c682a342fb6b968d37d6e",
+              "autotagging_moodtheme_audio-low-46.tar": "b078b19d63581ee132155a0b18d65b9304ac1856b8883e7dfc8676d0c7b7429e",
+              "autotagging_moodtheme_audio-low-47.tar": "64b9f9c22250c1e8f98fe46592290384d2c63404a956ef6e9a3881ea4df9dde2",
+              "autotagging_moodtheme_audio-low-48.tar": "d84e5915d2ce76bebcbaaeedb1e1ed75c0b042bbafb6079230b84a57214cdfd3",
+              "autotagging_moodtheme_audio-low-49.tar": "efc8a551c0f5ebe97ccd9401079dcda61029f0999208e28d27404d28a9c8fb05",
+              "autotagging_moodtheme_audio-low-50.tar": "f421715e847b155b63f267865ddc36573da985cac1938bdf515f5482741f3c40",
+              "autotagging_moodtheme_audio-low-51.tar": "f93c37d156bb0d6b31697435da62d3cf277981d8d524d5d21bfbe54a2a1494ce",
+              "autotagging_moodtheme_audio-low-52.tar": "04e5af15e24e55acef06cbe972e87ea7cb3d078d5432f7cc814b8d74ecb4bad5",
+              "autotagging_moodtheme_audio-low-53.tar": "462e9190583fa71782ad42b2c28ffb018f89bcfd3fb1b4e3612d431dc5f0e526",
+              "autotagging_moodtheme_audio-low-54.tar": "152edf8fbdfb3905001532b7317d32c54cfa9c568f4e8999f3028c5bd3447f8d",
+              "autotagging_moodtheme_audio-low-55.tar": "8f2e7fb4e1161c4df2f48db67daa5ced3c538219e8ac39b5bef2cd6b2162c6ba",
+              "autotagging_moodtheme_audio-low-56.tar": "4ac4f1949654e2dff9f3c972b3fed8aad551cad5b3695c8199b7df4db4a59b68",
+              "autotagging_moodtheme_audio-low-57.tar": "10506ed5fecbf58d2218537696e0b7e3dc4a37f45e8a5e89ab2a5e5522fa310a",
+              "autotagging_moodtheme_audio-low-58.tar": "908e0df00a148aac08ca907e8b06396387ea568fc4392724a093eaf2e16586ef",
+              "autotagging_moodtheme_audio-low-59.tar": "e9e64ef0015667ddb44f30d05ede1ec899ccd08f2ea88acdbda11ff55024bfe4",
+              "autotagging_moodtheme_audio-low-60.tar": "2f09537136a3367b78fcf5262f555ea98f4dd6536333a808f4a6e53fc1978e95",
+              "autotagging_moodtheme_audio-low-61.tar": "25dadc1f544af8416a29f8071937f8f6ab61a817e84e601eaedb23b64d7a663b",
+              "autotagging_moodtheme_audio-low-62.tar": "f7d9ea10db0935ccdc2b12de90f754325337d41ce39f11279aa35217828335b7",
+              "autotagging_moodtheme_audio-low-63.tar": "fc7a6037e41480edc8d255e99da7976e2809538b6e58b516ad7cd01155ff1c89",
+              "autotagging_moodtheme_audio-low-64.tar": "c86f2ee0019640ed5bfdf3087b65857a32165edcf0beccf72be67423a5d8842b",
+              "autotagging_moodtheme_audio-low-65.tar": "788a8b9a178c5e4485b49a58c13924c665e443681fe646509841ec9907686153",
+              "autotagging_moodtheme_audio-low-66.tar": "37011e7637a74a2bbd482d054da7045798cae70289da6bcfa9424270b2961201",
+              "autotagging_moodtheme_audio-low-67.tar": "88c13e96c0f46ca67f27d40c7171937671d08a2590b2c4d8f20dfba90c8d08c3",
+              "autotagging_moodtheme_audio-low-68.tar": "067c567f61b375eefa1a18b3e7f640f7868e39f546ed233cd5fae81cf2633436",
+              "autotagging_moodtheme_audio-low-69.tar": "87a451f8b77124f795b6a16c1d0a8aaaffde8727679f17de23239911da52f83d",
+              "autotagging_moodtheme_audio-low-70.tar": "fee384d8d24901e7362335cb6c77fdefc9ccb524dd5f5c5462c9046f241788aa",
+              "autotagging_moodtheme_audio-low-71.tar": "0e13531d220410e8f689e14f2a278bac7fb2de1fa14bf56a308cc54b7e38c32b",
+              "autotagging_moodtheme_audio-low-72.tar": "e21665b6c715efb595a7898807951de352541aa591c4291cba48014a47fbce50",
+              "autotagging_moodtheme_audio-low-73.tar": "daf72287fde1f23b9e66196cdb094ae44d9ed60848c9b9bf86ee21c932a3bc9f",
+              "autotagging_moodtheme_audio-low-74.tar": "078a6cf9106d4bef824685d0c0b2a7816f555736db6d08bf7ce421c74cd406a2",
+              "autotagging_moodtheme_audio-low-75.tar": "507c72256a08f3efe0a2c419a0cbdb3e7ac963e7f8a12527f7c7511073f48c03",
+              "autotagging_moodtheme_audio-low-76.tar": "ca8a358d3c9410d975bafbcd2c313dd2a9ed7c84ba2cb2df6197d36e4dcd77c9",
+              "autotagging_moodtheme_audio-low-77.tar": "35ce9a1896daf749b0a35e090c315d79e91affcf4683f1bfc567608b172bf1ec",
+              "autotagging_moodtheme_audio-low-78.tar": "604861b2bcde7415c8f98706db9034b93efa0dbd793f3c88c51cc465a2cfce8c",
+              "autotagging_moodtheme_audio-low-79.tar": "fa1659ea46fbf27f5d887467972defe0bed4ced8e1240f8b6f3965d53c88761b",
+              "autotagging_moodtheme_audio-low-80.tar": "3c74d0a23e929cfa6bedb57e700d49ac5910a1bbb48ab036b2ce58e665f7b8b3",
+              "autotagging_moodtheme_audio-low-81.tar": "b601f46d2ff88a0a41a87aa5006028d89e1d5767d0e6b468be40108da746f8ad",
+              "autotagging_moodtheme_audio-low-82.tar": "4ddb7238e67b7420975ca7426c2f1dde055b2209f42f39af9b9f928c6c7a2e86",
+              "autotagging_moodtheme_audio-low-83.tar": "849c3efcfc7c9288b4b9469ba71b23019c636bb10712a2d6a94f2e762d9058f4",
+              "autotagging_moodtheme_audio-low-84.tar": "a965f1f02fb8c209503c6797d787341716b182087ed675125b5264cf6e3399e2",
+              "autotagging_moodtheme_audio-low-85.tar": "3dcc3af7b314721350c9ab0bacab680aa99544c5d260254ee8f5f3e8572010e3",
+              "autotagging_moodtheme_audio-low-86.tar": "1bf2cb131d0f996278c72405bc93d2184327871c254e0f3236fcc673650e0835",
+              "autotagging_moodtheme_audio-low-87.tar": "fb2ecd269cceaad2a9943b14d0c74196baac211377d82d5b4611790845d413d4",
+              "autotagging_moodtheme_audio-low-88.tar": "02906550067f4ae452f008b5116ac506f10268ac4b4416101875360b1c7ecc57",
+              "autotagging_moodtheme_audio-low-89.tar": "7af1527e993b69f1a8f000ca70e57cd9a7bee14a4a998d298ee66d8a48ee2f99",
+              "autotagging_moodtheme_audio-low-90.tar": "4c3253d90c715a0672d3b79cddcf916e3ee2215228b253c4cc6d3c3aca841a04",
+              "autotagging_moodtheme_audio-low-91.tar": "8fd14662eb0b7d19d1b98df338c6eea67377da9f87bbe5fbe83cdf94fa356ea3",
+              "autotagging_moodtheme_audio-low-92.tar": "4c3f237ca8b0e5c3cf610c21012c103c70bc633ecc63a7e9f12010ab9061cab1",
+              "autotagging_moodtheme_audio-low-93.tar": "46805b4f0a2ce38060bfc341f2baad898e8f9e6ea0101678174ff7e182e534b1",
+              "autotagging_moodtheme_audio-low-94.tar": "d4f112055119b2b0e111cf29e4d0842580084de4e8c466985259a450c4a8f180",
+              "autotagging_moodtheme_audio-low-95.tar": "167a24a7f0934c2256e82d06fae5fa70214f260976eca4e39104bf09d7e82e37",
+              "autotagging_moodtheme_audio-low-96.tar": "4ebfcf786b6cc6a0a15d9b8c3209ed4b480870427601c93ca860f500944894d3",
+              "autotagging_moodtheme_audio-low-97.tar": "3ed39f0bc9666815709d4a79cafca7ea260590d8f9f3140cf27ac9e72673253d",
+              "autotagging_moodtheme_audio-low-98.tar": "9cab0c3dc46712b5256821cf04dcf64a16d8586d73487254e0c1812eea84df21",
+              "autotagging_moodtheme_audio-low-99.tar": "5d58783ffcd6860ed1e3f2ebb6f69e623bb588a4bee8003f5fe97a271c4987a5"
+            },
+            "checksum_algorithm": "sha256",
+            "checksum_source": "https://github.com/MTG/mtg-jamendo-dataset/tree/cafd8e20c265ed84f1e61f1c875327971f43a62f/data/download",
+            "audio_release": {
+              "tracks": 18486,
+              "tags": 59
+            },
+            "split0": {
+              "tracks": 17982,
+              "tags": 56,
+              "train": 9949,
+              "validation": 3802,
+              "test": 4231
+            },
+            "membership_confirmation": "https://github.com/opoeci6/MCRAR/issues/2#issuecomment-6117456637"
+          },
+          "training_seconds": 34.76499999999942,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 9949,
+            "validation": 3802,
+            "test": 4231
+          },
+          "train_data": "mtg-moodtheme (official split)",
+          "calibration_data": "mtg-moodtheme validation split",
+          "architecture": {
+            "hidden": 256,
+            "activation": "relu",
+            "dropout": 0.2,
+            "epochs_limit": 100,
+            "patience": 12,
+            "optimizer": "Adam"
+          }
+        },
+        {
+          "id": "moodtheme-zeroshot-calibrated@be8beeb",
+          "method": "zeroshot",
+          "variant": "zeroshot-calibrated",
+          "file": "heads/moodtheme-zeroshot-calibrated@be8beeb.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 4231,
+            "primary": "macro_pr_auc",
+            "macro_pr_auc": 0.07729430958680664,
+            "macro_roc_auc": 0.6433524619512383,
+            "pr_auc_labels": 56,
+            "roc_auc_labels": 56,
+            "primary_ci95": [
+              0.0751474105283165,
+              0.08568584043104298
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.003044097569288139
+          },
+          "created_at": "2026-10-12T05:08:28.073016Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC-SA 4.0",
+          "dataset_provenance": {
+            "name": "mtg-moodtheme",
+            "commit": "cafd8e20c265ed84f1e61f1c875327971f43a62f",
+            "data_license": "CC BY-NC-SA 4.0",
+            "checksums": {
+              "autotagging_moodtheme_audio-low-00.tar": "848b0e7e65604f9d6060adf671a2e9373762a909a0c32bc60eb2d1634126a993",
+              "autotagging_moodtheme_audio-low-01.tar": "ffca4bd7d43b5d80acf297aeacd37526d80b2286d9dd81b8dd9ac8073f86dd6d",
+              "autotagging_moodtheme_audio-low-02.tar": "3309a9a6f86187e7534428bec75147c453073916ee03f2475bc2b76fd00cbdb2",
+              "autotagging_moodtheme_audio-low-03.tar": "41be67be39f2162639f15c58d15cfa91c0ca34357b598df550cdc16320d372c5",
+              "autotagging_moodtheme_audio-low-04.tar": "18143ea1ab2c993b4e748c71a7ac091882de71320880669b40cd99eca0f74a8b",
+              "autotagging_moodtheme_audio-low-05.tar": "79ddc7db048d124bea94544bf18d68ba058fbfdc44db3b4adf58e7e3db32000f",
+              "autotagging_moodtheme_audio-low-06.tar": "b3825bda9e96f2a5608bf255db451ecfa9227684638234ba2c37957aca87ae1c",
+              "autotagging_moodtheme_audio-low-07.tar": "685dfcd0e7417f78fcfb43e7953e4109fe71df7280e863fdf0682facda622bce",
+              "autotagging_moodtheme_audio-low-08.tar": "e8085bec463164cc8303b27225fec60fc8ba6c17422f357356e204805e23561c",
+              "autotagging_moodtheme_audio-low-09.tar": "1d959a35fd0f3cb305cab5fd0d2897c9f6b12431b2fc032c50f82714ac86d32f",
+              "autotagging_moodtheme_audio-low-10.tar": "f42e2bcdee8acad306a6b17331e0bacef805ce0e5a8b81739c9e5edb7e744eff",
+              "autotagging_moodtheme_audio-low-11.tar": "9f8d0e93eec6d036bd4285cfbc4a94ad18a693ecf905ded37bc12159c5a1e257",
+              "autotagging_moodtheme_audio-low-12.tar": "53d7b13471c71d3053a1cdb8cee8b5ce9b0e590ca6255c87bac9df21c92b507b",
+              "autotagging_moodtheme_audio-low-13.tar": "278c0f3bea63c4dccbcd8caed87d723d3c7d333ae5c7487b6817af99ad09f3f7",
+              "autotagging_moodtheme_audio-low-14.tar": "6e0516a795699b6e9409f121b8a8a7425c0790fec82f815106b2fb3d2391cf83",
+              "autotagging_moodtheme_audio-low-15.tar": "36a96c9a079df3cccf75f36a0a52a47713e819a3162f61d351be2bf8122abb9d",
+              "autotagging_moodtheme_audio-low-16.tar": "b3e8cad3d4e754565ab96b48a857617417c0a6cfb658ce8f61a81afa56eefcbf",
+              "autotagging_moodtheme_audio-low-17.tar": "32e47e4e17ab20c34d5df0f9c7a731a5bbf3891a685624dff73beeb71aa7af1a",
+              "autotagging_moodtheme_audio-low-18.tar": "e0e68c06816efdcda700f405aadb1b1703fba387d94315646219b6cda8776a88",
+              "autotagging_moodtheme_audio-low-19.tar": "5d8c4af7eca639b75c320dded2a7a13330ec309041957a824f5d8741f9cfda4b",
+              "autotagging_moodtheme_audio-low-20.tar": "0b0a96ef5feb94cfe54479128553581a4621be50022a867c24bfff47ad26e413",
+              "autotagging_moodtheme_audio-low-21.tar": "edaa593e9a9e0a37b2d3ad4f74d84ad7aa5b7c13d0508d10359959e89a022bec",
+              "autotagging_moodtheme_audio-low-22.tar": "bd50def5cd40cb98b8c503162334c541380a11bdf6c2ec5868b675049755436a",
+              "autotagging_moodtheme_audio-low-23.tar": "39de0eee7226ea0fdebccf5b7def6d3e60c6973b24761f5cd7dc9ec271979450",
+              "autotagging_moodtheme_audio-low-24.tar": "430b035dbaddb45213b77b5bc1438a89942fe2b8b0e741a22d95f86778f73a4b",
+              "autotagging_moodtheme_audio-low-25.tar": "ce513d89366c81ee5ac6f65c709227b1a19566d1e4b438ca875d63d78b8e45d2",
+              "autotagging_moodtheme_audio-low-26.tar": "1eef3d394e6c69476777ecd5447cf453c88e64aac6a8ff7a94244babf14a3279",
+              "autotagging_moodtheme_audio-low-27.tar": "fca959a3c8235542f7c50251cc9082c69b0acea3913981e0504825f88207a577",
+              "autotagging_moodtheme_audio-low-28.tar": "763cff772ca73317b97b8b58026a85cb39f8a76460bbb8a43e142517cdaa6268",
+              "autotagging_moodtheme_audio-low-29.tar": "ce14ce2641006f6e131c97044344187c252a9f600dd49f295282cb1b34f1036d",
+              "autotagging_moodtheme_audio-low-30.tar": "1b4a0ca7ca6f69a119f15b71dcc6580e2d6d82522de3f7eca284c0c100284891",
+              "autotagging_moodtheme_audio-low-31.tar": "2a448f3ab79419f89b9bb2b651c253dd66823045baa9e3e9b46ddac053f1a0b0",
+              "autotagging_moodtheme_audio-low-32.tar": "6c86fe1baf8d6774302a83c4aadd9a17d82489646e042d20fdc821a75e38b60f",
+              "autotagging_moodtheme_audio-low-33.tar": "b3e853529b0490b42081be26c5c2cfd7f866c1eb79a91c7c2baab1bdfc698726",
+              "autotagging_moodtheme_audio-low-34.tar": "c046d69027e4781e648e8346d98c1987cafede4787e280afcd6763b43565d5b8",
+              "autotagging_moodtheme_audio-low-35.tar": "c7c67d8bc1f7721fe78485ad32b1877e384db06f2b1bc6e32ebea18e19ba716b",
+              "autotagging_moodtheme_audio-low-36.tar": "a99ff2e92f9845881e2dce4ad2d49b2c57c873c061445b1b5c3643211cb4d810",
+              "autotagging_moodtheme_audio-low-37.tar": "9897bd7d482702570fabee346bec527bb09d86e32d40d02815961b4a18e6e729",
+              "autotagging_moodtheme_audio-low-38.tar": "aaa2ac4bd7ff13b30d785553c3c690faea34ca63618a19c2a1474119a386d1be",
+              "autotagging_moodtheme_audio-low-39.tar": "6960cff7830ded8c0292127766cb17279b2bce43d402c0d7f326cf88eff2740f",
+              "autotagging_moodtheme_audio-low-40.tar": "b677c6defada2f83c7b0574c4bbe068374d604b0ef2b8f120e17f980c6f09f6c",
+              "autotagging_moodtheme_audio-low-41.tar": "6b3074d7a508fc344c88fe22f59ef1188f7b5c06a412f860b210d949728014c8",
+              "autotagging_moodtheme_audio-low-42.tar": "5e354b4fa96eb935e0c430830550162c3b5eff996ad4f41fa50d2ee3d9d58ebd",
+              "autotagging_moodtheme_audio-low-43.tar": "c81e5249e5a01abe9349b7a1b34c8b57804163f8b22a7edc8914b609526485b3",
+              "autotagging_moodtheme_audio-low-44.tar": "803a6308fb6f9dfac42a6bb76aa85cda06fd660f40bac767977424522be662b1",
+              "autotagging_moodtheme_audio-low-45.tar": "5b6e72dc4b5d20b85a321220487efbff766163d8e16c682a342fb6b968d37d6e",
+              "autotagging_moodtheme_audio-low-46.tar": "b078b19d63581ee132155a0b18d65b9304ac1856b8883e7dfc8676d0c7b7429e",
+              "autotagging_moodtheme_audio-low-47.tar": "64b9f9c22250c1e8f98fe46592290384d2c63404a956ef6e9a3881ea4df9dde2",
+              "autotagging_moodtheme_audio-low-48.tar": "d84e5915d2ce76bebcbaaeedb1e1ed75c0b042bbafb6079230b84a57214cdfd3",
+              "autotagging_moodtheme_audio-low-49.tar": "efc8a551c0f5ebe97ccd9401079dcda61029f0999208e28d27404d28a9c8fb05",
+              "autotagging_moodtheme_audio-low-50.tar": "f421715e847b155b63f267865ddc36573da985cac1938bdf515f5482741f3c40",
+              "autotagging_moodtheme_audio-low-51.tar": "f93c37d156bb0d6b31697435da62d3cf277981d8d524d5d21bfbe54a2a1494ce",
+              "autotagging_moodtheme_audio-low-52.tar": "04e5af15e24e55acef06cbe972e87ea7cb3d078d5432f7cc814b8d74ecb4bad5",
+              "autotagging_moodtheme_audio-low-53.tar": "462e9190583fa71782ad42b2c28ffb018f89bcfd3fb1b4e3612d431dc5f0e526",
+              "autotagging_moodtheme_audio-low-54.tar": "152edf8fbdfb3905001532b7317d32c54cfa9c568f4e8999f3028c5bd3447f8d",
+              "autotagging_moodtheme_audio-low-55.tar": "8f2e7fb4e1161c4df2f48db67daa5ced3c538219e8ac39b5bef2cd6b2162c6ba",
+              "autotagging_moodtheme_audio-low-56.tar": "4ac4f1949654e2dff9f3c972b3fed8aad551cad5b3695c8199b7df4db4a59b68",
+              "autotagging_moodtheme_audio-low-57.tar": "10506ed5fecbf58d2218537696e0b7e3dc4a37f45e8a5e89ab2a5e5522fa310a",
+              "autotagging_moodtheme_audio-low-58.tar": "908e0df00a148aac08ca907e8b06396387ea568fc4392724a093eaf2e16586ef",
+              "autotagging_moodtheme_audio-low-59.tar": "e9e64ef0015667ddb44f30d05ede1ec899ccd08f2ea88acdbda11ff55024bfe4",
+              "autotagging_moodtheme_audio-low-60.tar": "2f09537136a3367b78fcf5262f555ea98f4dd6536333a808f4a6e53fc1978e95",
+              "autotagging_moodtheme_audio-low-61.tar": "25dadc1f544af8416a29f8071937f8f6ab61a817e84e601eaedb23b64d7a663b",
+              "autotagging_moodtheme_audio-low-62.tar": "f7d9ea10db0935ccdc2b12de90f754325337d41ce39f11279aa35217828335b7",
+              "autotagging_moodtheme_audio-low-63.tar": "fc7a6037e41480edc8d255e99da7976e2809538b6e58b516ad7cd01155ff1c89",
+              "autotagging_moodtheme_audio-low-64.tar": "c86f2ee0019640ed5bfdf3087b65857a32165edcf0beccf72be67423a5d8842b",
+              "autotagging_moodtheme_audio-low-65.tar": "788a8b9a178c5e4485b49a58c13924c665e443681fe646509841ec9907686153",
+              "autotagging_moodtheme_audio-low-66.tar": "37011e7637a74a2bbd482d054da7045798cae70289da6bcfa9424270b2961201",
+              "autotagging_moodtheme_audio-low-67.tar": "88c13e96c0f46ca67f27d40c7171937671d08a2590b2c4d8f20dfba90c8d08c3",
+              "autotagging_moodtheme_audio-low-68.tar": "067c567f61b375eefa1a18b3e7f640f7868e39f546ed233cd5fae81cf2633436",
+              "autotagging_moodtheme_audio-low-69.tar": "87a451f8b77124f795b6a16c1d0a8aaaffde8727679f17de23239911da52f83d",
+              "autotagging_moodtheme_audio-low-70.tar": "fee384d8d24901e7362335cb6c77fdefc9ccb524dd5f5c5462c9046f241788aa",
+              "autotagging_moodtheme_audio-low-71.tar": "0e13531d220410e8f689e14f2a278bac7fb2de1fa14bf56a308cc54b7e38c32b",
+              "autotagging_moodtheme_audio-low-72.tar": "e21665b6c715efb595a7898807951de352541aa591c4291cba48014a47fbce50",
+              "autotagging_moodtheme_audio-low-73.tar": "daf72287fde1f23b9e66196cdb094ae44d9ed60848c9b9bf86ee21c932a3bc9f",
+              "autotagging_moodtheme_audio-low-74.tar": "078a6cf9106d4bef824685d0c0b2a7816f555736db6d08bf7ce421c74cd406a2",
+              "autotagging_moodtheme_audio-low-75.tar": "507c72256a08f3efe0a2c419a0cbdb3e7ac963e7f8a12527f7c7511073f48c03",
+              "autotagging_moodtheme_audio-low-76.tar": "ca8a358d3c9410d975bafbcd2c313dd2a9ed7c84ba2cb2df6197d36e4dcd77c9",
+              "autotagging_moodtheme_audio-low-77.tar": "35ce9a1896daf749b0a35e090c315d79e91affcf4683f1bfc567608b172bf1ec",
+              "autotagging_moodtheme_audio-low-78.tar": "604861b2bcde7415c8f98706db9034b93efa0dbd793f3c88c51cc465a2cfce8c",
+              "autotagging_moodtheme_audio-low-79.tar": "fa1659ea46fbf27f5d887467972defe0bed4ced8e1240f8b6f3965d53c88761b",
+              "autotagging_moodtheme_audio-low-80.tar": "3c74d0a23e929cfa6bedb57e700d49ac5910a1bbb48ab036b2ce58e665f7b8b3",
+              "autotagging_moodtheme_audio-low-81.tar": "b601f46d2ff88a0a41a87aa5006028d89e1d5767d0e6b468be40108da746f8ad",
+              "autotagging_moodtheme_audio-low-82.tar": "4ddb7238e67b7420975ca7426c2f1dde055b2209f42f39af9b9f928c6c7a2e86",
+              "autotagging_moodtheme_audio-low-83.tar": "849c3efcfc7c9288b4b9469ba71b23019c636bb10712a2d6a94f2e762d9058f4",
+              "autotagging_moodtheme_audio-low-84.tar": "a965f1f02fb8c209503c6797d787341716b182087ed675125b5264cf6e3399e2",
+              "autotagging_moodtheme_audio-low-85.tar": "3dcc3af7b314721350c9ab0bacab680aa99544c5d260254ee8f5f3e8572010e3",
+              "autotagging_moodtheme_audio-low-86.tar": "1bf2cb131d0f996278c72405bc93d2184327871c254e0f3236fcc673650e0835",
+              "autotagging_moodtheme_audio-low-87.tar": "fb2ecd269cceaad2a9943b14d0c74196baac211377d82d5b4611790845d413d4",
+              "autotagging_moodtheme_audio-low-88.tar": "02906550067f4ae452f008b5116ac506f10268ac4b4416101875360b1c7ecc57",
+              "autotagging_moodtheme_audio-low-89.tar": "7af1527e993b69f1a8f000ca70e57cd9a7bee14a4a998d298ee66d8a48ee2f99",
+              "autotagging_moodtheme_audio-low-90.tar": "4c3253d90c715a0672d3b79cddcf916e3ee2215228b253c4cc6d3c3aca841a04",
+              "autotagging_moodtheme_audio-low-91.tar": "8fd14662eb0b7d19d1b98df338c6eea67377da9f87bbe5fbe83cdf94fa356ea3",
+              "autotagging_moodtheme_audio-low-92.tar": "4c3f237ca8b0e5c3cf610c21012c103c70bc633ecc63a7e9f12010ab9061cab1",
+              "autotagging_moodtheme_audio-low-93.tar": "46805b4f0a2ce38060bfc341f2baad898e8f9e6ea0101678174ff7e182e534b1",
+              "autotagging_moodtheme_audio-low-94.tar": "d4f112055119b2b0e111cf29e4d0842580084de4e8c466985259a450c4a8f180",
+              "autotagging_moodtheme_audio-low-95.tar": "167a24a7f0934c2256e82d06fae5fa70214f260976eca4e39104bf09d7e82e37",
+              "autotagging_moodtheme_audio-low-96.tar": "4ebfcf786b6cc6a0a15d9b8c3209ed4b480870427601c93ca860f500944894d3",
+              "autotagging_moodtheme_audio-low-97.tar": "3ed39f0bc9666815709d4a79cafca7ea260590d8f9f3140cf27ac9e72673253d",
+              "autotagging_moodtheme_audio-low-98.tar": "9cab0c3dc46712b5256821cf04dcf64a16d8586d73487254e0c1812eea84df21",
+              "autotagging_moodtheme_audio-low-99.tar": "5d58783ffcd6860ed1e3f2ebb6f69e623bb588a4bee8003f5fe97a271c4987a5"
+            },
+            "checksum_algorithm": "sha256",
+            "checksum_source": "https://github.com/MTG/mtg-jamendo-dataset/tree/cafd8e20c265ed84f1e61f1c875327971f43a62f/data/download",
+            "audio_release": {
+              "tracks": 18486,
+              "tags": 59
+            },
+            "split0": {
+              "tracks": 17982,
+              "tags": 56,
+              "train": 9949,
+              "validation": 3802,
+              "test": 4231
+            },
+            "membership_confirmation": "https://github.com/opoeci6/MCRAR/issues/2#issuecomment-6117456637"
+          },
+          "training_seconds": 33.0,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 9949,
+            "validation": 3802,
+            "test": 4231
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/moodtheme.toml",
+          "calibration_data": "mtg-moodtheme validation split"
+        },
+        {
+          "id": "moodtheme-zeroshot-unsupervised@15d3513",
+          "method": "zeroshot",
+          "variant": "zeroshot-unsupervised",
+          "file": "heads/moodtheme-zeroshot-unsupervised@15d3513.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 4231,
+            "primary": "macro_pr_auc",
+            "macro_pr_auc": 0.07853059203929558,
+            "macro_roc_auc": 0.6555243698023163,
+            "pr_auc_labels": 56,
+            "roc_auc_labels": 56,
+            "primary_ci95": [
+              0.07651967608445082,
+              0.08724532057639293
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "ece": 0.6305876545497417
+          },
+          "created_at": "2026-10-12T05:09:07.906008Z",
+          "commercial_ok": true,
+          "data_license": "FMA per-track Creative Commons audio; CC BY 4.0 metadata; labels unused",
+          "dataset_provenance": {
+            "name": "mtg-moodtheme",
+            "commit": "cafd8e20c265ed84f1e61f1c875327971f43a62f",
+            "data_license": "CC BY-NC-SA 4.0",
+            "checksums": {
+              "autotagging_moodtheme_audio-low-00.tar": "848b0e7e65604f9d6060adf671a2e9373762a909a0c32bc60eb2d1634126a993",
+              "autotagging_moodtheme_audio-low-01.tar": "ffca4bd7d43b5d80acf297aeacd37526d80b2286d9dd81b8dd9ac8073f86dd6d",
+              "autotagging_moodtheme_audio-low-02.tar": "3309a9a6f86187e7534428bec75147c453073916ee03f2475bc2b76fd00cbdb2",
+              "autotagging_moodtheme_audio-low-03.tar": "41be67be39f2162639f15c58d15cfa91c0ca34357b598df550cdc16320d372c5",
+              "autotagging_moodtheme_audio-low-04.tar": "18143ea1ab2c993b4e748c71a7ac091882de71320880669b40cd99eca0f74a8b",
+              "autotagging_moodtheme_audio-low-05.tar": "79ddc7db048d124bea94544bf18d68ba058fbfdc44db3b4adf58e7e3db32000f",
+              "autotagging_moodtheme_audio-low-06.tar": "b3825bda9e96f2a5608bf255db451ecfa9227684638234ba2c37957aca87ae1c",
+              "autotagging_moodtheme_audio-low-07.tar": "685dfcd0e7417f78fcfb43e7953e4109fe71df7280e863fdf0682facda622bce",
+              "autotagging_moodtheme_audio-low-08.tar": "e8085bec463164cc8303b27225fec60fc8ba6c17422f357356e204805e23561c",
+              "autotagging_moodtheme_audio-low-09.tar": "1d959a35fd0f3cb305cab5fd0d2897c9f6b12431b2fc032c50f82714ac86d32f",
+              "autotagging_moodtheme_audio-low-10.tar": "f42e2bcdee8acad306a6b17331e0bacef805ce0e5a8b81739c9e5edb7e744eff",
+              "autotagging_moodtheme_audio-low-11.tar": "9f8d0e93eec6d036bd4285cfbc4a94ad18a693ecf905ded37bc12159c5a1e257",
+              "autotagging_moodtheme_audio-low-12.tar": "53d7b13471c71d3053a1cdb8cee8b5ce9b0e590ca6255c87bac9df21c92b507b",
+              "autotagging_moodtheme_audio-low-13.tar": "278c0f3bea63c4dccbcd8caed87d723d3c7d333ae5c7487b6817af99ad09f3f7",
+              "autotagging_moodtheme_audio-low-14.tar": "6e0516a795699b6e9409f121b8a8a7425c0790fec82f815106b2fb3d2391cf83",
+              "autotagging_moodtheme_audio-low-15.tar": "36a96c9a079df3cccf75f36a0a52a47713e819a3162f61d351be2bf8122abb9d",
+              "autotagging_moodtheme_audio-low-16.tar": "b3e8cad3d4e754565ab96b48a857617417c0a6cfb658ce8f61a81afa56eefcbf",
+              "autotagging_moodtheme_audio-low-17.tar": "32e47e4e17ab20c34d5df0f9c7a731a5bbf3891a685624dff73beeb71aa7af1a",
+              "autotagging_moodtheme_audio-low-18.tar": "e0e68c06816efdcda700f405aadb1b1703fba387d94315646219b6cda8776a88",
+              "autotagging_moodtheme_audio-low-19.tar": "5d8c4af7eca639b75c320dded2a7a13330ec309041957a824f5d8741f9cfda4b",
+              "autotagging_moodtheme_audio-low-20.tar": "0b0a96ef5feb94cfe54479128553581a4621be50022a867c24bfff47ad26e413",
+              "autotagging_moodtheme_audio-low-21.tar": "edaa593e9a9e0a37b2d3ad4f74d84ad7aa5b7c13d0508d10359959e89a022bec",
+              "autotagging_moodtheme_audio-low-22.tar": "bd50def5cd40cb98b8c503162334c541380a11bdf6c2ec5868b675049755436a",
+              "autotagging_moodtheme_audio-low-23.tar": "39de0eee7226ea0fdebccf5b7def6d3e60c6973b24761f5cd7dc9ec271979450",
+              "autotagging_moodtheme_audio-low-24.tar": "430b035dbaddb45213b77b5bc1438a89942fe2b8b0e741a22d95f86778f73a4b",
+              "autotagging_moodtheme_audio-low-25.tar": "ce513d89366c81ee5ac6f65c709227b1a19566d1e4b438ca875d63d78b8e45d2",
+              "autotagging_moodtheme_audio-low-26.tar": "1eef3d394e6c69476777ecd5447cf453c88e64aac6a8ff7a94244babf14a3279",
+              "autotagging_moodtheme_audio-low-27.tar": "fca959a3c8235542f7c50251cc9082c69b0acea3913981e0504825f88207a577",
+              "autotagging_moodtheme_audio-low-28.tar": "763cff772ca73317b97b8b58026a85cb39f8a76460bbb8a43e142517cdaa6268",
+              "autotagging_moodtheme_audio-low-29.tar": "ce14ce2641006f6e131c97044344187c252a9f600dd49f295282cb1b34f1036d",
+              "autotagging_moodtheme_audio-low-30.tar": "1b4a0ca7ca6f69a119f15b71dcc6580e2d6d82522de3f7eca284c0c100284891",
+              "autotagging_moodtheme_audio-low-31.tar": "2a448f3ab79419f89b9bb2b651c253dd66823045baa9e3e9b46ddac053f1a0b0",
+              "autotagging_moodtheme_audio-low-32.tar": "6c86fe1baf8d6774302a83c4aadd9a17d82489646e042d20fdc821a75e38b60f",
+              "autotagging_moodtheme_audio-low-33.tar": "b3e853529b0490b42081be26c5c2cfd7f866c1eb79a91c7c2baab1bdfc698726",
+              "autotagging_moodtheme_audio-low-34.tar": "c046d69027e4781e648e8346d98c1987cafede4787e280afcd6763b43565d5b8",
+              "autotagging_moodtheme_audio-low-35.tar": "c7c67d8bc1f7721fe78485ad32b1877e384db06f2b1bc6e32ebea18e19ba716b",
+              "autotagging_moodtheme_audio-low-36.tar": "a99ff2e92f9845881e2dce4ad2d49b2c57c873c061445b1b5c3643211cb4d810",
+              "autotagging_moodtheme_audio-low-37.tar": "9897bd7d482702570fabee346bec527bb09d86e32d40d02815961b4a18e6e729",
+              "autotagging_moodtheme_audio-low-38.tar": "aaa2ac4bd7ff13b30d785553c3c690faea34ca63618a19c2a1474119a386d1be",
+              "autotagging_moodtheme_audio-low-39.tar": "6960cff7830ded8c0292127766cb17279b2bce43d402c0d7f326cf88eff2740f",
+              "autotagging_moodtheme_audio-low-40.tar": "b677c6defada2f83c7b0574c4bbe068374d604b0ef2b8f120e17f980c6f09f6c",
+              "autotagging_moodtheme_audio-low-41.tar": "6b3074d7a508fc344c88fe22f59ef1188f7b5c06a412f860b210d949728014c8",
+              "autotagging_moodtheme_audio-low-42.tar": "5e354b4fa96eb935e0c430830550162c3b5eff996ad4f41fa50d2ee3d9d58ebd",
+              "autotagging_moodtheme_audio-low-43.tar": "c81e5249e5a01abe9349b7a1b34c8b57804163f8b22a7edc8914b609526485b3",
+              "autotagging_moodtheme_audio-low-44.tar": "803a6308fb6f9dfac42a6bb76aa85cda06fd660f40bac767977424522be662b1",
+              "autotagging_moodtheme_audio-low-45.tar": "5b6e72dc4b5d20b85a321220487efbff766163d8e16c682a342fb6b968d37d6e",
+              "autotagging_moodtheme_audio-low-46.tar": "b078b19d63581ee132155a0b18d65b9304ac1856b8883e7dfc8676d0c7b7429e",
+              "autotagging_moodtheme_audio-low-47.tar": "64b9f9c22250c1e8f98fe46592290384d2c63404a956ef6e9a3881ea4df9dde2",
+              "autotagging_moodtheme_audio-low-48.tar": "d84e5915d2ce76bebcbaaeedb1e1ed75c0b042bbafb6079230b84a57214cdfd3",
+              "autotagging_moodtheme_audio-low-49.tar": "efc8a551c0f5ebe97ccd9401079dcda61029f0999208e28d27404d28a9c8fb05",
+              "autotagging_moodtheme_audio-low-50.tar": "f421715e847b155b63f267865ddc36573da985cac1938bdf515f5482741f3c40",
+              "autotagging_moodtheme_audio-low-51.tar": "f93c37d156bb0d6b31697435da62d3cf277981d8d524d5d21bfbe54a2a1494ce",
+              "autotagging_moodtheme_audio-low-52.tar": "04e5af15e24e55acef06cbe972e87ea7cb3d078d5432f7cc814b8d74ecb4bad5",
+              "autotagging_moodtheme_audio-low-53.tar": "462e9190583fa71782ad42b2c28ffb018f89bcfd3fb1b4e3612d431dc5f0e526",
+              "autotagging_moodtheme_audio-low-54.tar": "152edf8fbdfb3905001532b7317d32c54cfa9c568f4e8999f3028c5bd3447f8d",
+              "autotagging_moodtheme_audio-low-55.tar": "8f2e7fb4e1161c4df2f48db67daa5ced3c538219e8ac39b5bef2cd6b2162c6ba",
+              "autotagging_moodtheme_audio-low-56.tar": "4ac4f1949654e2dff9f3c972b3fed8aad551cad5b3695c8199b7df4db4a59b68",
+              "autotagging_moodtheme_audio-low-57.tar": "10506ed5fecbf58d2218537696e0b7e3dc4a37f45e8a5e89ab2a5e5522fa310a",
+              "autotagging_moodtheme_audio-low-58.tar": "908e0df00a148aac08ca907e8b06396387ea568fc4392724a093eaf2e16586ef",
+              "autotagging_moodtheme_audio-low-59.tar": "e9e64ef0015667ddb44f30d05ede1ec899ccd08f2ea88acdbda11ff55024bfe4",
+              "autotagging_moodtheme_audio-low-60.tar": "2f09537136a3367b78fcf5262f555ea98f4dd6536333a808f4a6e53fc1978e95",
+              "autotagging_moodtheme_audio-low-61.tar": "25dadc1f544af8416a29f8071937f8f6ab61a817e84e601eaedb23b64d7a663b",
+              "autotagging_moodtheme_audio-low-62.tar": "f7d9ea10db0935ccdc2b12de90f754325337d41ce39f11279aa35217828335b7",
+              "autotagging_moodtheme_audio-low-63.tar": "fc7a6037e41480edc8d255e99da7976e2809538b6e58b516ad7cd01155ff1c89",
+              "autotagging_moodtheme_audio-low-64.tar": "c86f2ee0019640ed5bfdf3087b65857a32165edcf0beccf72be67423a5d8842b",
+              "autotagging_moodtheme_audio-low-65.tar": "788a8b9a178c5e4485b49a58c13924c665e443681fe646509841ec9907686153",
+              "autotagging_moodtheme_audio-low-66.tar": "37011e7637a74a2bbd482d054da7045798cae70289da6bcfa9424270b2961201",
+              "autotagging_moodtheme_audio-low-67.tar": "88c13e96c0f46ca67f27d40c7171937671d08a2590b2c4d8f20dfba90c8d08c3",
+              "autotagging_moodtheme_audio-low-68.tar": "067c567f61b375eefa1a18b3e7f640f7868e39f546ed233cd5fae81cf2633436",
+              "autotagging_moodtheme_audio-low-69.tar": "87a451f8b77124f795b6a16c1d0a8aaaffde8727679f17de23239911da52f83d",
+              "autotagging_moodtheme_audio-low-70.tar": "fee384d8d24901e7362335cb6c77fdefc9ccb524dd5f5c5462c9046f241788aa",
+              "autotagging_moodtheme_audio-low-71.tar": "0e13531d220410e8f689e14f2a278bac7fb2de1fa14bf56a308cc54b7e38c32b",
+              "autotagging_moodtheme_audio-low-72.tar": "e21665b6c715efb595a7898807951de352541aa591c4291cba48014a47fbce50",
+              "autotagging_moodtheme_audio-low-73.tar": "daf72287fde1f23b9e66196cdb094ae44d9ed60848c9b9bf86ee21c932a3bc9f",
+              "autotagging_moodtheme_audio-low-74.tar": "078a6cf9106d4bef824685d0c0b2a7816f555736db6d08bf7ce421c74cd406a2",
+              "autotagging_moodtheme_audio-low-75.tar": "507c72256a08f3efe0a2c419a0cbdb3e7ac963e7f8a12527f7c7511073f48c03",
+              "autotagging_moodtheme_audio-low-76.tar": "ca8a358d3c9410d975bafbcd2c313dd2a9ed7c84ba2cb2df6197d36e4dcd77c9",
+              "autotagging_moodtheme_audio-low-77.tar": "35ce9a1896daf749b0a35e090c315d79e91affcf4683f1bfc567608b172bf1ec",
+              "autotagging_moodtheme_audio-low-78.tar": "604861b2bcde7415c8f98706db9034b93efa0dbd793f3c88c51cc465a2cfce8c",
+              "autotagging_moodtheme_audio-low-79.tar": "fa1659ea46fbf27f5d887467972defe0bed4ced8e1240f8b6f3965d53c88761b",
+              "autotagging_moodtheme_audio-low-80.tar": "3c74d0a23e929cfa6bedb57e700d49ac5910a1bbb48ab036b2ce58e665f7b8b3",
+              "autotagging_moodtheme_audio-low-81.tar": "b601f46d2ff88a0a41a87aa5006028d89e1d5767d0e6b468be40108da746f8ad",
+              "autotagging_moodtheme_audio-low-82.tar": "4ddb7238e67b7420975ca7426c2f1dde055b2209f42f39af9b9f928c6c7a2e86",
+              "autotagging_moodtheme_audio-low-83.tar": "849c3efcfc7c9288b4b9469ba71b23019c636bb10712a2d6a94f2e762d9058f4",
+              "autotagging_moodtheme_audio-low-84.tar": "a965f1f02fb8c209503c6797d787341716b182087ed675125b5264cf6e3399e2",
+              "autotagging_moodtheme_audio-low-85.tar": "3dcc3af7b314721350c9ab0bacab680aa99544c5d260254ee8f5f3e8572010e3",
+              "autotagging_moodtheme_audio-low-86.tar": "1bf2cb131d0f996278c72405bc93d2184327871c254e0f3236fcc673650e0835",
+              "autotagging_moodtheme_audio-low-87.tar": "fb2ecd269cceaad2a9943b14d0c74196baac211377d82d5b4611790845d413d4",
+              "autotagging_moodtheme_audio-low-88.tar": "02906550067f4ae452f008b5116ac506f10268ac4b4416101875360b1c7ecc57",
+              "autotagging_moodtheme_audio-low-89.tar": "7af1527e993b69f1a8f000ca70e57cd9a7bee14a4a998d298ee66d8a48ee2f99",
+              "autotagging_moodtheme_audio-low-90.tar": "4c3253d90c715a0672d3b79cddcf916e3ee2215228b253c4cc6d3c3aca841a04",
+              "autotagging_moodtheme_audio-low-91.tar": "8fd14662eb0b7d19d1b98df338c6eea67377da9f87bbe5fbe83cdf94fa356ea3",
+              "autotagging_moodtheme_audio-low-92.tar": "4c3f237ca8b0e5c3cf610c21012c103c70bc633ecc63a7e9f12010ab9061cab1",
+              "autotagging_moodtheme_audio-low-93.tar": "46805b4f0a2ce38060bfc341f2baad898e8f9e6ea0101678174ff7e182e534b1",
+              "autotagging_moodtheme_audio-low-94.tar": "d4f112055119b2b0e111cf29e4d0842580084de4e8c466985259a450c4a8f180",
+              "autotagging_moodtheme_audio-low-95.tar": "167a24a7f0934c2256e82d06fae5fa70214f260976eca4e39104bf09d7e82e37",
+              "autotagging_moodtheme_audio-low-96.tar": "4ebfcf786b6cc6a0a15d9b8c3209ed4b480870427601c93ca860f500944894d3",
+              "autotagging_moodtheme_audio-low-97.tar": "3ed39f0bc9666815709d4a79cafca7ea260590d8f9f3140cf27ac9e72673253d",
+              "autotagging_moodtheme_audio-low-98.tar": "9cab0c3dc46712b5256821cf04dcf64a16d8586d73487254e0c1812eea84df21",
+              "autotagging_moodtheme_audio-low-99.tar": "5d58783ffcd6860ed1e3f2ebb6f69e623bb588a4bee8003f5fe97a271c4987a5"
+            },
+            "checksum_algorithm": "sha256",
+            "checksum_source": "https://github.com/MTG/mtg-jamendo-dataset/tree/cafd8e20c265ed84f1e61f1c875327971f43a62f/data/download",
+            "audio_release": {
+              "tracks": 18486,
+              "tags": 59
+            },
+            "split0": {
+              "tracks": 17982,
+              "tags": 56,
+              "train": 9949,
+              "validation": 3802,
+              "test": 4231
+            },
+            "membership_confirmation": "https://github.com/opoeci6/MCRAR/issues/2#issuecomment-6117456637"
+          },
+          "training_seconds": 37.45400000000154,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 9949,
+            "validation": 3802,
+            "test": 4231
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/moodtheme.toml",
+          "reference_data": "FMA-medium training audio embeddings (no labels), slope 1"
+        }
+      ]
+    },
+    "valence": {
+      "kind": "regression",
+      "labels": [
+        "value"
+      ],
+      "display": {
+        "value": "Value"
+      },
+      "entries": [
+        {
+          "id": "valence-logreg@925547b",
+          "method": "head",
+          "variant": "logreg",
+          "file": "heads/valence-logreg@925547b.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": 0.5982222557067871,
+            "pearson_r": 0.7748079508021626,
+            "mae": 0.0702887773513794,
+            "primary_ci95": [
+              0.5074915796518326,
+              0.6735567152500153
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": -0.3005605936050415,
+              "pearson_r": 0.9303427361340871,
+              "mae": 0.13399524986743927
+            }
+          },
+          "created_at": "2026-10-12T03:00:22.332560Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 0.2649999999994179,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "train_data": "deam (seeded 80/10/10, seed 0)",
+          "calibration_data": "deam validation split"
+        },
+        {
+          "id": "valence-mlp@f2069d3",
+          "method": "head",
+          "variant": "mlp",
+          "file": "heads/valence-mlp@f2069d3.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": 0.666968047618866,
+            "pearson_r": 0.8174943851263914,
+            "mae": 0.0656416267156601,
+            "primary_ci95": [
+              0.5847166880965233,
+              0.7288847148418427
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": -0.5670125484466553,
+              "pearson_r": 0.8258038862560831,
+              "mae": 0.13241539895534515
+            }
+          },
+          "created_at": "2026-10-12T03:00:22.738096Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 0.39099999999962165,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "train_data": "deam (seeded 80/10/10, seed 0)",
+          "calibration_data": "deam validation split",
+          "architecture": {
+            "hidden": 256,
+            "activation": "relu",
+            "dropout": 0.2,
+            "epochs_limit": 100,
+            "patience": 12,
+            "optimizer": "Adam"
+          }
+        },
+        {
+          "id": "valence-zeroshot-calibrated@b5ff72a",
+          "method": "zeroshot",
+          "variant": "zeroshot-calibrated",
+          "file": "heads/valence-zeroshot-calibrated@b5ff72a.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": 0.01767408847808838,
+            "pearson_r": 0.15096129490177856,
+            "mae": 0.1186508908867836,
+            "primary_ci95": [
+              -0.050892001390457145,
+              0.07129655182361602
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": -1.6640336513519287,
+              "pearson_r": -0.9966368246257293,
+              "mae": 0.13875128328800201
+            }
+          },
+          "created_at": "2026-10-12T03:00:30.887166Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 8.140999999999622,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/valence.toml",
+          "calibration_data": "deam validation split"
+        },
+        {
+          "id": "valence-zeroshot-unsupervised@3e92ce4",
+          "method": "zeroshot",
+          "variant": "zeroshot-unsupervised",
+          "file": "heads/valence-zeroshot-unsupervised@3e92ce4.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": -2.1198360919952393,
+            "pearson_r": -0.15165929767746056,
+            "mae": 0.21153301000595093,
+            "primary_ci95": [
+              -2.776802402734756,
+              -1.6309021055698394
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": 0.6854551434516907,
+              "pearson_r": 0.9915470121353186,
+              "mae": 0.06433779001235962
+            }
+          },
+          "created_at": "2026-10-12T03:52:10.410943Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 8.875,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/valence.toml",
+          "reference_data": "FMA-medium training audio embeddings (no labels), slope 1"
+        }
+      ]
+    },
+    "arousal": {
+      "kind": "regression",
+      "labels": [
+        "value"
+      ],
+      "display": {
+        "value": "Value"
+      },
+      "entries": [
+        {
+          "id": "arousal-logreg@7ee641f",
+          "method": "head",
+          "variant": "logreg",
+          "file": "heads/arousal-logreg@7ee641f.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": 0.5982930660247803,
+            "pearson_r": 0.7750321649495459,
+            "mae": 0.07814890891313553,
+            "primary_ci95": [
+              0.49051252454519273,
+              0.685244670510292
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": 0.3965686559677124,
+              "pearson_r": 0.6467786796739975,
+              "mae": 0.09266338497400284
+            }
+          },
+          "created_at": "2026-10-12T03:00:31.009912Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 0.09400000000096043,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "train_data": "deam (seeded 80/10/10, seed 0)",
+          "calibration_data": "deam validation split"
+        },
+        {
+          "id": "arousal-mlp@51348c6",
+          "method": "head",
+          "variant": "mlp",
+          "file": "heads/arousal-mlp@51348c6.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": 0.6889737844467163,
+            "pearson_r": 0.831182819569162,
+            "mae": 0.06838294118642807,
+            "primary_ci95": [
+              0.6074308514595033,
+              0.7589542686939239
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": 0.45880454778671265,
+              "pearson_r": 0.8082513190994242,
+              "mae": 0.07944735884666443
+            }
+          },
+          "created_at": "2026-10-12T03:00:31.650722Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 0.625,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "train_data": "deam (seeded 80/10/10, seed 0)",
+          "calibration_data": "deam validation split",
+          "architecture": {
+            "hidden": 256,
+            "activation": "relu",
+            "dropout": 0.2,
+            "epochs_limit": 100,
+            "patience": 12,
+            "optimizer": "Adam"
+          }
+        },
+        {
+          "id": "arousal-zeroshot-calibrated@2932941",
+          "method": "zeroshot",
+          "variant": "zeroshot-calibrated",
+          "file": "heads/arousal-zeroshot-calibrated@2932941.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": -0.0016913414001464844,
+            "pearson_r": 0.047244437943433124,
+            "mae": 0.13209080696105957,
+            "primary_ci95": [
+              -0.04588540196418762,
+              0.028121064603328697
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": -0.3611907958984375,
+              "pearson_r": -0.345693005599835,
+              "mae": 0.12948961555957794
+            }
+          },
+          "created_at": "2026-10-12T03:00:32.679093Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 1.0160000000014406,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/arousal.toml",
+          "calibration_data": "deam validation split"
+        },
+        {
+          "id": "arousal-zeroshot-unsupervised@99c53fa",
+          "method": "zeroshot",
+          "variant": "zeroshot-unsupervised",
+          "file": "heads/arousal-zeroshot-unsupervised@99c53fa.npz",
+          "seed": 0,
+          "metrics": {
+            "split": "test",
+            "n": 181,
+            "primary": "r2",
+            "r2": -1.303830862045288,
+            "pearson_r": 0.058081899275886896,
+            "mae": 0.19321976602077484,
+            "primary_ci95": [
+              -1.8715460956096646,
+              -0.8615637421607971
+            ],
+            "bootstrap_seed": 0,
+            "bootstrap_resamples": 1000,
+            "bootstrap_valid_resamples": 1000,
+            "subset_2015_test": {
+              "n": 3,
+              "primary": "r2",
+              "r2": -0.9928107261657715,
+              "pearson_r": -0.3437890803996466,
+              "mae": 0.13907717168331146
+            }
+          },
+          "created_at": "2026-10-12T03:52:21.399633Z",
+          "commercial_ok": false,
+          "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+          "dataset_provenance": {
+            "name": "deam",
+            "checksums": {
+              "schema": 1,
+              "checksum_source": "observed",
+              "approval": "https://github.com/opoeci6/MCRAR/issues/1#issuecomment-6116833123",
+              "observers": [
+                "owner (opoeci6)",
+                "collaborator (Codex)"
+              ],
+              "owner_observation_date": "2026-10-11",
+              "files": {
+                "DEAM_audio.zip": {
+                  "sha256": "e2814325f573ade8caebc697f0efcfdf7207142b737d72558a416117ca591353",
+                  "bytes": 1343203527,
+                  "members": 1803,
+                  "mp3": 1802,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_audio.zip",
+                  "last_modified": "Tue, 01 Nov 2016 15:22:55 GMT",
+                  "etag": "\"500fa8c7-5403ee60831c0\"",
+                  "observation_date": "2026-10-12T02:51:52.592901+00:00",
+                  "crc_failures": 0
+                },
+                "DEAM_Annotations.zip": {
+                  "sha256": "809b0feb4ba6196c1eda9b2b7b33b892b11fa71457cfceb0d47e832ed1a5f15f",
+                  "bytes": 4735283,
+                  "members": 3619,
+                  "url": "https://cvml.unige.ch/databases/DEAM/DEAM_Annotations.zip",
+                  "last_modified": "Fri, 10 Mar 2017 16:22:25 GMT",
+                  "etag": "\"484133-54a62c4597240\"",
+                  "observation_date": "2026-10-12T02:51:55.250234+00:00",
+                  "crc_failures": 0
+                }
+              }
+            },
+            "checksum_source": "observed",
+            "data_license": "CC BY-NC (version unspecified, per DEAM manual)",
+            "license_source": "https://cvml.unige.ch/databases/DEAM/manual.pdf",
+            "split": "80/10/10 over sorted song ids, seed 0"
+          },
+          "training_seconds": 8.688000000000102,
+          "embedding": {
+            "model": "clap@195c3a3",
+            "max_seconds": 240,
+            "windows": [
+              0.2,
+              0.5,
+              0.8
+            ]
+          },
+          "split_counts": {
+            "train": 1441,
+            "validation": 180,
+            "test": 181
+          },
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/arousal.toml",
+          "reference_data": "FMA-medium training audio embeddings (no labels), slope 1"
+        }
+      ]
+    }
+  },
+  "selected": {
+    "commercial": {
+      "genre": "genre-logreg@2b67df0",
+      "moodtheme": "moodtheme-zeroshot-unsupervised@15d3513",
+      "valence": null,
+      "arousal": null
+    },
+    "non-commercial": {
+      "genre": "genre-logreg@2b67df0",
+      "moodtheme": "moodtheme-mlp@b2ac67d",
+      "valence": "valence-mlp@f2069d3",
+      "arousal": "arousal-mlp@51348c6"
+    }
+  }
+}

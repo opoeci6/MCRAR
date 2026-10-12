@@ -15,6 +15,9 @@ import typer
 
 from mcrar import __version__
 from mcrar.config import ConfigError, Settings, get_settings
+from mcrar.ml.datasets.cli import app as datasets_app
+from mcrar.ml.tagging.cli import app as tagging_app
+from mcrar.ml.tagging.cli import tag
 from mcrar.secrets import SecretError, SecretStore, validate_name
 
 app = typer.Typer(
@@ -27,6 +30,9 @@ config_app = typer.Typer(help="Inspect configuration.", no_args_is_help=True)
 secrets_app = typer.Typer(help="Manage API keys and other secrets.", no_args_is_help=True)
 app.add_typer(config_app, name="config")
 app.add_typer(secrets_app, name="secrets")
+app.add_typer(datasets_app, name="datasets")
+app.add_typer(tagging_app, name="tagging")
+app.command("tag")(tag)
 
 # Variables that dev-env.ps1 / dev-env.sh point inside the repo (checked by `mcrar doctor`).
 PROJECT_LOCAL_PATH_VARS = (

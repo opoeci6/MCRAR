@@ -4,8 +4,10 @@ requires-python = ">=3.11"
 resolution-markers = [
     "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
     "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 
 [[package]]
@@ -64,6 +66,20 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/79/34/c0cfdaee9c796c8381439fed0fcab62810753b8b0adb1ec88fa7f41eaa5d/beartype-0.23.1.tar.gz", hash = "sha256:8b805f246b32931c74f2b321ea0939fe5bb2ff43c12a3eff19cc4c854b832e1d", size = 1993714, upload-time = "2026-10-11T05:36:55.251Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1c/cb/2f6aa982e2860c1156830db3da7f823b71784ed7d533ca289ea9b6c6347a/beartype-0.23.1-py3-none-any.whl", hash = "sha256:4461b4dc57e3fdd6c8a8464b22cf118002eea107c33e9fef651c69068ab3cce3", size = 1582101, upload-time = "2026-10-11T05:36:52.431Z" },
+]
+
+[[package]]
+name = "beautifulsoup4"
+version = "4.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "soupsieve", version = "2.10", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11.5'" },
+    { name = "soupsieve", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11.5'" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/65/318323f98dbee45d42dff61d8f047181bc6f2268a9068cfad035a46be5af/beautifulsoup4-4.15.0.tar.gz", hash = "sha256:288e3ca7d54b06f2ac191970bc275c1939cb46d450b255bf6718b04aa37ab4f7", size = 632571, upload-time = "2026-06-07T16:44:20.453Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/88/c6/92fcd42f1ba33e1184263f25bfabf3d27c383410470f169e4b8163bf9c17/beautifulsoup4-4.15.0-py3-none-any.whl", hash = "sha256:d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9", size = 109924, upload-time = "2026-06-07T16:44:21.566Z" },
 ]
 
 [[package]]
@@ -552,6 +568,23 @@ wheels = [
 ]
 
 [[package]]
+name = "gdown"
+version = "6.4.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "beautifulsoup4" },
+    { name = "filelock" },
+    { name = "requests", extra = ["socks"] },
+    { name = "tqdm" },
+    { name = "typing-extensions", marker = "python_full_version < '3.12'" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/20/39/391b50873e74c3b2836ec198fc285123c6a014f6aa3bc9ada3e9ca3058a4/gdown-6.4.2.tar.gz", hash = "sha256:a5454bb4a2c2770fb4cd0105d11fd75d3484a0f664565686a08a948caad8c188", size = 357016, upload-time = "2026-10-09T00:50:26.135Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/75/87/c0aa20d3f08d79c61bfe8f3713d0b99b61ef2ce714fa9749930f73ad865c/gdown-6.4.2-py3-none-any.whl", hash = "sha256:feca9f54800b90f639729975a003958393f3003313c3e9cdb6c9838fe42ae5c6", size = 50970, upload-time = "2026-10-09T00:50:24.671Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -765,8 +798,10 @@ name = "librosa"
 version = "0.11.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "audioread" },
@@ -1020,8 +1055,10 @@ keyring = [
 ]
 ml = [
     { name = "einops" },
+    { name = "gdown" },
     { name = "huggingface-hub" },
     { name = "muq" },
+    { name = "scikit-learn" },
     { name = "sentencepiece" },
     { name = "torch", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'linux' and sys_platform != 'win32'" },
     { name = "torch", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
@@ -1042,6 +1079,7 @@ dev = [
 requires-dist = [
     { name = "einops", marker = "extra == 'ml'" },
     { name = "fastapi" },
+    { name = "gdown", marker = "extra == 'ml'", specifier = ">=6.4.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'ml'" },
     { name = "keyring", marker = "extra == 'keyring'" },
@@ -1051,6 +1089,7 @@ requires-dist = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyloudnorm", specifier = ">=0.2.0" },
+    { name = "scikit-learn", marker = "extra == 'ml'", specifier = ">=1.9.1" },
     { name = "sentencepiece", marker = "extra == 'ml'" },
     { name = "soundfile", specifier = ">=0.14.0" },
     { name = "soxr", specifier = ">=1.1.0" },
@@ -1225,8 +1264,10 @@ name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6a/51/63fe664f3908c97be9d2e4f1158eb633317598cfa6e1fc14af5383f17512/networkx-3.6.1.tar.gz", hash = "sha256:26b7c357accc0c8cde558ad486283728b65b6a95d85ee1cd66bafab4c8168509", size = 2517025, upload-time = "2025-12-08T17:02:39.908Z" }
 wheels = [
@@ -1308,8 +1349,10 @@ name = "numpy"
 version = "2.4.6"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d0/ad/fed0499ce6a338d2a03ebae59cd15093910c8875328855781952abf6c2fe/numpy-2.4.6.tar.gz", hash = "sha256:f3a3570c4a2a16746ac2c31a7c7c7b0c186b95ce902e33db6f28094ed7387dda", size = 20735807, upload-time = "2026-05-18T23:37:14.07Z" }
 wheels = [
@@ -1946,6 +1989,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pysocks"
+version = "1.7.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/11/293dd436aea955d45fc4e8a35b6ae7270f5b8e00b53cf6c024c83b657a11/PySocks-1.7.1.tar.gz", hash = "sha256:3f8804571ebe159c380ac6de37643bb4685970655d3bba243530d6558b799aa0", size = 284429, upload-time = "2019-09-20T02:07:35.714Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/59/b4572118e098ac8e46e399a1dd0f2d85403ce8bbaad9ec79373ed6badaf9/PySocks-1.7.1-py3-none-any.whl", hash = "sha256:2725bd0a9925919b9b51739eea5f9e2bae91e83288108a9ad338b2e3a4435ee5", size = 16725, upload-time = "2019-09-20T02:06:22.938Z" },
+]
+
+[[package]]
 name = "pytest"
 version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2169,6 +2221,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
 ]
 
+[package.optional-dependencies]
+socks = [
+    { name = "pysocks" },
+]
+
 [[package]]
 name = "rich"
 version = "15.0.0"
@@ -2295,8 +2352,10 @@ name = "scipy"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
@@ -2544,6 +2603,34 @@ wheels = [
 ]
 
 [[package]]
+name = "soupsieve"
+version = "2.10"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/71/c3/1b817965ac12dc002d7c9cd7dfffdd7d4fbf9b45763ef2ffe7b86ee94670/soupsieve-2.10.tar.gz", hash = "sha256:49e9380d7d2905463583bafe285e818c7366a9ed7b3aee221c1ac79c905d8bc0", size = 124337, upload-time = "2026-09-24T02:36:35.048Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/87/5ed59e1d0290564e2027ed066c52b059892c4637741337fc0967183c8d4d/soupsieve-2.10-py3-none-any.whl", hash = "sha256:8596eb8967d744174820280fa62b4542a2e955bfaccca73ed8a13c6eb8e9b502", size = 38019, upload-time = "2026-09-24T02:36:33.709Z" },
+]
+
+[[package]]
+name = "soupsieve"
+version = "3.0.2"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e2/28/d05a6e0818f302952dc80fb1054a1e617ec6cba9dd8f9cba75df445f3be8/soupsieve-3.0.2.tar.gz", hash = "sha256:841ce01c8e80b3bf95c2f2657f191b024be1cdd9d6c0d24a663af247da81911a", size = 115525, upload-time = "2026-10-12T01:36:25.009Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/d9/12dc4b673c89a86500f40d1c7107b902d49dd0b8a0ef3dfb883daaa0a4b8/soupsieve-3.0.2-py3-none-any.whl", hash = "sha256:9f2c709e4bfbb3f520289e81a4e14808bf0b3259c7f6c3b9efab30058be0607e", size = 41681, upload-time = "2026-10-12T01:36:23.706Z" },
+]
+
+[[package]]
 name = "soxr"
 version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2645,7 +2732,8 @@ version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "filelock" },
@@ -2672,7 +2760,8 @@ version = "2.11.0+cu130"
 source = { registry = "https://download.pytorch.org/whl/cu130" }
 resolution-markers = [
     "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
 ]
 dependencies = [
     { name = "cuda-bindings", marker = "sys_platform != 'win32'" },
@@ -2718,7 +2807,8 @@ version = "2.11.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/94/77/0eec7f175d88f312296bd5b11c23bd58da37c1021f53da3db4df449ce3ee/torchaudio-2.11.0-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:492dd64645e9d0bb843e94f1d9a4d1e31426262ffc594fafecc1697df9df5eb9", size = 684142, upload-time = "2026-03-23T18:13:36.805Z" },
@@ -2735,7 +2825,8 @@ version = "2.11.0+cu130"
 source = { registry = "https://download.pytorch.org/whl/cu130" }
 resolution-markers = [
     "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
 ]
 wheels = [
     { url = "https://download-r2.pytorch.org/whl/cu130/torchaudio-2.11.0%2Bcu130-cp311-cp311-manylinux_2_28_aarch64.whl", hash = "sha256:fa4de5984cc666557d4e5eea3c50735b1ccb39b2ae284efb14b721e642eef652", upload-time = "2026-03-23T15:50:26Z" },
@@ -2764,7 +2855,8 @@ version = "0.26.0"
 source = { registry = "https://pypi.org/simple" }
 resolution-markers = [
     "python_full_version >= '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
-    "python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform != 'linux' and sys_platform != 'win32'",
+    "python_full_version < '3.11.5' and sys_platform != 'linux' and sys_platform != 'win32'",
 ]
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
@@ -2787,7 +2879,8 @@ version = "0.26.0+cu130"
 source = { registry = "https://download.pytorch.org/whl/cu130" }
 resolution-markers = [
     "(python_full_version >= '3.12' and sys_platform == 'linux') or (python_full_version >= '3.12' and sys_platform == 'win32')",
-    "(python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'linux') or (python_full_version >= '3.11.5' and python_full_version < '3.12' and sys_platform == 'win32')",
+    "(python_full_version < '3.11.5' and sys_platform == 'linux') or (python_full_version < '3.11.5' and sys_platform == 'win32')",
 ]
 dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },

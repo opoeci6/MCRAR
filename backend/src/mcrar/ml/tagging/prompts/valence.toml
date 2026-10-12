@@ -1,0 +1,4 @@
+templates = ["{label} music", "a song with a {label} sound", "this music sounds {label}"]
+
+[labels]
+value = ["happy and positive", "joyful and pleasant", "uplifting and cheerful"]
