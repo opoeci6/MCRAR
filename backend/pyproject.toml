@@ -21,6 +21,21 @@ dependencies = [
 
 [project.optional-dependencies]
 keyring = ["keyring"]
+# Text-audio embedding models (M3a). torch comes from the PyTorch CUDA index (see
+# [tool.uv.sources]). torch is held at 2.11 because torchaudio, which GLAP's remote code and
+# MuQ import, was discontinued after 2.11 and pins torch==2.11.*. transformers is held below 5
+# because muq 0.1.0 hands an EasyDict to transformers' Wav2Vec2ConformerEncoder, which 5.x
+# rejects (no `_attn_implementation`); CLAP and GLAP give identical results on 4.57 and 5.19.
+ml = [
+    "torch>=2.11,<2.12",
+    "torchaudio>=2.11,<2.12",
+    "torchvision>=0.26,<0.27",
+    "transformers>=4.57,<5",
+    "huggingface-hub",
+    "einops",
+    "sentencepiece",
+    "muq",
+]
 
 [project.scripts]
 mcrar = "mcrar.cli:app"
@@ -35,6 +50,16 @@ dev = [
 requires = ["uv_build>=0.13.0,<0.14.0"]
 build-backend = "uv_build"
 
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
@@ -44,3 +69,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "models: loads the real embedding models (downloads weights, wants a GPU); run with -m models",
+]

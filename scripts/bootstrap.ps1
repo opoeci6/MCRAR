@@ -125,7 +125,7 @@ Invoke-Checked "uv python install $pythonVersion (into .tools\python)" {
 $backend = Join-Path $Root 'backend'
 if (Test-Path -LiteralPath (Join-Path $backend 'pyproject.toml')) {
     Push-Location $backend
-    try { Invoke-Checked 'uv sync (backend)' { & uv sync } } finally { Pop-Location }
+    try { Invoke-Checked 'uv sync --extra ml (backend, with the ML stack)' { & uv sync --extra ml } } finally { Pop-Location }
 } else {
     Write-Host '==> backend\pyproject.toml not found; skipping uv sync'
 }

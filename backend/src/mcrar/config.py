@@ -64,6 +64,9 @@ class Settings(BaseSettings):
 
     # True: only commercially usable models and data are allowed; non-commercial parts are opt-in.
     commercial_mode: bool = True
+    # Text-audio model used by `mcrar embed` (and later by search). "clap" won the M3a bake-off on
+    # the user's blind ratings of game-music searches; see docs/embedder_bakeoff.md.
+    default_embedder: str = "clap"
     secrets_backend: Literal["file", "keyring", "env"] = "file"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
