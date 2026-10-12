@@ -15,6 +15,10 @@ Design
 - :func:`reprocess_catalog` runs stages over tracks already in the catalog (for example to add
   an embedding model) with the same prefetching, logging and abort rules. Jamendo stream URLs
   are signed and expire, so they are refreshed from the API just before each download.
+- A stage with ``needs_audio = False`` (for example tagging from a stored embedding) runs on
+  what earlier stages stored and gets ``audio=None``. Audio is fetched (and Jamendo URLs are
+  refreshed) only when some pending stage needs it. Stages run in list order, so such a stage
+  can follow the stage that produces its input in the same pass.
 """
 
 from __future__ import annotations
@@ -60,14 +64,23 @@ EventKind = Literal["started", "track_done", "track_skipped", "track_failed", "f
 
 
 class Stage(Protocol):
-    """One unit of per-track work on the audio (analysis, embedding, ...)."""
+    """One unit of per-track work (analysis, embedding, tagging, ...).
+
+    Stages may also define ``needs_audio: bool``; it defaults to True when absent (see
+    :func:`needs_audio`). A stage with ``needs_audio = False`` is called with ``audio=None``.
+    """
 
     name: str
     version: str
 
     def is_current(self, repo: CatalogRepository, track_id: int) -> bool: ...
 
-    def run(self, repo: CatalogRepository, track_id: int, audio: Audio) -> None: ...
+    def run(self, repo: CatalogRepository, track_id: int, audio: Audio | None) -> None: ...
+
+
+def needs_audio(stage: Stage) -> bool:
+    """Whether ``stage`` reads the track's audio (stages without the attribute do)."""
+    return bool(getattr(stage, "needs_audio", True))
 
 
 class AnalysisStage:
@@ -270,21 +283,23 @@ class _Run:
             self.emit("track_skipped", item.title, UP_TO_DATE)
             return
         audio: Audio | None = None
-        audio_error = item.error
-        if audio_error is None:
-            try:
-                assert item.get_audio is not None
-                audio = item.get_audio()  # fetched once, shared by every pending stage
-            except _ABORT_ERRORS:
-                raise
-            except Exception as exc:  # noqa: BLE001 - one bad track must not stop the run
-                audio_error = _message(exc)
+        audio_error: str | None = None
+        if any(needs_audio(s) for s in item.needs):
+            audio_error = item.error
+            if audio_error is None:
+                try:
+                    assert item.get_audio is not None
+                    audio = item.get_audio()  # fetched once, shared by every pending stage
+                except _ABORT_ERRORS:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - one bad track must not stop the run
+                    audio_error = _message(exc)
         errors: list[str] = []
         for stage in item.needs:
-            error = audio_error
-            if audio is not None:
+            error = audio_error if needs_audio(stage) else None
+            if error is None:
                 try:
-                    stage.run(self.repo, item.track_id, audio)
+                    stage.run(self.repo, item.track_id, audio if needs_audio(stage) else None)
                 except _ABORT_ERRORS:
                     raise
                 except Exception as exc:  # noqa: BLE001
@@ -445,7 +460,7 @@ def ingest_jamendo(
     def make_items() -> Iterator[_Prepared]:
         for src in client.search_tracks(**kwargs, limit=limit):
             item = run.prepare(src, parse_license(src.license_url))
-            if item.needs:
+            if any(needs_audio(s) for s in item.needs):
                 _start_fetch(executor, client, item, src)
             yield item
 
@@ -537,11 +552,15 @@ def reprocess_catalog(
         run.total = len(pending)
         for start in range(0, len(pending), REFRESH_BATCH):
             batch = pending[start : start + REFRESH_BATCH]
-            jamendo = [t for t, _ in batch if t.source == "jamendo"]
-            fresh, problem = _refresh_jamendo(client, jamendo)
+            # Only tracks with a pending audio stage need a (refreshed) stream URL and a download.
+            jamendo = [
+                t for t, n in batch if t.source == "jamendo" and any(needs_audio(s) for s in n)
+            ]
+            fresh, problem = _refresh_jamendo(client, jamendo) if jamendo else ({}, None)
             for track, needs in batch:
                 item = run.prepare_stored(track, needs)
-                attach_audio(item, track, fresh, problem)
+                if any(needs_audio(s) for s in needs):
+                    attach_audio(item, track, fresh, problem)
                 yield item
 
     aborted, error = _drive(run, executor, make_items)

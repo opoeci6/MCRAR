@@ -11,6 +11,7 @@ from mcrar.ingest.pipeline import (
     Stage,
     ingest_jamendo,
     ingest_local,
+    needs_audio,
     reprocess_catalog,
 )
 
@@ -24,6 +25,7 @@ __all__ = [
     "Stage",
     "ingest_jamendo",
     "ingest_local",
+    "needs_audio",
     "reprocess_catalog",
     "to_track_record",
 ]
