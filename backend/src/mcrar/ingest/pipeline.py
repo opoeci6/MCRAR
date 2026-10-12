@@ -12,6 +12,9 @@ Design
   (and a failing search) abort the run: the exception is re-raised after cleanup, with the
   partial :class:`IngestReport` attached as its ``report`` attribute. Ctrl+C returns the partial
   report with ``aborted="interrupted"``. Each stage write is atomic, so a rerun resumes.
+- :func:`reprocess_catalog` runs stages over tracks already in the catalog (for example to add
+  an embedding model) with the same prefetching, logging and abort rules. Jamendo stream URLs
+  are signed and expire, so they are refreshed from the API just before each download.
 """
 
 from __future__ import annotations
@@ -25,10 +28,12 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Protocol
 
-from mcrar.audio import ANALYSIS_VERSION, analyze_audio
-from mcrar.catalog import CatalogRepository
+from mcrar.audio import ANALYSIS_VERSION, analyze_audio, load_audio
+from mcrar.catalog import CatalogRepository, StoredTrack
 from mcrar.ingest.mapping import to_track_record
 from mcrar.licensing import LicenseInfo, parse_license
+from mcrar.ml.embedders.base import Embedder, embed_track
+from mcrar.ml.errors import EmbedderMemoryError
 from mcrar.sources import JamendoAuthError, JamendoRateLimitError, SourceTrack
 from mcrar.sources.local_folder import iter_audio_files, scan_local
 
@@ -40,7 +45,9 @@ MAX_MESSAGE_CHARS = 200
 UP_TO_DATE = "up to date"
 NO_STREAM = "no audio stream"
 INTERRUPTED = "interrupted"
-_ABORT_ERRORS = (JamendoAuthError, JamendoRateLimitError)
+REFRESH_BATCH = 50  # Jamendo tracks whose stream URLs are refreshed with one API request
+# Errors that end the run instead of failing one track: they would hit every following track.
+_ABORT_ERRORS = (JamendoAuthError, JamendoRateLimitError, EmbedderMemoryError)
 _POLL_S = 0.25
 
 Audio = bytes | Path
@@ -84,6 +91,30 @@ class AnalysisStage:
     def run(self, repo: CatalogRepository, track_id: int, audio: Audio) -> None:
         features = self._analyzer(audio, max_seconds=self._max_seconds)
         repo.set_features(track_id, features.to_dict())
+
+
+class EmbeddingStage:
+    """One text-audio embedding per track for one model (see :mod:`mcrar.ml.embedders`).
+
+    Decodes the first ``max_seconds`` at the model's sample rate, embeds up to three windows
+    (:func:`~mcrar.ml.embedders.embed_track`) and stores the vector under ``embedder.model_id``.
+    """
+
+    def __init__(self, embedder: Embedder, *, max_seconds: float | None = 240) -> None:
+        self.embedder = embedder
+        self.name = f"embed:{embedder.key}"
+        self.version = embedder.model_id
+        self._max_seconds = max_seconds
+
+    def is_current(self, repo: CatalogRepository, track_id: int) -> bool:
+        return repo.get_embedding(track_id, self.version) is not None
+
+    def run(self, repo: CatalogRepository, track_id: int, audio: Audio) -> None:
+        clip = load_audio(
+            audio, sr=self.embedder.sample_rate, mono=True, max_seconds=self._max_seconds
+        )
+        vector = embed_track(self.embedder, clip.samples, clip.sr)
+        repo.set_embedding(track_id, self.version, vector)
 
 
 # --------------------------------------------------------------------------------------
@@ -167,6 +198,7 @@ class _Prepared:
     get_audio: Callable[[], Audio] | None = None
     error: str | None = None
     future: Future[bytes] | None = None
+    source: str | None = None  # the track's own source when a run mixes sources
 
 
 class _Run:
@@ -216,6 +248,17 @@ class _Run:
         needs = [s for s in self.stages if self.force or not s.is_current(self.repo, track_id)]
         return _Prepared(src.source_id, src.title, track_id, lic.risk, needs)
 
+    def prepare_stored(self, track: StoredTrack, needs: list[Stage]) -> _Prepared:
+        """A track already in the catalog (its metadata is left as it is)."""
+        self.seen += 1
+        title = track.title or track.source_id
+        return _Prepared(track.source_id, title, track.id, track.risk, needs, source=track.source)
+
+    def count_current(self) -> None:
+        """A catalog track whose stages are all current: counted, but no log row or event."""
+        self.seen += 1
+        self.skipped += 1
+
     def process(self, item: _Prepared) -> None:
         """Run the pending stages of one track. KeyboardInterrupt and abort errors propagate."""
         self.index += 1
@@ -262,7 +305,12 @@ class _Run:
 
     def _log(self, item: _Prepared, stage: Stage, status: str, message: str | None = None) -> None:
         self.repo.log_ingest(
-            self.source, item.source_id, stage.name, status, message, track_id=item.track_id
+            item.source or self.source,
+            item.source_id,
+            stage.name,
+            status,
+            message,
+            track_id=item.track_id,
         )
 
     def _summary(self, item: _Prepared) -> str:
@@ -272,6 +320,8 @@ class _Run:
             parts.append(f"{features['bpm']:.0f} BPM")
         if features.get("key"):
             parts.append(f"{features['key']} {features.get('mode') or ''}".strip())
+        if not parts:  # nothing analysed (for example an embedding-only run): name the stages
+            parts.append(", ".join(s.name for s in item.needs))
         parts.append(f"({item.risk})")
         return " ".join(parts)
 
@@ -314,6 +364,64 @@ def _await(future: Future[bytes]) -> bytes:
     return future.result()
 
 
+def _start_fetch(
+    executor: ThreadPoolExecutor, client: Any, item: _Prepared, track: SourceTrack
+) -> None:
+    """Download ``track`` in the background, or mark the item failed if it has no stream."""
+    if track.stream_url:
+        item.future = executor.submit(client.fetch_audio, track)
+        item.get_audio = lambda f=item.future: _await(f)
+    else:
+        item.error = NO_STREAM
+
+
+def _drive(
+    run: _Run, executor: ThreadPoolExecutor, make_items: Callable[[], Iterator[_Prepared]]
+) -> tuple[str | None, Exception | None]:
+    """Process the items of ``make_items()`` with up to ``PREFETCH`` downloads in flight.
+
+    ``make_items`` is called inside the guarded block and is lazy: preparing an item (metadata
+    upsert, starting its download) happens only when the window needs it. Returns
+    ``(aborted, error)`` for :func:`_finish`; shuts the executor down.
+    """
+    window: deque[_Prepared] = deque()
+    current: _Prepared | None = None
+    aborted: str | None = None
+    error: Exception | None = None
+    interrupted = False
+
+    def pull(items: Iterator[_Prepared], size: int) -> None:
+        while len(window) < size:
+            item = next(items, None)
+            if item is None:
+                return
+            window.append(item)
+
+    try:
+        run.emit("started")
+        items = make_items()
+        pull(items, PREFETCH + 1)
+        while window:
+            current = window.popleft()
+            pull(items, PREFETCH)
+            run.process(current)
+            current.future = None  # release the audio bytes
+            current = None
+    except KeyboardInterrupt:
+        aborted = INTERRUPTED
+        interrupted = True
+    except Exception as exc:  # noqa: BLE001 - abort errors and a failing search/database
+        aborted = _message(exc)
+        error = exc
+    finally:
+        for item in (*window, *([current] if current is not None else [])):
+            if item.future is not None:
+                item.future.cancel()
+        # After Ctrl+C do not block on downloads still in flight; the threads end on their own.
+        executor.shutdown(wait=not interrupted, cancel_futures=True)
+    return aborted, error
+
+
 def ingest_jamendo(
     client: Any,
     repo: CatalogRepository,
@@ -333,48 +441,110 @@ def ingest_jamendo(
     kwargs = query.to_kwargs() if isinstance(query, JamendoQuery) else dict(query)
     run = _Run("jamendo", repo, _default_stages(stages), force, limit, on_progress)
     executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
-    window: deque[_Prepared] = deque()
-    current: _Prepared | None = None
-    aborted: str | None = None
-    error: Exception | None = None
-    interrupted = False
 
-    def pull(source: Iterator[SourceTrack], size: int) -> None:
-        while len(window) < size:
-            src = next(source, None)
-            if src is None:
-                return
+    def make_items() -> Iterator[_Prepared]:
+        for src in client.search_tracks(**kwargs, limit=limit):
             item = run.prepare(src, parse_license(src.license_url))
             if item.needs:
-                if src.stream_url:
-                    item.future = executor.submit(client.fetch_audio, src)
-                    item.get_audio = lambda f=item.future: _await(f)
-                else:
-                    item.error = NO_STREAM
-            window.append(item)
+                _start_fetch(executor, client, item, src)
+            yield item
 
+    aborted, error = _drive(run, executor, make_items)
+    return _finish(run, aborted, error)
+
+
+# --------------------------------------------------------------------------------------
+# Existing catalog tracks
+# --------------------------------------------------------------------------------------
+
+
+def _refresh_jamendo(
+    client: Any, tracks: list[StoredTrack]
+) -> tuple[dict[str, SourceTrack], str | None]:
+    """Fresh :class:`SourceTrack` objects (with unexpired stream URLs) by source id.
+
+    Auth and rate-limit errors propagate (they end the run); any other failure is returned as
+    a message that fails the tracks of this batch.
+    """
+    if not tracks:
+        return {}, None
+    if client is None:
+        return {}, "no Jamendo client to refresh the stream URL"
     try:
-        run.emit("started")
-        source = iter(client.search_tracks(**kwargs, limit=limit))
-        pull(source, PREFETCH + 1)
-        while window:
-            current = window.popleft()
-            pull(source, PREFETCH)
-            run.process(current)
-            current.future = None  # release the audio bytes
-            current = None
-    except KeyboardInterrupt:
-        aborted = INTERRUPTED
-        interrupted = True
-    except Exception as exc:  # noqa: BLE001 - abort errors and a failing search/database
-        aborted = _message(exc)
-        error = exc
-    finally:
-        for item in (*window, *([current] if current is not None else [])):
-            if item.future is not None:
-                item.future.cancel()
-        # After Ctrl+C do not block on downloads still in flight; the threads end on their own.
-        executor.shutdown(wait=not interrupted, cancel_futures=True)
+        found = client.get_tracks([t.source_id for t in tracks])
+    except _ABORT_ERRORS:
+        raise
+    except Exception as exc:  # noqa: BLE001 - fail this batch, keep the run going
+        return {}, _message(exc)
+    return {s.source_id: s for s in found}, None
+
+
+def reprocess_catalog(
+    repo: CatalogRepository,
+    *,
+    stages: Sequence[Stage],
+    client: Any = None,
+    source: str | None = None,
+    force: bool = False,
+    limit: int | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Run ``stages`` over tracks already in the catalog (optionally only those of ``source``).
+
+    Tracks whose stages are all current are counted as skipped without a log row or event.
+    ``limit`` caps the number of tracks that actually need work. Jamendo tracks need a
+    ``client``: their stream URLs are refreshed with ``client.get_tracks`` in batches of
+    ``REFRESH_BATCH``, just before the downloads (the stored URLs carry expiring tokens), and
+    audio is downloaded by the same prefetching pool as :func:`ingest_jamendo`. Local tracks
+    are read from their stored ``local_path``. Failures, aborts and Ctrl+C behave as in
+    :func:`ingest_jamendo`.
+    """
+    stage_list = list(stages)
+    if not stage_list:
+        raise ValueError("reprocess_catalog needs at least one stage")
+    if limit is not None and limit < 1:
+        raise ValueError("limit must be at least 1")
+    run = _Run("catalog", repo, stage_list, force, None, on_progress)
+    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
+
+    def attach_audio(
+        item: _Prepared, track: StoredTrack, fresh: dict[str, SourceTrack], problem: str | None
+    ) -> None:
+        if track.source == "jamendo":
+            if problem is not None:
+                item.error = problem
+            elif track.source_id not in fresh:
+                item.error = "track no longer available from Jamendo"
+            else:
+                _start_fetch(executor, client, item, fresh[track.source_id])
+        elif track.source == "local" and track.local_path:
+            item.get_audio = lambda p=Path(track.local_path): p
+        elif track.source == "local":
+            item.error = "no file path stored for this track"
+        else:
+            item.error = f"cannot read audio of a '{track.source}' track"
+
+    def make_items() -> Iterator[_Prepared]:
+        pending: list[tuple[StoredTrack, list[Stage]]] = []
+        for track in repo.iter_tracks(source):
+            needs = [s for s in stage_list if force or not s.is_current(repo, track.id)]
+            if needs:
+                pending.append((track, needs))
+            else:
+                run.count_current()
+        if limit is not None:
+            pending = pending[:limit]
+        run.total = len(pending)
+        for start in range(0, len(pending), REFRESH_BATCH):
+            batch = pending[start : start + REFRESH_BATCH]
+            jamendo = [t for t, _ in batch if t.source == "jamendo"]
+            fresh, problem = _refresh_jamendo(client, jamendo)
+            for track, needs in batch:
+                item = run.prepare_stored(track, needs)
+                attach_audio(item, track, fresh, problem)
+                yield item
+
+    aborted, error = _drive(run, executor, make_items)
     return _finish(run, aborted, error)
 
 

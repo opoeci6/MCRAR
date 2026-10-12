@@ -1,8 +1,9 @@
-"""Ingest: map source tracks to catalog rows and run per-track stages (analysis, ...)."""
+"""Ingest: map source tracks to catalog rows and run per-track stages (analysis, embeddings)."""
 
 from mcrar.ingest.mapping import to_track_record
 from mcrar.ingest.pipeline import (
     AnalysisStage,
+    EmbeddingStage,
     IngestEvent,
     IngestFailure,
     IngestReport,
@@ -10,10 +11,12 @@ from mcrar.ingest.pipeline import (
     Stage,
     ingest_jamendo,
     ingest_local,
+    reprocess_catalog,
 )
 
 __all__ = [
     "AnalysisStage",
+    "EmbeddingStage",
     "IngestEvent",
     "IngestFailure",
     "IngestReport",
@@ -21,5 +24,6 @@ __all__ = [
     "Stage",
     "ingest_jamendo",
     "ingest_local",
+    "reprocess_catalog",
     "to_track_record",
 ]

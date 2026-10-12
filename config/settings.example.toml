@@ -5,6 +5,10 @@
 # true: only commercially usable models and data are allowed; non-commercial parts are opt-in.
 commercial_mode = true
 
+# Text-audio model for `mcrar embed` and search: clap | glap | muq-mulan (muq-mulan needs
+# commercial_mode = false). "clap" won the M3a bake-off; see docs/embedder_bakeoff.md.
+default_embedder = "clap"
+
 # data_dir = "data"
 # models_dir = "models"
 # cache_dir = ".cache"
