@@ -20,3 +20,18 @@ secrets_backend = "file"
 
 api_host = "127.0.0.1"
 api_port = 8000
+
+# Search and ranking (`mcrar search`). Environment: MCRAR_SEARCH__POOL_SIZE=300,
+# MCRAR_SEARCH__WEIGHTS__SEMANTIC=0.5, ...
+[search]
+pool_size = 200        # candidates retrieved and ranked per query
+max_per_artist = 2     # results per artist in one result list
+min_results = 1        # fewer results than this relaxes duration, then BPM, then vocal filters
+
+# Only the terms a query uses count (text -> semantic, genre/mood -> tags, a BPM target -> bpm,
+# an energy word -> energy); the active weights are rescaled to sum to 1.
+[search.weights]
+semantic = 0.6
+tags = 0.2
+bpm = 0.1
+energy = 0.1

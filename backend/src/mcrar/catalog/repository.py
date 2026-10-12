@@ -11,13 +11,15 @@ import json
 import math
 import sqlite3
 import threading
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from datetime import UTC, datetime
 from typing import Any, Self
 
 import numpy as np
+
+from mcrar.licensing.model import RISK_ORDER, risk_at_most
 
 RISKS = ("green", "amber", "red", "unknown")
 VOCAL_INSTRUMENTAL = ("vocal", "instrumental")
@@ -43,6 +45,9 @@ FEATURE_COLUMNS = (
 _IGNORED_FEATURE_KEYS = frozenset({"duration_s"})
 
 Clock = Callable[[], datetime]
+
+BATCH = 500  # ids per query when reading many rows (stays under SQLite's variable limit)
+BPM_LOW_CONFIDENCE = 0.5  # below this the tempo may be off by an octave (half or double)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -192,6 +197,26 @@ def _ingest_entry(row: sqlite3.Row) -> IngestEntry:
     )
 
 
+def _chunks(ids: Iterable[int]) -> Iterator[list[int]]:
+    unique = list(dict.fromkeys(int(i) for i in ids))
+    for start in range(0, len(unique), BATCH):
+        yield unique[start : start + BATCH]
+
+
+def _in_range(value: float, low: float | None, high: float | None) -> bool:
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
+def _bpm_passes(
+    bpm: float, confidence: float | None, low: float | None, high: float | None, octaves: bool
+) -> bool:
+    if _in_range(bpm, low, high):
+        return True
+    if octaves and (confidence is None or confidence < BPM_LOW_CONFIDENCE):
+        return _in_range(bpm * 2, low, high) or _in_range(bpm / 2, low, high)
+    return False
+
+
 def _validate_vector(vector: object) -> np.ndarray:
     arr = np.asarray(vector)
     if arr.ndim != 1:
@@ -276,6 +301,78 @@ class CatalogRepository:
         )
         return _stored_track(rows[0]) if rows else None
 
+    def get_tracks(self, ids: Iterable[int]) -> dict[int, StoredTrack]:
+        """The tracks with these ids, keyed by id (unknown ids are absent). One query per batch."""
+        out: dict[int, StoredTrack] = {}
+        for chunk in _chunks(ids):
+            marks = ", ".join("?" * len(chunk))
+            for row in self._query(
+                f"SELECT {_TRACK_COLUMNS_SQL} FROM tracks WHERE id IN ({marks})", chunk
+            ):
+                out[int(row["id"])] = _stored_track(row)
+        return out
+
+    def filter_track_ids(
+        self,
+        *,
+        max_risk: str = "unknown",
+        vocal: str | None = None,
+        bpm_min: float | None = None,
+        bpm_max: float | None = None,
+        bpm_octave_tolerance: bool = True,
+        duration_min_s: float | None = None,
+        duration_max_s: float | None = None,
+        sources: Iterable[str] | None = None,
+    ) -> list[int]:
+        """Ids (ascending) of the tracks that pass every hard filter that is set.
+
+        - ``max_risk``: the track's risk is no worse than this (``unknown`` is worse than red,
+          so ``max_risk="unknown"`` filters nothing).
+        - ``vocal``: ``vocal`` or ``instrumental``; tracks whose flag is unknown (local files
+          have none) pass, only known mismatches are excluded.
+        - ``bpm_min``/``bpm_max`` use ``features.bpm``. With ``bpm_octave_tolerance`` a track whose
+          ``bpm_confidence`` is below 0.5 (or unknown) also passes when half or double its tempo
+          is in range. Tracks without a BPM pass only when no BPM bound is set.
+        - ``duration_*_s``: tracks with an unknown duration pass; known ones must be in range.
+        - ``sources``: only these sources (an empty collection matches nothing).
+        """
+        if max_risk not in RISKS:
+            raise ValueError(f"max_risk must be one of {RISKS}, got {max_risk!r}")
+        if vocal is not None and vocal not in VOCAL_INSTRUMENTAL:
+            raise ValueError(f"vocal must be one of {VOCAL_INSTRUMENTAL} or None, got {vocal!r}")
+        where: list[str] = []
+        params: list[Any] = []
+        if max_risk != RISK_ORDER[-1]:
+            allowed = [r for r in RISK_ORDER if risk_at_most(r, max_risk)]  # type: ignore[arg-type]
+            where.append(f"t.risk IN ({', '.join('?' * len(allowed))})")
+            params += allowed
+        if vocal is not None:
+            where.append("(t.vocal_instrumental = ? OR t.vocal_instrumental IS NULL)")
+            params.append(vocal)
+        if duration_min_s is not None:
+            where.append("(t.duration_s >= ? OR t.duration_s IS NULL)")
+            params.append(duration_min_s)
+        if duration_max_s is not None:
+            where.append("(t.duration_s <= ? OR t.duration_s IS NULL)")
+            params.append(duration_max_s)
+        if sources is not None:
+            names = list(sources)
+            where.append(f"t.source IN ({', '.join('?' * len(names))})" if names else "0")
+            params += names
+        sql = "SELECT t.id, f.bpm, f.bpm_confidence FROM tracks t LEFT JOIN features f "
+        sql += "ON f.track_id = t.id"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        rows = self._query(sql + " ORDER BY t.id", params)
+        if bpm_min is None and bpm_max is None:
+            return [int(r["id"]) for r in rows]
+        return [
+            int(r["id"])
+            for r in rows
+            if r["bpm"] is not None
+            and _bpm_passes(r["bpm"], r["bpm_confidence"], bpm_min, bpm_max, bpm_octave_tolerance)
+        ]
+
     def iter_tracks(self, source: str | None = None) -> Iterator[StoredTrack]:
         """Yield tracks ordered by id, optionally only those of one ``source``."""
         if source is None:
@@ -320,6 +417,18 @@ class CatalogRepository:
             (track_id,),
         )
         return dict(zip(rows[0].keys(), tuple(rows[0]), strict=True)) if rows else None
+
+    def get_features_many(self, ids: Iterable[int]) -> dict[int, dict[str, Any]]:
+        """Features keyed by track id, shaped like :meth:`get_features` (missing ids absent)."""
+        out: dict[int, dict[str, Any]] = {}
+        cols = ", ".join(("track_id", *FEATURE_COLUMNS, "analyzed_at"))
+        for chunk in _chunks(ids):
+            marks = ", ".join("?" * len(chunk))
+            sql = f"SELECT {cols} FROM features WHERE track_id IN ({marks})"
+            for row in self._query(sql, chunk):
+                values = dict(zip(row.keys(), tuple(row), strict=True))
+                out[int(values.pop("track_id"))] = values
+        return out
 
     def features_version(self, track_id: int) -> str | None:
         """The ``analysis_version`` stored for a track, or None if never analysed."""
@@ -367,7 +476,37 @@ class CatalogRepository:
         rows = self._query(sql + " ORDER BY head, prob DESC, label", params)
         return [TagProb(*tuple(r)) for r in rows]
 
+    def get_tag_probs_many(
+        self, ids: Iterable[int], heads: Iterable[str] | None = None
+    ) -> dict[int, list[TagProb]]:
+        """Tag rows per track id (tracks without rows are absent), each list ordered as in
+        :meth:`get_tag_probs`. ``heads`` limits the label sets read."""
+        wanted = None if heads is None else list(heads)
+        out: dict[int, list[TagProb]] = {}
+        if wanted is not None and not wanted:
+            return out
+        for chunk in _chunks(ids):
+            sql = (
+                "SELECT track_id, head, label, prob, method, model_version FROM tag_probs "
+                f"WHERE track_id IN ({', '.join('?' * len(chunk))})"
+            )
+            params: list[Any] = list(chunk)
+            if wanted is not None:
+                sql += f" AND head IN ({', '.join('?' * len(wanted))})"
+                params += wanted
+            for row in self._query(sql + " ORDER BY track_id, head, prob DESC, label", params):
+                out.setdefault(int(row["track_id"]), []).append(TagProb(*tuple(row)))
+        return out
+
     # -- embeddings ------------------------------------------------------------------------
+
+    def embedding_stats(self, model_id: str) -> tuple[int, str | None]:
+        """``(count, latest created_at)`` of a model's embeddings: changes whenever one is added,
+        replaced or deleted, so callers can tell when an in-memory index is stale."""
+        row = self._query(
+            "SELECT COUNT(*), MAX(created_at) FROM embeddings WHERE model_id = ?", (model_id,)
+        )[0]
+        return int(row[0]), row[1]
 
     def set_embedding(self, track_id: int, model_id: str, vector: object) -> None:
         """Store a 1-D finite float32 vector; its length must match the model's existing dim."""
