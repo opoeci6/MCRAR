@@ -48,8 +48,11 @@ class Loader:
 
 @pytest.fixture
 def loader(monkeypatch: pytest.MonkeyPatch) -> Loader:
+    """A fake model loader. It stands in for a working ml extra, so torch also counts as
+    available: CI installs without the extra, where the real check would say no."""
     fake = Loader()
     monkeypatch.setattr(cli, "_load_embedder", fake)
+    monkeypatch.setattr(cli, "_torch_available", lambda: True)
     return fake
 
 

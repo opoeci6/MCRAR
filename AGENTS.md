@@ -70,6 +70,12 @@ default suite, ruff and the frontend build on every push and pull request.
   generated with numpy and soundfile. Never commit binary audio fixtures.
 - Tests that load real models carry `@pytest.mark.models` and are skipped unless run with
   `-m models`. Use `FakeEmbedder` (`backend/tests/ml/ml_support.py`) everywhere else.
+- **The default suite must also pass without the `ml` extra** (no torch), because CI installs
+  plain `uv sync`. A test that fakes a model must also fake "torch is available" (for example
+  `monkeypatch.setattr(cli, "_torch_available", lambda: True)`) instead of relying on the
+  machine. To check like CI does, sync into a scratch venv without the extra:
+  `UV_PROJECT_ENVIRONMENT=<tmp>/ci-venv uv sync --directory backend --locked`, then run pytest with
+  the same variable set.
 - Never weaken an existing test to make a change pass. If a test is wrong, say why in your summary.
 
 ## 5. Secrets and data
