@@ -1,5 +1,9 @@
 # MCRAR: ML music recommender for listeners and indie game devs (implementation plan)
 
+> This is the original plan (approved 2026-10-11), lightly annotated with later results. What has
+> actually been built, the decisions taken along the way and the open items are tracked in
+> [`docs/STATUS.md`](STATUS.md).
+
 ## Context
 
 This is a greenfield repo: only `README.md`, `LICENSE`, `.gitignore` and `.claude/` exist. The user wants a music recommender that:

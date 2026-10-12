@@ -5,8 +5,9 @@ Instructions for coding agents (Codex and others) working in this repository. Hu
 
 MCRAR is an ML music recommender for listeners and indie game developers. Python backend
 (`backend/`, package `mcrar`, managed by uv), React + Vite + TypeScript frontend (`frontend/`).
-The product plan is `docs/PLAN.md`. Work handed to a collaborator has its own spec under
-`docs/handover/`, and that spec wins over this file where they differ.
+The product plan is `docs/PLAN.md`; the current state, past decisions (with reasons) and open
+items are in `docs/STATUS.md`. Read both before starting. Work handed to a collaborator has its
+own spec under `docs/handover/`, and that spec wins over this file where they differ.
 
 ## 1. Environment: everything stays inside the repo
 
