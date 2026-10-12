@@ -41,3 +41,16 @@ def test_catalog_tagging_and_selection_cli_use_stored_vectors() -> None:
         assert len(repo.get_tag_probs(tid, "genre")) == 3
     result = runner.invoke(app, ["tagging", "select"])
     assert result.exit_code == 0 and "non-commercial: genre:" in result.output
+
+
+def test_tag_progress_survives_a_narrow_console_code_page() -> None:
+    # Piped output on Windows uses the locale code page; GBK cannot encode "É".
+    settings = get_settings()
+    register(settings)
+    x, _ = synthetic(3)
+    with open_catalog(settings) as repo:
+        tid = repo.upsert_track(TrackRecord(source="jamendo", source_id="1", title="Élan"))
+        repo.set_embedding(tid, "clap@195c3a3", x[0])
+    result = CliRunner(charset="gbk").invoke(app, ["tag"])
+    assert result.exit_code == 0, result.output
+    assert "?lan" in result.output and "Tagged 1" in result.output

@@ -14,13 +14,14 @@ Last updated: 2026-10-12.
 | M1 Audio analysis | Done | `dev` | `mcrar analyze`; analysis version `audio-v2` (energy recalibrated, §3.4) |
 | M2 Catalog, Jamendo + local ingest, licensing | Done | `dev` | `mcrar ingest jamendo/local`, `mcrar catalog …` |
 | M3a Embedders + bake-off | Done | `dev` | Default embedder `clap@195c3a3`; report in `docs/embedder_bakeoff.md` |
-| M3b Tagging | **PR [#3](https://github.com/opoeci6/MCRAR/pull/3) open, changes requested** | `m3b-tagging` (collaborator NineJZ356 + Codex) | Spec `docs/handover/M3b-tagging.md`; see §5.1 |
+| M3b Tagging | Done (PR [#3](https://github.com/opoeci6/MCRAR/pull/3), merged 2026-10-12) | `dev` | By collaborator NineJZ356 with Codex. `mcrar datasets/tagging/tag`; results in `docs/model_card.md`; see §3.7 |
 | M3c CNN baseline (optional) | Not done | — | The collaborator skipped it; unassigned |
 | M4 Search and ranking | Done | `dev` | `mcrar search`; ingest embeds by default |
-| M5 API | Not started | — | The owner said to wait before starting |
+| M5 API | Not started | — | Next; waiting for the owner's go (§5.3) |
 | M6–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`: 961 passed, 29 skipped (default); also passes without the `ml` extra (CI).
+Test suite on `dev`: 996 passed, 30 skipped (default); 993 passed without the `ml` extra (CI);
+29 real-model tests with `-m models`.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -133,12 +134,35 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - CI runs on Windows without the `ml` extra. The tests force Typer's plain output
   (`_TYPER_FORCE_DISABLE_TERMINAL`), because Actions makes Typer emit colour codes. Tests that
   fake models also fake torch availability.
+- `import mcrar.cli` must not load librosa, scipy, torch or sklearn (a fresh-process test
+  enforces it); heavy imports go inside the commands.
+- CLI output that may hold titles or paths goes through `mcrar.console.echo`. Piped output on
+  Windows uses the locale code page (GBK on the owner's machine), and plain `typer.echo` crashed
+  `mcrar tag` on a title with "É".
+
+### 3.7 Tagging (M3b, 2026-10-12)
+- All heads read stored `clap@195c3a3` vectors. Runtime is numpy only, so `mcrar tag` needs no
+  network, audio or torch. Artifacts are `.npz` files under `models/heads/`, listed in
+  `models/registry.json` with content-derived ids and data licences.
+- **Selection** (the best test-split primary metric allowed in each mode):
+
+  | Label set | Commercial mode (default) | Non-commercial mode |
+  |---|---|---|
+  | genre (FMA) | `genre-logreg@2b67df0`, macro F1 0.51 | same |
+  | mood/theme (MTG) | `moodtheme-zeroshot-unsupervised@15d3513`, ROC-AUC 0.66, poorly calibrated | `moodtheme-mlp@b2ac67d`, PR-AUC 0.14 |
+  | valence, arousal (DEAM) | none | MLP, R² 0.67 / 0.69 |
+
+- The genre MLP did not beat logreg on macro F1 (0.508 vs 0.511), so the rule selects logreg.
+- On the owner's catalog, genre top-1 agrees with the uploaders' Jamendo genre tags on 66% of
+  844 comparable tracks. The main confusions are classical/folk → instrumental and hip-hop/pop →
+  electronic.
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, **no `tag_probs` yet** (run `mcrar tag` after PR #3 merges) |
+| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (commercial mode: genre and mood/theme; tagged 2026-10-12, 0 failures) |
+| Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
@@ -148,31 +172,13 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 
 ## 5. Open items
 
-### 5.1 PR #3 (M3b tagging) — waiting for the collaborator
-The owner's review requested two changes:
-1. **CLI startup regression.** `cli.py` imports `mcrar.ml.datasets.cli`, which imports
-   `mcrar.audio` (librosa, scipy), so every `mcrar` command pays about 2 s. Move the heavy imports
-   inside the commands, and add a test that `import mcrar.cli` loads none of librosa, scipy,
-   torch or sklearn.
-2. **Commit authorship.** Rebuild the branch with the collaborator as author and
-   `Co-authored-by: Codex <codex@openai.com>` (all 7 commits were authored as Codex).
-
-Verified in review:
-- tests 992/989 (no torch)/29 (models)
-- licence selection in both modes
-- `mcrar tag` on a copy of the real catalog: 25 s, 0 failures; genre top-1 agrees with Jamendo
-  uploader tags on 66%
-
-Results:
-- genre: logreg, macro F1 0.51
-- mood/theme: MLP PR-AUC 0.14 in non-commercial mode; zero-shot-unsupervised in commercial mode
-  (ROC-AUC 0.66, poorly calibrated)
-- valence and arousal: MLP R² 0.67 and 0.69, non-commercial only
-
-**After it merges:**
-1. Re-run the full checks.
-2. Run `mcrar tag` on the real catalog.
-3. Update this file and the README.
+### 5.1 M3b wrap-up
+M3b is merged and the real catalog is tagged. Still open:
+- **M3c** (optional CNN baseline) and the optional "m3b-embeddings" Release asset were not done.
+- **No weak-label evaluation on the owner's catalog.** The collaborator didn't run it; the 66%
+  genre agreement in §3.7 is the only check on the owner's data.
+- **Tagging in non-commercial mode** (adds valence, arousal and the MTG mood head):
+  `MCRAR_COMMERCIAL_MODE=false mcrar tag --force`.
 
 ### 5.2 Follow-ups
 - **M4: normalise mood scores per label in the tag term.** Calibrated mood probabilities are
@@ -183,8 +189,11 @@ Results:
 - **Torch temp files.** torch writes a small kernel cache (about 250 KB) to the system temp
   folder; it could be redirected into `.cache/`.
 - **Starlette warning:** a deprecation warning about `httpx` in tests (harmless).
-- **M3c** (optional CNN baseline) and the optional "m3b-embeddings" Release asset were not done.
-- **Disk:** the extra CLAP checkpoints in `.cache/huggingface` can be deleted (§4).
+- **Disk:** the extra CLAP checkpoints in `.cache/huggingface` and `data/catalog.pre-tag.db`
+  can be deleted (§4).
+- **BPM on slow classical.** Octave folding into 70–180 gives some slow classical pieces 160–174
+  BPM (seen in a calm classical search). Low tempo confidence should widen the BPM match (×½), as
+  PLAN §7 says.
 
 ### 5.3 Next milestone (waiting for the owner's go)
 **M5 API:** FastAPI wrapping search (CLAP kept loaded), track details, preview/stream redirects,
@@ -199,5 +208,8 @@ export. M6 (the UI) builds on it.
 - **[#2](https://github.com/opoeci6/MCRAR/issues/2) MTG split counts.** Split-0 has 17,982
   tracks and 56 tags (train 9,949 / validation 3,802 / test 4,231); the audio release has 18,486
   and 59. The spec was corrected. Closed.
-- **[#3](https://github.com/opoeci6/MCRAR/pull/3) M3b tagging PR.** Open, changes requested
-  (§5.1).
+- **[#3](https://github.com/opoeci6/MCRAR/pull/3) M3b tagging PR.**
+  - The owner requested two changes: lazy CLI imports and human commit authorship.
+  - The collaborator rebuilt the branch as one commit, authored by NineJZ356 with a Codex
+    co-author trailer.
+  - Merged 2026-10-12 as `fbb9b09`. Closes #2.

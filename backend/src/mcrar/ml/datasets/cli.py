@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import typer
 
 from mcrar.config import get_settings
+from mcrar.console import echo
 
 app = typer.Typer(no_args_is_help=True, help="Download and embed the pinned tagging datasets.")
 
@@ -16,7 +17,7 @@ def cli_errors():
     try:
         yield
     except Exception as exc:
-        typer.echo(f"error: {exc}", err=True)
+        echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from None
 
 
@@ -59,7 +60,7 @@ def embed(
                     output,
                     delete_audio=delete_audio,
                     batch_size=batch_size,
-                    progress=typer.echo,
+                    progress=echo,
                 )
             typer.echo(
                 f"{name}: {report['embedded']}/{report['total']} embedded, "

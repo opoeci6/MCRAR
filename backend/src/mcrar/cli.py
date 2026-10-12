@@ -15,6 +15,7 @@ import typer
 
 from mcrar import __version__
 from mcrar.config import ConfigError, Settings, get_settings
+from mcrar.console import echo as _line
 from mcrar.ml.datasets.cli import app as datasets_app
 from mcrar.ml.tagging.cli import app as tagging_app
 from mcrar.ml.tagging.cli import tag
@@ -306,13 +307,6 @@ app.add_typer(catalog_app, name="catalog")
 
 EXIT_INTERRUPTED = 130
 MAX_FAILURES_SHOWN = 20
-
-
-def _line(text: str = "", *, err: bool = False) -> None:
-    """Echo text that may hold arbitrary titles without ever failing on a narrow console."""
-    stream = sys.stderr if err else sys.stdout
-    encoding = getattr(stream, "encoding", None) or "utf-8"
-    typer.echo(text.encode(encoding, "replace").decode(encoding), err=err)
 
 
 def _jamendo_client(settings: Settings, use_cache: bool):  # noqa: ANN202 - lazy import
