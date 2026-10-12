@@ -224,7 +224,11 @@ __marimo__/
 /.cache/
 /.secrets/
 /data/
-/models/
+# models/: everything stays local except the small trained tag heads and their registry (M3b),
+# which are committed with their data licence recorded in registry.json.
+/models/*
+!/models/heads/
+!/models/registry.json
 /config/settings.toml
 *.db
 node_modules/
