@@ -75,7 +75,12 @@ resumable.
   compute embeddings.
 
 ### MTG-Jamendo, mood/theme subset (moodtheme)
-- 18,486 full tracks, 56 mood/theme tags in the splits, `audio-low` type, about 46 GB.
+- The audio release has 18,486 full tracks and 59 mood/theme tags (`audio-low` type, about 46 GB).
+  The official split-0 keeps **17,982 tracks** (train 9,949, validation 3,802, test 4,231; no
+  overlap) and **56 tags** (`ambiental`, `horror` and `mellow` are dropped), checked at MTG commit
+  `cafd8e20c265ed84f1e61f1c875327971f43a62f`. Embed, train, calibrate and evaluate on the split-0
+  members and the 56 split tags only. The other 504 tracks may be embedded but are never used for
+  training, calibration or metrics. Report both counts in the model card and registry (issue #2).
 - Use the official download script from `https://github.com/MTG/mtg-jamendo-dataset`
   (`scripts/download/download.py --dataset autotagging_moodtheme --type audio-low --from mtg-fast`),
   run with the project interpreter (`scripts/with-env.sh uv run --directory backend python ...`)
