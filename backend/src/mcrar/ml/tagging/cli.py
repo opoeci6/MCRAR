@@ -8,6 +8,7 @@ from typing import Annotated
 import typer
 
 from mcrar.config import get_settings
+from mcrar.console import echo
 from mcrar.ml.datasets.cli import cli_errors
 
 app = typer.Typer(no_args_is_help=True, help="Train, evaluate and select portable taggers.")
@@ -75,7 +76,7 @@ def tag(
             return
 
         def progress(event) -> None:
-            typer.echo(f"[{event.index}/{event.total}] {event.kind}: {event.title}")
+            echo(f"[{event.index}/{event.total}] {event.kind}: {event.title}")
 
         with open_catalog(settings) as repo:
             report = reprocess_catalog(repo, stages=stages, force=force, on_progress=progress)
@@ -83,6 +84,6 @@ def tag(
                 f"Tagged {report.processed}; skipped {report.skipped}; failed {report.failed}"
             )
             for failure in report.failures:
-                typer.echo(f"error: {failure.message}", err=True)
+                echo(f"error: {failure.message}", err=True)
             if report.failed or report.aborted:
                 raise ValueError(report.aborted or "some catalog tracks could not be tagged")
