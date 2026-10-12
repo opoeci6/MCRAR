@@ -1,4 +1,4 @@
-"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, models."""
+"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search."""
 
 from __future__ import annotations
 
@@ -372,10 +372,16 @@ def ingest_jamendo_cmd(
     ] = False,
     embed: Annotated[
         str | None,
-        typer.Option("--embed", help="Also embed with these models, e.g. clap,glap."),
+        typer.Option(
+            "--embed",
+            help="Embed with these models, e.g. clap,glap. Default: the default_embedder setting.",
+        ),
     ] = None,
+    no_embed: Annotated[
+        bool, typer.Option("--no-embed", help="Analyse only; do not embed.")
+    ] = False,
 ) -> None:
-    """Fetch tracks from Jamendo, store their metadata and licences, and analyse the audio."""
+    """Fetch tracks from Jamendo, store their metadata and licences, analyse and embed the audio."""
     from contextlib import closing
 
     from mcrar.catalog import open_catalog
@@ -398,7 +404,7 @@ def ingest_jamendo_cmd(
         order=order,
     )
     settings = _settings()
-    keys = _model_keys(embed, settings) if embed else []
+    keys = _ingest_embed_keys(embed, no_embed, settings)
     try:
         client = _jamendo_client(settings, not no_cache)
     except (JamendoError, SecretError) as exc:
@@ -439,10 +445,16 @@ def ingest_local_cmd(
     force: Annotated[bool, typer.Option("--force", help="Re-analyse up-to-date tracks.")] = False,
     embed: Annotated[
         str | None,
-        typer.Option("--embed", help="Also embed with these models, e.g. clap,glap."),
+        typer.Option(
+            "--embed",
+            help="Embed with these models, e.g. clap,glap. Default: the default_embedder setting.",
+        ),
     ] = None,
+    no_embed: Annotated[
+        bool, typer.Option("--no-embed", help="Analyse only; do not embed.")
+    ] = False,
 ) -> None:
-    """Add a folder of audio files; licences come from mcrar-license.toml sidecar files."""
+    """Add a folder of audio files (licences from sidecar files); analyse and embed them."""
     from mcrar.catalog import open_catalog
     from mcrar.ingest import ingest_local
     from mcrar.ml import ModelError
@@ -450,7 +462,7 @@ def ingest_local_cmd(
     if not path.is_dir():
         raise _fail(f"folder not found: {path}", 1)
     settings = _settings()
-    keys = _model_keys(embed, settings) if embed else []
+    keys = _ingest_embed_keys(embed, no_embed, settings)
     with open_catalog(settings) as repo:
         try:
             with _ingest_stages(keys, settings) as stages:
@@ -670,11 +682,49 @@ def _embedders(
                 close()
 
 
+def _torch_available() -> bool:
+    """Whether the ``ml`` extra is installed (a seam for tests; does not import torch)."""
+    import importlib.util
+
+    return importlib.util.find_spec("torch") is not None
+
+
+def _ingest_embed_keys(embed: str | None, no_embed: bool, settings: Settings) -> list[str]:
+    """The models `ingest` embeds with: ``--embed``, else the default embedder, else none.
+
+    Without the ``ml`` extra the default run warns and goes on with analysis only.
+    """
+    if embed and no_embed:
+        raise _fail("--embed and --no-embed are mutually exclusive")
+    if no_embed:
+        return []
+    if embed:
+        return _model_keys(embed, settings)
+    if not _torch_available():
+        _line(
+            "warning: torch is not installed, so tracks are analysed but not embedded "
+            "(install the ml extra: uv sync --extra ml)",
+            err=True,
+        )
+        return []
+    return _model_keys(settings.default_embedder, settings)
+
+
+def _tagging_stages(settings: Settings) -> list:
+    """Tagging stages from M3b (tags from stored embeddings); none until that module exists."""
+    try:
+        from mcrar.ml.tagging import tagging_stages
+    except ImportError:
+        return []
+    return list(tagging_stages(settings))
+
+
 @contextmanager
 def _ingest_stages(keys: list[str], settings: Settings) -> Iterator[list | None]:
-    """The stages for `ingest --embed`: analysis plus one embedding stage per model.
+    """The stages for `ingest`: analysis, one embedding stage per model, then tagging.
 
-    Yields None (the pipeline's default, analysis only) when no models are asked for.
+    Yields None (the pipeline's default, analysis only) when no models are asked for. Tagging
+    reads the CLAP embedding, so its stages are added only when ``clap`` is among the models.
     """
     from mcrar.ingest import AnalysisStage, EmbeddingStage
 
@@ -682,7 +732,10 @@ def _ingest_stages(keys: list[str], settings: Settings) -> Iterator[list | None]
         yield None
         return
     with _embedders(keys, settings) as embedders:
-        yield [AnalysisStage(), *(EmbeddingStage(e) for e in embedders)]
+        stages = [AnalysisStage(), *(EmbeddingStage(e) for e in embedders)]
+        if "clap" in keys:
+            stages += _tagging_stages(settings)
+        yield stages
 
 
 @app.command()
@@ -1329,3 +1382,179 @@ def bakeoff_report(
     for kind, name in used.items():
         _line(f"Used {kind}: {name}")
     _line(f"Wrote {target}")
+
+
+# -- search ----------------------------------------------------------------------------------------
+
+SEARCH_TITLE_WIDTH = 44
+SEARCH_BPM_SPREAD = 10.0
+_RANGE = r"\s*(\d+(?:\.\d+)?)?\s*(-)?\s*(\d+(?:\.\d+)?)?\s*"
+
+
+def _range_option(
+    value: str | None, name: str, *, single_is_max: bool
+) -> tuple[float | None, float | None]:
+    """Parse ``A-B``, ``A-``, ``-B`` or ``N`` (``N`` alone: max if ``single_is_max``, else N±10)."""
+    import re
+
+    if value is None:
+        return None, None
+    m = re.fullmatch(_RANGE, value)
+    if m is None or (m.group(1) is None and m.group(3) is None):
+        raise _fail(f"--{name} must look like 80-100 or 90, got '{value}'")
+    low = float(m.group(1)) if m.group(1) else None
+    high = float(m.group(3)) if m.group(3) else None
+    if m.group(2) is None:  # a single number
+        if single_is_max:
+            return None, low
+        return max((low or 0.0) - SEARCH_BPM_SPREAD, 0.0), (low or 0.0) + SEARCH_BPM_SPREAD
+    if low is not None and high is not None and low > high:
+        raise _fail(f"--{name}: the first number must not exceed the second, got '{value}'")
+    return low, high
+
+
+def _shorten(text: str, width: int) -> str:
+    return text if len(text) <= width else text[: width - 3] + "..."
+
+
+def _print_search_result(result, *, explain: bool, offset: int) -> None:  # noqa: ANN001
+    rows = [("#", "Title — Artist", "Score", "BPM", "Key", "Energy", "Licence", "URL")]
+    for n, item in enumerate(result.items, start=offset + 1):
+        who = item.title or "(untitled)"
+        if item.artist:
+            who += f" — {item.artist}"
+        key = f"{item.key} {item.mode}" if item.key else "n/a"
+        licence = f"[{item.risk}] {item.license_code}" if item.license_code else f"[{item.risk}]"
+        rows.append(
+            (
+                str(n),
+                _shorten(who, SEARCH_TITLE_WIDTH),
+                f"{item.score:.3f}",
+                _fmt(item.bpm, ".0f"),
+                key,
+                _fmt(item.energy, ".2f"),
+                _shorten(licence, 24),
+                item.source_url or "-",
+            )
+        )
+    if result.items:
+        left = {1, 4, 6, 7}  # text columns; the rest are numbers
+        widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+        for row in rows:
+            _line(
+                "  ".join(
+                    cell.ljust(w) if i in left else cell.rjust(w)
+                    for i, (cell, w) in enumerate(zip(row, widths, strict=True))
+                ).rstrip()
+            )
+        if explain:
+            _line()
+            for n, item in enumerate(result.items, start=offset + 1):
+                if item.explanation:
+                    _line(f"{n}. {item.explanation}")
+    else:
+        _line("(no results)")
+    if result.parsed.notes:
+        _line("\nUnderstood: " + "; ".join(result.parsed.notes))
+    for note in result.relaxed:
+        _line(note)
+    for note in result.notes:
+        _line(note)
+    _line(
+        f"\n{len(result.items)} shown of {result.total_candidates} candidates "
+        f"({result.elapsed_ms:.0f} ms, {result.model_id})"
+    )
+
+
+@app.command()
+def search(
+    text: Annotated[
+        str,
+        typer.Argument(
+            help="What to look for, e.g. 'tense stealth level, no vocals'. "
+            "May be empty when filters are given."
+        ),
+    ] = "",
+    genre: Annotated[str | None, typer.Option(help="Comma-separated genres to favour.")] = None,
+    mood: Annotated[str | None, typer.Option(help="Comma-separated moods to favour.")] = None,
+    bpm: Annotated[str | None, typer.Option(help="BPM range 80-100, or one value (±10).")] = None,
+    instrumental: Annotated[
+        bool, typer.Option("--instrumental", help="Only instrumental tracks.")
+    ] = False,
+    vocal: Annotated[bool, typer.Option("--vocal", help="Only vocal tracks.")] = False,
+    max_risk: Annotated[
+        str | None,
+        typer.Option(help="Worst licence risk to allow: green, amber or red. Default: any."),
+    ] = None,
+    duration: Annotated[
+        str | None, typer.Option(help="Duration in seconds: 0-30, or one value (maximum).")
+    ] = None,
+    source: Annotated[str | None, typer.Option(help="Only this source: jamendo or local.")] = None,
+    limit: Annotated[int, typer.Option(min=1, help="Results to show.")] = 10,
+    offset: Annotated[int, typer.Option(min=0, help="Results to skip.")] = 0,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+    no_explain: Annotated[
+        bool, typer.Option("--no-explain", help="Skip the explanation lines.")
+    ] = False,
+) -> None:
+    """Search the catalog by text and filters; every result shows why it ranked where it did."""
+    from contextlib import closing
+
+    from mcrar.catalog.db import CATALOG_FILENAME
+    from mcrar.ml import ModelError
+    from mcrar.recommend import SearchError, SearchFilters, SearchRequest, SearchService, Vocabulary
+
+    if instrumental and vocal:
+        raise _fail("--vocal and --instrumental are mutually exclusive")
+    if max_risk is not None and max_risk not in ("green", "amber", "red"):
+        raise _fail("--max-risk must be one of: green, amber, red")
+    if source is not None and source not in SOURCES:
+        raise _fail(f"--source must be one of: {', '.join(SOURCES)}")
+    settings = _settings()
+    vocab = Vocabulary.load(settings)
+    try:
+        genres = vocab.resolve("genre", (genre or "").split(","))
+        moods = vocab.resolve("moodtheme", (mood or "").split(","))
+    except ValueError as exc:
+        raise _fail(str(exc)) from None
+    bpm_min, bpm_max = _range_option(bpm, "bpm", single_is_max=False)
+    dur_min, dur_max = _range_option(duration, "duration", single_is_max=True)
+    filters = SearchFilters(
+        max_risk=max_risk or "unknown",  # type: ignore[arg-type]
+        vocal="instrumental" if instrumental else "vocal" if vocal else None,
+        bpm_min=bpm_min,
+        bpm_max=bpm_max,
+        duration_min_s=dur_min or None,
+        duration_max_s=dur_max,
+        sources=(source,) if source else None,
+        genres=genres,
+        moods=moods,
+    )
+    if not text.strip() and filters == SearchFilters():
+        raise _fail("give a search text or at least one filter")
+    if not (settings.data_dir / CATALOG_FILENAME).is_file():
+        raise _fail("the catalog is empty; add tracks first: mcrar ingest jamendo|local", 1)
+
+    def load_embedder():  # noqa: ANN202 - called only when a text embedding is needed
+        _line(f"Loading {settings.default_embedder} ...", err=True)
+        return _load_embedder(settings.default_embedder, settings)
+
+    request = SearchRequest(
+        text=text, filters=filters, limit=limit, offset=offset, explain=not no_explain
+    )
+    try:
+        with (
+            _open_repo() as repo,
+            closing(
+                SearchService(repo, settings, embedder_loader=load_embedder, vocab=vocab)
+            ) as service,
+        ):
+            result = service.search(request)
+    except (SearchError, ModelError) as exc:
+        raise _fail(str(exc), 1) from None
+    except Exception as exc:  # never show a traceback
+        raise _fail(f"search failed ({type(exc).__name__}: {str(exc)[:200]})", 1) from None
+    if as_json:
+        typer.echo(json.dumps(result.to_dict(), indent=2))
+        return
+    _print_search_result(result, explain=not no_explain, offset=offset)

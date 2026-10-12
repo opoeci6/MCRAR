@@ -61,6 +61,24 @@ class NumpyVectorIndex:
     def dim(self) -> int | None:
         return self._dim
 
+    @property
+    def ids(self) -> np.ndarray:
+        """The indexed track ids (a view: do not modify)."""
+        return self._ids
+
+    @property
+    def matrix(self) -> np.ndarray:
+        """The unit vectors, row-aligned with :attr:`ids` (a view: do not modify)."""
+        return self._matrix
+
+    def vectors(self, ids: Iterable[int]) -> tuple[np.ndarray, np.ndarray]:
+        """Unit vectors for ``ids``: ``(found bool [n], matrix [found.sum(), dim])`` in the order
+        of ``ids``; ids that are not indexed are marked False and have no row."""
+        wanted = [int(i) for i in ids]
+        found = np.fromiter((i in self._pos for i in wanted), dtype=bool, count=len(wanted))
+        rows = [self._pos[i] for i in wanted if i in self._pos]
+        return found, self._matrix[rows] if rows else np.empty((0, self._dim or 0), np.float32)
+
     def add(self, ids: np.ndarray, matrix: np.ndarray) -> None:
         id_arr = np.asarray(ids)
         if id_arr.ndim != 1:

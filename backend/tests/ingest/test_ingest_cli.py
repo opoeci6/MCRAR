@@ -20,6 +20,14 @@ from mcrar.sources import JamendoAuthError, JamendoStreamError
 runner = CliRunner()
 
 
+@pytest.fixture(autouse=True)
+def analysis_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`ingest` now embeds by default (M4); these tests are about analysis and must not load a
+    model, so they run as if `--no-embed` were given. The default is tested in
+    test_recommend_cli.py."""
+    monkeypatch.setattr(cli, "_ingest_embed_keys", lambda embed, no_embed, settings: [])
+
+
 @pytest.fixture
 def analyzer(monkeypatch: pytest.MonkeyPatch) -> FakeAnalyzer:
     fake = FakeAnalyzer()

@@ -373,12 +373,12 @@ def test_ingest_local_embed_adds_embedding_stages(
     assert all(e.closed for e in loader.loaded)
 
 
-def test_ingest_local_without_embed_never_touches_the_loader(
+def test_ingest_local_with_no_embed_never_touches_the_loader(
     no_torch: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(pipeline, "analyze_audio", _fake_features)
     write_wav(tmp_path / "lib" / "a.wav")
-    result = runner.invoke(app, ["ingest", "local", str(tmp_path / "lib")])
+    result = runner.invoke(app, ["ingest", "local", str(tmp_path / "lib"), "--no-embed"])
     assert result.exit_code == 0, result.output
     assert _stats()["embeddings_by_model"] == {}
 

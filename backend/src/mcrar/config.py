@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -53,8 +53,39 @@ class _TomlSource(TomlConfigSettingsSource):
         return data
 
 
+class SearchWeights(BaseModel):
+    """Relative weight of each ranking term. Only the terms a query activates count, and the
+    active weights are renormalised to sum to 1 (see :mod:`mcrar.recommend.rank`)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    semantic: float = Field(0.6, ge=0)
+    tags: float = Field(0.2, ge=0)
+    bpm: float = Field(0.1, ge=0)
+    energy: float = Field(0.1, ge=0)
+
+    @model_validator(mode="after")
+    def _some_weight(self) -> SearchWeights:
+        if self.semantic + self.tags + self.bpm + self.energy <= 0:
+            raise ValueError("at least one search weight must be positive")
+        return self
+
+
+class SearchSettings(BaseModel):
+    """Search and ranking knobs (``[search]`` in settings.toml, ``MCRAR_SEARCH__*`` in the env)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    pool_size: int = Field(200, ge=1)  # candidates retrieved and ranked per query
+    max_per_artist: int = Field(2, ge=1)  # results per artist in one result list
+    min_results: int = Field(1, ge=0)  # fewer results than this relaxes the hard filters
+    weights: SearchWeights = SearchWeights()
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MCRAR_", extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix="MCRAR_", env_nested_delimiter="__", extra="forbid"
+    )
 
     home: Path = Field(default_factory=find_repo_root)
     data_dir: Path = Path("data")
@@ -70,6 +101,7 @@ class Settings(BaseSettings):
     secrets_backend: Literal["file", "keyring", "env"] = "file"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    search: SearchSettings = SearchSettings()
 
     @classmethod
     def settings_customise_sources(
