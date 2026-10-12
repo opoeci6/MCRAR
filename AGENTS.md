@@ -96,6 +96,14 @@ default suite, ruff and the frontend build on every push and pull request.
 - Branch from `dev` (never commit to `main` or `dev` directly) and open a pull request into `dev`.
 - One logical change per commit. Commit subject in the imperative, prefixed with the milestone,
   for example `M3b: add zero-shot tagger`.
+- **Commits carry the human's identity, not the agent's.** The author must be the person
+  responsible for the work, with the name and email of their GitHub account, so commits link to
+  that account. Set it for this repository only (never `--global`):
+  `git config user.name "<GitHub name>"` and `git config user.email "<GitHub email or
+  ID+login@users.noreply.github.com>"`. Credit the agent with a trailer at the end of every
+  commit message, for example `Co-authored-by: Codex <codex@openai.com>`. Before pushing, check
+  with `git log --format='%an <%ae>%n%(trailers:key=Co-authored-by)' origin/dev..HEAD` that no
+  commit is authored by an agent.
 - Keep your diff inside the files your spec assigns to you. Another agent works on other
   milestones at the same time, so edits to shared files (`cli.py`, `pipeline.py`, `config.py`)
   should be the minimal registration your spec describes.
