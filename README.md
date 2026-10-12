@@ -6,9 +6,10 @@ asset packs, with license-safety badges and a credits export aimed at game proje
 and uses your own API key.
 
 Status: in development. Done: M0 toolchain, M1 audio analysis, M2 catalog and Jamendo/local
-ingest with licensing, M3a text-to-music embeddings (CLAP by default). In progress: M3b tagging
-(collaborator) and M4 search and ranking.
+ingest with licensing, M3a text-to-music embeddings (CLAP by default), M4 search and ranking
+(`mcrar search`). In review: M3b tagging (collaborator, PR #3). Next: M5 API.
 
+- **Current state, decisions and open items: [docs/STATUS.md](docs/STATUS.md)**
 - Development setup (everything stays inside the repo folder): [docs/dev-setup.md](docs/dev-setup.md)
 - Product and implementation plan: [docs/PLAN.md](docs/PLAN.md)
 - Instructions for coding agents (Codex and others): [AGENTS.md](AGENTS.md)
