@@ -1,0 +1,80 @@
+# HTTP API (M5)
+
+A local FastAPI server for the UI (M6) and the desktop shell (M11). It keeps the embedding model
+loaded between requests, so a text search takes about 0.1–0.2 s instead of the CLI's ~15 s
+model load. The full schema is at `/docs` (Swagger UI) and `/openapi.json` while the server runs.
+
+## Running it
+
+```bash
+scripts/with-env.sh uv run --directory backend mcrar serve --warm   # 127.0.0.1:8000
+```
+
+| Option | Effect |
+|---|---|
+| `--warm` | Load the default embedder (CLAP) in the background at startup. Without it, the first text search loads it. |
+| `--host`, `--port` | Default: `api_host` and `api_port` from settings (`127.0.0.1:8000`). |
+| `--allow-remote` | Required for a non-loopback host. The API has no login, so only use it on a trusted network. |
+| `--reload` | Auto-reload for development. |
+
+`scripts/dev.ps1` starts the API (`uvicorn --factory mcrar.api.app:create_app`) and the Vite dev
+server, which proxies `/api`. When `frontend/dist` exists, the API also serves the built UI at `/`.
+
+## Routes (all under `/api`)
+
+| Area | Routes |
+|---|---|
+| Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
+| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown and explanation |
+| Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
+| Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=` |
+| Settings | `GET/PUT /settings` (editable: `commercial_mode`, `default_embedder`, `search.*`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |
+| Ingest | `POST /ingest/jamendo`, `POST /ingest/local`, `POST /ingest/reprocess` (`embed` or `tag`) → 202 with a job; `GET /jobs`; `GET /jobs/{id}`; `POST /jobs/{id}/cancel`; `GET /jobs/{id}/events` (Server-Sent Events) |
+| Analyze | `POST /analyze` (multipart upload, ≤ 50 MB) → BPM, key, loudness and energy. Nothing is stored. Reference-song similarity is M10. |
+
+Errors are JSON `{"detail": "..."}`:
+
+| Code | Meaning |
+|---|---|
+| 422 | Bad input |
+| 404 | Unknown id |
+| 409 | Conflict: a job is already running, a field is pinned by an environment variable, or the secret backend is read-only |
+| 503 | Missing prerequisite: no `ml` extra for text search, or no Jamendo client id |
+| 502 | Jamendo failed |
+
+## Behaviour worth knowing
+
+- **Audio is never re-hosted.** A Jamendo preview is a 307 redirect to a fresh stream URL. The
+  URL is looked up again because the stored one expires, and is cached for 30 minutes. It carries
+  no client id. A local track is served from the path stored in the catalog, with HTTP Range
+  support. No request can name a file to stream.
+- **Licence mode.** In commercial mode (the default), non-commercial embedders are refused, and
+  stored tags count only when they come from the tagging model selected for the mode. Tags
+  written by a non-commercial head are ignored after switching back to commercial mode, until
+  `mcrar tag` re-tags.
+- **Ingest jobs.** Only one job runs at a time (a second gets 409). Jobs use the same loaded
+  model as search.
+  - The event stream replays from `Last-Event-ID` or `?after=` and ends with `done`, `failed` or
+    `cancelled`.
+  - A cancel takes effect at the next track.
+  - Without the `ml` extra, an ingest still analyses tracks and reports a `warning` event.
+- **Settings** are written atomically to `config/settings.toml`, validated before writing, and
+  applied to the running server. Paths, the secrets backend, and the API host and port can't be
+  changed over HTTP.
+
+## Security model (local desktop use)
+
+The server listens on loopback, but any web page open in the user's browser can still send
+requests to `127.0.0.1`. The defences:
+
+- **Host check.** Only loopback names and the configured host are accepted, which blocks DNS
+  rebinding.
+- **Origin check.** State-changing requests (anything but GET, HEAD and OPTIONS) whose `Origin`
+  is not a loopback page get 403.
+- **No CORS headers.** Other sites can't read responses.
+- **Secrets are write-only over HTTP.** No response, error or log contains a secret value. Job
+  errors and events are stripped of URLs and `client_id` values.
+
+**Before hosting it for other people,** the API needs authentication. It also needs
+`POST /ingest/local` and `POST /analyze` disabled or sandboxed, because they read the server's
+disk, and `GET /tracks/{id}` exposes local file paths.
