@@ -9,6 +9,10 @@
  * Never hard-code visible text in a component. English only for now; to translate later, replace
  * these modules (each exports a plain object, with functions where a value is interpolated).
  */
+
+/** Locale for dates and numbers: the UI text is English, so the browser's language would mix in. */
+export const UI_LOCALE = 'en'
+
 export const strings = {
   app: {
     name: 'MCRAR',

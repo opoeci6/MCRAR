@@ -1,11 +1,12 @@
 import type { Risk, ShortlistEntry } from '../../api/types'
+import { UI_LOCALE } from '../../strings'
 
-/** "Oct 15, 2026" in the user's language; the text unchanged when it is not a date. */
+/** "Oct 15, 2026"; the text unchanged when it is not a date. */
 export function formatDate(value: string | null | undefined): string {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleDateString(undefined, { dateStyle: 'medium' })
+  return date.toLocaleDateString(UI_LOCALE, { dateStyle: 'medium' })
 }
 
 export const RISK_ORDER: Risk[] = ['green', 'amber', 'red', 'unknown']

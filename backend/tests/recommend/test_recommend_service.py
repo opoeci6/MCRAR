@@ -406,8 +406,10 @@ def test_query_embeddings_are_cached(repo: CatalogRepository, ids: dict[str, int
     for _ in range(3):
         search(service, "epic battle")
     search(service, "  epic   battle ")  # same text once whitespace is normalised
+    search(service, "Epic Battle")  # and case: CLAP's text encoder is case-sensitive
     asked = [call for call in embedder.calls if call == ["epic battle"]]
     assert len(asked) == 1
+    assert not [call for call in embedder.calls if call == ["Epic Battle"]]
 
 
 def test_the_index_is_cached_and_rebuilt_when_new_embeddings_arrive(

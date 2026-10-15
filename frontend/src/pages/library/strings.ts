@@ -1,3 +1,5 @@
+import { UI_LOCALE } from '../../strings'
+
 /** Text of the Library page. Add this page's strings here, not in src/strings.ts. */
 export const libraryStrings = {
   title: 'Library',
@@ -183,7 +185,7 @@ export const libraryStrings = {
     table: 'Recent jobs',
     time: (iso: string) => {
       const date = new Date(iso)
-      return Number.isNaN(date.getTime()) ? iso : date.toLocaleString()
+      return Number.isNaN(date.getTime()) ? iso : date.toLocaleString(UI_LOCALE)
     },
     paramsSummary: (params: Record<string, unknown>): string => {
       const parts: string[] = []
