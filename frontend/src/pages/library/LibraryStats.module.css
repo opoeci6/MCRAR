@@ -1,0 +1,82 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: var(--space-3);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.label {
+  font-size: var(--text-sm);
+  font-weight: 550;
+  color: var(--color-text-muted);
+}
+
+.big {
+  font-size: var(--text-xl);
+  font-weight: 650;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.risk {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--risk-fg);
+  border-radius: var(--radius-pill);
+  background: var(--risk-bg);
+  color: var(--risk-fg);
+  font-weight: 550;
+}
+
+.green {
+  --risk-fg: var(--risk-green-fg);
+  --risk-bg: var(--risk-green-bg);
+}
+
+.amber {
+  --risk-fg: var(--risk-amber-fg);
+  --risk-bg: var(--risk-amber-bg);
+}
+
+.red {
+  --risk-fg: var(--risk-red-fg);
+  --risk-bg: var(--risk-red-bg);
+}
+
+.unknown {
+  --risk-fg: var(--risk-unknown-fg);
+  --risk-bg: var(--risk-unknown-bg);
+}
