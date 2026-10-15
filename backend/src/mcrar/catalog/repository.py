@@ -385,6 +385,33 @@ class CatalogRepository:
         for row in rows:
             yield _stored_track(row)
 
+    def list_tracks(
+        self,
+        *,
+        source: str | None = None,
+        risk: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> tuple[list[StoredTrack], int]:
+        """One page of tracks ordered by id, and how many tracks match in total.
+
+        ``source`` and ``risk`` match exactly (``risk`` is the track's own level, not a maximum).
+        """
+        if risk is not None and risk not in RISKS:
+            raise ValueError(f"risk must be one of {RISKS}, got {risk!r}")
+        where, params = [], []
+        for column, value in (("source", source), ("risk", risk)):
+            if value is not None:
+                where.append(f"{column} = ?")
+                params.append(value)
+        clause = f" WHERE {' AND '.join(where)}" if where else ""
+        total = int(self._query(f"SELECT COUNT(*) FROM tracks{clause}", tuple(params))[0][0])
+        rows = self._query(
+            f"SELECT {_TRACK_COLUMNS_SQL} FROM tracks{clause} ORDER BY id LIMIT ? OFFSET ?",
+            (*params, max(limit, 0), max(offset, 0)),
+        )
+        return [_stored_track(row) for row in rows], total
+
     def delete_track(self, track_id: int) -> bool:
         """Delete a track and (by cascade) its features, tags, embeddings and shortlist rows."""
         with self._write() as conn:

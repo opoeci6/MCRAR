@@ -5,10 +5,13 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from mcrar.licensing.attribution import attribution_text
 from mcrar.licensing.model import LicenseInfo, Risk
+
+if TYPE_CHECKING:
+    from mcrar.catalog import StoredTrack
 
 LICENSE_DISCLAIMER = (
     "Risk levels (green, amber, red, unknown) are informational guidance for using music in a "
@@ -132,3 +135,38 @@ def render_credits(items: Sequence[CreditItem], fmt: Literal["txt", "md", "json"
     if fmt == "json":
         return _render_json(ordered)
     raise ValueError(f"unsupported credits format: {fmt!r}")
+
+
+def track_credits(track: StoredTrack, fmt: Literal["txt", "md", "json"]) -> str:
+    """The credits / licence report of one catalog track (what the track page downloads).
+
+    A first version: one item from the stored licence columns. A user-declared attribution
+    suffix kept in the stored ``attribution_text`` is passed on as the item's extra.
+    """
+    license_info = LicenseInfo(
+        family=track.license_family or "unknown",  # type: ignore[arg-type]
+        version=None,
+        jurisdiction=None,
+        code=track.license_code or "Unknown license",
+        url=track.license_url,
+        commercial_ok=track.commercial_ok,
+        derivatives_ok=track.derivatives_ok,
+        share_alike=track.share_alike,
+        attribution_required=track.attribution_required,
+        risk=track.risk,  # type: ignore[arg-type]
+    )
+    title = track.title or "Untitled"
+    generated = attribution_text(
+        title=title, artist=track.artist, license=license_info, source_url=track.source_url
+    )
+    stored = (track.attribution_text or "").strip()
+    extra = stored[len(generated) :].strip() if stored.startswith(generated) else ""
+    item = CreditItem(
+        title=title,
+        artist=track.artist,
+        license=license_info,
+        source_url=track.source_url,
+        attribution_extra=extra or None,
+        commercial_license_url=track.commercial_license_url,
+    )
+    return render_credits([item], fmt)

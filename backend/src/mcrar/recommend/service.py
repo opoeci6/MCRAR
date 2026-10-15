@@ -33,7 +33,13 @@ from mcrar.recommend.parser import QueryParser, RuleParser
 from mcrar.recommend.query import ParsedQuery, SearchFilters, SearchRequest
 from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
 from mcrar.recommend.results import SearchItem, SearchResult, TagScore
-from mcrar.recommend.tags import CompositeTagScorer, StoredTagScorer, TagScorer, ZeroShotTagScorer
+from mcrar.recommend.tags import (
+    CompositeTagScorer,
+    StoredTagScorer,
+    TagScorer,
+    ZeroShotTagScorer,
+    allowed_tag_versions,
+)
 from mcrar.recommend.vocab import GENRE, MOODTHEME, Vocabulary
 
 if TYPE_CHECKING:
@@ -132,6 +138,10 @@ class SearchService:
     ``settings.default_embedder``). ``tag_scorer`` replaces the built-in stored-then-zero-shot
     scoring. ``model_id`` is the embedding model searched; by default the registry's id of the
     default embedder, and a loaded embedder with another id is an error.
+
+    ``stored_tags`` reads the tag rows of tracks. By default it only trusts the rows written by
+    the tagging model the current ``commercial_mode`` allows (:func:`allowed_tag_versions`), so a
+    track tagged by a non-commercial model is scored zero-shot instead while the mode is on.
     """
 
     def __init__(
@@ -141,6 +151,7 @@ class SearchService:
         *,
         embedder_loader: EmbedderLoader | None = None,
         tag_scorer: TagScorer | None = None,
+        stored_tags: StoredTagScorer | None = None,
         parser: QueryParser | None = None,
         vocab: Vocabulary | None = None,
         model_id: str | None = None,
@@ -161,7 +172,7 @@ class SearchService:
         self._index_cache: NumpyVectorIndex | None = None
         self._index_stats: tuple[int, str | None] | None = None
         self._queries: OrderedDict[str, np.ndarray] = OrderedDict()
-        self._stored = StoredTagScorer(repo)
+        self._stored = stored_tags or StoredTagScorer(repo, allowed_tag_versions(settings))
         self._tags_with_text = CompositeTagScorer(
             self._stored, ZeroShotTagScorer(self._index, self._embed_texts, self.vocab)
         )

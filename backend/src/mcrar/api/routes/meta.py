@@ -1,0 +1,46 @@
+"""Health, the tag vocabulary and catalog statistics."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from fastapi import APIRouter
+
+from mcrar import __version__
+from mcrar.api.state import StateDep
+from mcrar.recommend.vocab import LABEL_SETS
+
+router = APIRouter()
+
+
+@router.get("/api/health")
+def health(state: StateDep) -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "version": __version__,
+        "catalog": {"tracks": state.repo.stats()["tracks"]},
+        "models_loaded": state.pool.loaded_keys(),
+    }
+
+
+@router.get("/api/vocab")
+def vocab(state: StateDep) -> dict[str, Any]:
+    """The genre and mood/theme labels a search can ask for, with display names and synonyms."""
+    vocabulary = state.search.vocab
+    return {
+        name: [
+            {
+                "id": label,
+                "display": vocabulary.display_name(name, label),
+                "synonyms": list(vocabulary.synonyms(name, label)),
+            }
+            for label in vocabulary.labels(name)
+        ]
+        for name in LABEL_SETS
+        if name in vocabulary.label_set_names
+    }
+
+
+@router.get("/api/stats")
+def stats(state: StateDep) -> dict[str, Any]:
+    return state.repo.stats()

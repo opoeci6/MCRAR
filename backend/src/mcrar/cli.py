@@ -1387,30 +1387,6 @@ def bakeoff_report(
 # -- search ----------------------------------------------------------------------------------------
 
 SEARCH_TITLE_WIDTH = 44
-SEARCH_BPM_SPREAD = 10.0
-_RANGE = r"\s*(\d+(?:\.\d+)?)?\s*(-)?\s*(\d+(?:\.\d+)?)?\s*"
-
-
-def _range_option(
-    value: str | None, name: str, *, single_is_max: bool
-) -> tuple[float | None, float | None]:
-    """Parse ``A-B``, ``A-``, ``-B`` or ``N`` (``N`` alone: max if ``single_is_max``, else N±10)."""
-    import re
-
-    if value is None:
-        return None, None
-    m = re.fullmatch(_RANGE, value)
-    if m is None or (m.group(1) is None and m.group(3) is None):
-        raise _fail(f"--{name} must look like 80-100 or 90, got '{value}'")
-    low = float(m.group(1)) if m.group(1) else None
-    high = float(m.group(3)) if m.group(3) else None
-    if m.group(2) is None:  # a single number
-        if single_is_max:
-            return None, low
-        return max((low or 0.0) - SEARCH_BPM_SPREAD, 0.0), (low or 0.0) + SEARCH_BPM_SPREAD
-    if low is not None and high is not None and low > high:
-        raise _fail(f"--{name}: the first number must not exceed the second, got '{value}'")
-    return low, high
 
 
 def _shorten(text: str, width: int) -> str:
@@ -1503,33 +1479,26 @@ def search(
     from mcrar.catalog.db import CATALOG_FILENAME
     from mcrar.ml import ModelError
     from mcrar.recommend import SearchError, SearchFilters, SearchRequest, SearchService, Vocabulary
+    from mcrar.recommend.request import build_filters, flag_name, parse_range
 
     if instrumental and vocal:
         raise _fail("--vocal and --instrumental are mutually exclusive")
-    if max_risk is not None and max_risk not in ("green", "amber", "red"):
-        raise _fail("--max-risk must be one of: green, amber, red")
-    if source is not None and source not in SOURCES:
-        raise _fail(f"--source must be one of: {', '.join(SOURCES)}")
     settings = _settings()
     vocab = Vocabulary.load(settings)
     try:
-        genres = vocab.resolve("genre", (genre or "").split(","))
-        moods = vocab.resolve("moodtheme", (mood or "").split(","))
+        filters = build_filters(
+            vocab,
+            genres=(genre or "").split(","),
+            moods=(mood or "").split(","),
+            bpm=parse_range(bpm, "bpm", single_is_max=False),
+            duration=parse_range(duration, "duration", single_is_max=True),
+            max_risk=max_risk,
+            vocal="instrumental" if instrumental else "vocal" if vocal else None,
+            sources=(source,) if source is not None else None,
+            arg=flag_name,
+        )
     except ValueError as exc:
         raise _fail(str(exc)) from None
-    bpm_min, bpm_max = _range_option(bpm, "bpm", single_is_max=False)
-    dur_min, dur_max = _range_option(duration, "duration", single_is_max=True)
-    filters = SearchFilters(
-        max_risk=max_risk or "unknown",  # type: ignore[arg-type]
-        vocal="instrumental" if instrumental else "vocal" if vocal else None,
-        bpm_min=bpm_min,
-        bpm_max=bpm_max,
-        duration_min_s=dur_min or None,
-        duration_max_s=dur_max,
-        sources=(source,) if source else None,
-        genres=genres,
-        moods=moods,
-    )
     if not text.strip() and filters == SearchFilters():
         raise _fail("give a search text or at least one filter")
     if not (settings.data_dir / CATALOG_FILENAME).is_file():
@@ -1558,3 +1527,68 @@ def search(
         typer.echo(json.dumps(result.to_dict(), indent=2))
         return
     _print_search_result(result, explain=not no_explain, offset=offset)
+
+
+# -- serve -----------------------------------------------------------------------------------------
+
+
+def _is_loopback(host: str) -> bool:
+    import ipaddress
+
+    name = host.strip().strip("[]").lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
+
+
+@app.command()
+def serve(
+    host: Annotated[
+        str | None, typer.Option(help="Address to listen on. Default: api_host from the settings.")
+    ] = None,
+    port: Annotated[
+        int | None,
+        typer.Option(
+            min=1, max=65535, help="Port to listen on. Default: api_port from the settings."
+        ),
+    ] = None,
+    warm: Annotated[
+        bool, typer.Option("--warm", help="Load the text embedding model in the background.")
+    ] = False,
+    allow_remote: Annotated[
+        bool,
+        typer.Option(
+            "--allow-remote", help="Listen on a non-loopback address (no login; careful)."
+        ),
+    ] = False,
+    reload: Annotated[
+        bool, typer.Option("--reload", help="Restart on code changes (development).")
+    ] = False,
+) -> None:
+    """Run the HTTP API, and the built frontend when frontend/dist exists, on this machine."""
+    settings = _settings()
+    host = host or settings.api_host
+    port = port or settings.api_port
+    if not _is_loopback(host):
+        if not allow_remote:
+            raise _fail(
+                f"refusing to listen on {host}: the API has no login, so it only listens on "
+                "this machine; pass --allow-remote to listen on the network anyway"
+            )
+        _line(
+            f"warning: listening on {host} without a login; anyone who can reach this "
+            "address can use the API",
+            err=True,
+        )
+    # The app factory runs inside uvicorn (possibly a reload subprocess) and reads its
+    # configuration from the environment, so hand the choices over that way.
+    os.environ["MCRAR_API_HOST"] = host
+    os.environ["MCRAR_API_PORT"] = str(port)
+    if warm:
+        os.environ["MCRAR_API_WARM"] = "1"
+    import uvicorn
+
+    uvicorn.run("mcrar.api.app:create_app", factory=True, host=host, port=port, reload=reload)

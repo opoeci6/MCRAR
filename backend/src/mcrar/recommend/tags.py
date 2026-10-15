@@ -3,7 +3,8 @@
 ``scores(track_ids, label_set, labels)`` returns, per label, an array aligned with ``track_ids``
 with values in [0, 1].
 
-- :class:`StoredTagScorer` reads the ``tag_probs`` rows written by the tagging models (M3b).
+- :class:`StoredTagScorer` reads the ``tag_probs`` rows written by the tagging models (M3b),
+  optionally only those of the model version the current licence mode allows.
 - :class:`ZeroShotTagScorer` is the fallback until a track is tagged: the cosine between the
   track's embedding and the text embedding of ``"<display name> music"``, standardised over the
   whole catalog and squashed with a sigmoid, so a score does not depend on the query's pool.
@@ -14,7 +15,7 @@ with values in [0, 1].
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import numpy as np
@@ -23,6 +24,7 @@ from mcrar.recommend.vocab import Vocabulary
 
 if TYPE_CHECKING:
     from mcrar.catalog import CatalogRepository, NumpyVectorIndex
+    from mcrar.config import Settings
 
 PROMPT = "{} music"  # text prompt per label, filled with the label's display name
 SLOPE = 1.7  # sigmoid slope on the z-score of a track's cosine
@@ -36,21 +38,62 @@ class TagScorer(Protocol):
     ) -> dict[str, np.ndarray]: ...
 
 
-class StoredTagScorer:
-    """Probabilities stored in ``tag_probs`` under ``head == label_set``."""
+def allowed_tag_versions(settings: Settings) -> dict[str, str | None]:
+    """Per label set, the model version whose stored tags may be used in the current mode.
 
-    def __init__(self, repo: CatalogRepository) -> None:
+    That is the tagging registry's selected entry for ``settings.commercial_mode``; ``None`` when
+    the mode permits no entry for the set. Without a usable registry the mapping is empty, so no
+    stored tag is trusted (rows may come from a non-commercial model, e.g. after the mode changed).
+    """
+    from mcrar.ml.tagging.registry import read_registry, select_entry
+
+    try:
+        registry = read_registry(settings)
+    except Exception:  # missing, unreadable or inconsistent registry: trust no stored tags
+        return {}
+    allowed: dict[str, str | None] = {}
+    for name, spec in registry["label_sets"].items():
+        entry = select_entry(spec, settings.commercial_mode)
+        allowed[name] = entry["id"] if entry else None
+    return allowed
+
+
+class StoredTagScorer:
+    """Probabilities stored in ``tag_probs`` under ``head == label_set``.
+
+    ``allowed_versions`` (label set -> model version, see :func:`allowed_tag_versions`) limits
+    the rows used to those of the allowed version; a set that is missing from it or maps to
+    ``None`` has no usable rows, so :class:`CompositeTagScorer` falls back to zero-shot. ``None``
+    accepts every row (direct use and tests).
+    """
+
+    def __init__(
+        self,
+        repo: CatalogRepository,
+        allowed_versions: Mapping[str, str | None] | None = None,
+    ) -> None:
         self._repo = repo
+        self.allowed_versions = allowed_versions
+
+    def accepts(self, label_set: str, model_version: str | None) -> bool:
+        if self.allowed_versions is None:
+            return True
+        allowed = self.allowed_versions.get(label_set)
+        return allowed is not None and model_version == allowed
 
     def scores_with_coverage(
         self, track_ids: Sequence[int], label_set: str, labels: Sequence[str]
     ) -> tuple[dict[str, np.ndarray], np.ndarray]:
         """The scores (0 where unknown) and a bool array: which tracks have rows for the set."""
-        rows = self._repo.get_tag_probs_many(track_ids, heads=[label_set])
         out = {label: np.zeros(len(track_ids)) for label in labels}
         covered = np.zeros(len(track_ids), dtype=bool)
+        if self.allowed_versions is not None and self.allowed_versions.get(label_set) is None:
+            return out, covered  # no version of this set is allowed: skip the query
+        rows = self._repo.get_tag_probs_many(track_ids, heads=[label_set])
         for i, track_id in enumerate(track_ids):
-            probs = rows.get(int(track_id))
+            probs = [
+                p for p in rows.get(int(track_id), ()) if self.accepts(label_set, p.model_version)
+            ]
             if not probs:
                 continue
             covered[i] = True
