@@ -28,7 +28,7 @@ import time
 from collections import deque
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Protocol
 
@@ -145,7 +145,8 @@ class IngestFailure(NamedTuple):
 @dataclass(frozen=True)
 class IngestReport:
     """Totals of one run. ``seen`` counts tracks pulled from the source; on an aborted run it
-    can include tracks prefetched but not yet processed."""
+    can include tracks prefetched but not yet processed. ``new_track_ids`` are the catalog ids
+    of the tracks this run added (their stages may still have failed or not run)."""
 
     seen: int
     new: int
@@ -156,6 +157,7 @@ class IngestReport:
     failures: list[IngestFailure]
     elapsed_s: float
     aborted: str | None = None
+    new_track_ids: list[int] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -181,6 +183,7 @@ class JamendoQuery:
     order: str | None = None
     speed: str | None = None
     boost: str | None = None
+    duration_between: tuple[int, int] | None = None  # seconds, (min, max)
 
     def to_kwargs(self) -> dict[str, Any]:
         """The ``JamendoClient.search_tracks`` keyword arguments that are actually set."""
@@ -237,6 +240,7 @@ class _Run:
         self.processed = self.skipped = self.failed = 0
         self.index = 0
         self.failures: list[IngestFailure] = []
+        self.new_track_ids: list[int] = []
 
     def emit(self, kind: EventKind, title: str = "", message: str | None = None) -> None:
         if self._on_progress is not None:
@@ -256,6 +260,7 @@ class _Run:
         self.seen += 1
         if existing is None:
             self.new += 1
+            self.new_track_ids.append(track_id)
         elif any(getattr(existing, f.name) != getattr(record, f.name) for f in fields(record)):
             self.updated += 1
         needs = [s for s in self.stages if self.force or not s.is_current(self.repo, track_id)]
@@ -351,6 +356,7 @@ class _Run:
             failures=list(self.failures),
             elapsed_s=time.monotonic() - self._t0,
             aborted=aborted,
+            new_track_ids=list(self.new_track_ids),
         )
 
 
@@ -463,6 +469,50 @@ def ingest_jamendo(
             if any(needs_audio(s) for s in item.needs):
                 _start_fetch(executor, client, item, src)
             yield item
+
+    aborted, error = _drive(run, executor, make_items)
+    return _finish(run, aborted, error)
+
+
+def ingest_jamendo_queries(
+    client: Any,
+    repo: CatalogRepository,
+    *,
+    queries: Sequence[JamendoQuery],
+    max_new: int,
+    scan_limit: int = 200,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the first ``max_new`` tracks that are not in the catalog yet from ``queries``.
+
+    The queries run in order, each scanning up to ``scan_limit`` results, lazily: a later query
+    is searched only when the earlier ones ran out before ``max_new`` was reached. A track that is
+    already in the catalog, or came up in an earlier query of this run, is skipped before any
+    upsert or download and does not count. The progress total is ``max_new`` (an upper bound).
+    Failures, aborts and Ctrl+C behave as in :func:`ingest_jamendo`.
+    """
+    if max_new < 1:
+        raise ValueError("max_new must be at least 1")
+    run = _Run("jamendo", repo, _default_stages(stages), force, max_new, on_progress)
+    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
+
+    def make_items() -> Iterator[_Prepared]:
+        taken = 0
+        seen_ids: set[str] = set()
+        for query in queries:
+            for src in client.search_tracks(**query.to_kwargs(), limit=scan_limit):
+                if src.source_id in seen_ids or repo.get_track_by_source("jamendo", src.source_id):
+                    continue
+                seen_ids.add(src.source_id)
+                item = run.prepare(src, parse_license(src.license_url))
+                if any(needs_audio(s) for s in item.needs):
+                    _start_fetch(executor, client, item, src)
+                yield item
+                taken += 1
+                if taken >= max_new:
+                    return
 
     aborted, error = _drive(run, executor, make_items)
     return _finish(run, aborted, error)

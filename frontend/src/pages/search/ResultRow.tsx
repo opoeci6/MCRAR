@@ -19,12 +19,14 @@ const percent = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 
 
 export interface ResultRowProps {
   item: SearchItem
+  /** The track was imported from Jamendo for this search. */
+  isNew?: boolean
   onOpen: (trackId: number) => void
   onRate: (item: SearchItem, rating: RatingValue | null) => void
 }
 
 /** One search result: play, title, licence, facts, tags, the reason, rating and actions. */
-export function ResultRow({ item, onOpen, onRate }: ResultRowProps) {
+export function ResultRow({ item, isNew = false, onOpen, onRate }: ResultRowProps) {
   const player = usePlayer()
   const whyId = useId()
   const [whyOpen, setWhyOpen] = useState(false)
@@ -69,6 +71,11 @@ export function ResultRow({ item, onOpen, onRate }: ResultRowProps) {
           <span className={styles.artist}>
             {item.artist ? r.byArtist(item.artist) : r.unknownArtist}
           </span>
+          {isNew ? (
+            <span className={styles.newChip} title={r.newHint}>
+              {r.isNew}
+            </span>
+          ) : null}
         </div>
 
         <div className={styles.facts}>

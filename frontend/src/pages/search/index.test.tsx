@@ -1,7 +1,8 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPersistentState } from '../../app/usePersistentState'
+import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
@@ -77,6 +78,12 @@ async function searchFor(text: string) {
 
 beforeEach(() => {
   clearPersistentState()
+  FakeEventSource.instances = []
+  vi.stubGlobal('EventSource', FakeEventSource)
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 describe('Search page: query', () => {
@@ -489,5 +496,319 @@ describe('Search page: persistent state', () => {
     expect(await screen.findByRole('button', { name: 'Rock' })).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('Track 1')).toBeInTheDocument()
     expect(bodies(mock, 'POST /api/search')).toHaveLength(1)
+  })
+})
+
+describe('Search page: Jamendo import', () => {
+  const WEAK = { top_cosine: 0.12, weak: true }
+  const FINE = { top_cosine: 0.5, weak: false }
+  const importJob = (overrides: Record<string, unknown> = {}) => ({
+    id: 'j1',
+    kind: 'ingest-query',
+    params: { text: 'cozy town', limit: 50 },
+    status: 'running',
+    created_at: '2026-10-15T10:00:00Z',
+    finished_at: null,
+    cancel_requested: false,
+    error: null,
+    progress: null,
+    ...overrides,
+  })
+  const REPORT = {
+    seen: 50,
+    new: 2,
+    updated: 0,
+    processed: 2,
+    skipped: 0,
+    failed: 0,
+    failures: [],
+    failures_total: 0,
+    elapsed_s: 100,
+    aborted: null,
+    new_track_ids: [3, 4],
+  }
+  const NOTICE = 'Few close matches in your library.'
+  const action = { name: 'Search Jamendo for more' }
+  const source = () => FakeEventSource.instances[FakeEventSource.instances.length - 1]!
+  const progressRegion = { name: 'Job progress' }
+
+  /** First search answers with track 1, a search after the import with tracks 1, 3 and 4. */
+  function twoStageSearch(match: unknown = WEAK) {
+    let calls = 0
+    return {
+      'POST /api/search': () => {
+        calls += 1
+        return calls === 1
+          ? response([item(1)], { match })
+          : response([item(1), item(3), item(4)], { match: FINE })
+      },
+    }
+  }
+
+  /** Searches for "cozy town" and clicks the first Jamendo button. */
+  async function startImport() {
+    await searchFor('cozy town')
+    await userEvent.click((await screen.findAllByRole('button', action))[0]!)
+    await screen.findByRole('region', progressRegion)
+  }
+
+  it('offers the import in a notice only when the best match is weak', async () => {
+    setup({ 'POST /api/search': response([item(1)], { match: WEAK }) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    expect(await screen.findByText(new RegExp(NOTICE))).toBeInTheDocument()
+    // The notice carries the only import button; the quiet one would repeat it.
+    expect(screen.getAllByRole('button', action)).toHaveLength(1)
+  })
+
+  it('shows only the quiet button when the match is not weak', async () => {
+    setup({ 'POST /api/search': response([item(1)], { match: FINE }) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    expect(screen.queryByText(new RegExp(NOTICE))).not.toBeInTheDocument()
+    expect(screen.getAllByRole('button', action)).toHaveLength(1)
+  })
+
+  it('treats a response without match as not weak, and still offers the button', async () => {
+    setup({ 'POST /api/search': response([item(1)]) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    expect(screen.queryByText(new RegExp(NOTICE))).not.toBeInTheDocument()
+    expect(screen.getByRole('button', action)).toBeInTheDocument()
+  })
+
+  it('offers the quiet button on an empty result of a text search', async () => {
+    setup({ 'POST /api/search': response([]) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('No tracks match')
+    expect(screen.getByRole('button', action)).toBeInTheDocument()
+  })
+
+  it('offers nothing for a filter-only search', async () => {
+    setup({ 'POST /api/search': response([item(1)], { match: WEAK }) })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await userEvent.click(searchButton())
+    await screen.findByText('Track 1')
+    expect(screen.queryByText(new RegExp(NOTICE))).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', action)).not.toBeInTheDocument()
+  })
+
+  it('starts the import with the text and filters of the search shown', async () => {
+    const mock = setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    // Edit the form after the search: the import must use the search shown.
+    await userEvent.type(box(), ' CHANGED')
+    await userEvent.click(screen.getAllByRole('button', action)[0]!)
+    expect(await screen.findByRole('region', progressRegion)).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search/import')).toEqual([
+      { text: 'cozy town', filters: { genres: ['rock'] }, limit: 50 },
+    ])
+    expect(screen.getByText('Searching Jamendo for "cozy town"')).toBeInTheDocument()
+    // Another import cannot start while this one runs.
+    expect(screen.queryByRole('button', action)).not.toBeInTheDocument()
+    expect(source().url).toBe('/api/jobs/j1/events')
+  })
+
+  it('shows progress and cancels the job', async () => {
+    const mock = setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+      'POST /api/jobs/j1/cancel': { job: importJob({ cancel_requested: true }) },
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    source().emit('progress', { kind: 'track_done', index: 12, total: 50, title: 'Rain on Glass', message: null })
+    expect(screen.getByText('12 of 50')).toBeInTheDocument()
+    expect(screen.getByText('Rain on Glass')).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Progress' })).toHaveAttribute('value', '12')
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(mock.mock.calls.some(([url]) => String(url) === '/api/jobs/j1/cancel')).toBe(true))
+    expect(screen.getByRole('button', { name: 'Cancelling' })).toBeDisabled()
+  })
+
+  it('runs the search again when the job is done and marks the new tracks', async () => {
+    const mock = setup({
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    await userEvent.type(box(), ' CHANGED')
+    source().emit('done', { report: REPORT })
+
+    expect(await screen.findByText('Added 2 tracks from Jamendo')).toBeInTheDocument()
+    expect(screen.queryByRole('region', progressRegion)).not.toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')).toEqual([
+      { text: 'cozy town', filters: {}, limit: 20, offset: 0, explain: true },
+      { text: 'cozy town', filters: {}, limit: 20, offset: 0, explain: true },
+    ])
+    expect(within(screen.getByRole('article', { name: 'Track 3' })).getByText('New')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Track 4' })).getByText('New')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Track 1' })).queryByText('New')).not.toBeInTheDocument()
+    // The weak notice is gone; the quiet button stays for another try.
+    expect(screen.queryByText(new RegExp(NOTICE))).not.toBeInTheDocument()
+    expect(screen.getByRole('button', action)).toBeInTheDocument()
+  })
+
+  it('says so when Jamendo had nothing new', async () => {
+    setup({
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    source().emit('done', { report: { ...REPORT, new: 0, new_track_ids: [] } })
+    expect(await screen.findByText('No new tracks found on Jamendo for this search')).toBeInTheDocument()
+  })
+
+  it('shows the results of a cancelled job that added tracks', async () => {
+    setup({
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    source().emit('cancelled', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Jamendo')).toBeInTheDocument()
+  })
+
+  it('shows the error of a failed job and keeps the results', async () => {
+    const mock = setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    source().emit('failed', { report: null, error: 'Jamendo is down' })
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The Jamendo search failed')
+    expect(alert).toHaveTextContent('Jamendo is down')
+    expect(screen.getByText('Track 1')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')).toHaveLength(1)
+    expect(screen.getAllByRole('button', action).length).toBeGreaterThan(0)
+  })
+
+  it('points to the Library when another job is running', async () => {
+    setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ detail: 'another job is running' }, 409),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click((await screen.findAllByRole('button', action))[0]!)
+    expect(await screen.findByText('Another job is running')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Library' })).toHaveAttribute('href', '#/library')
+  })
+
+  it('points to Settings when the Jamendo client id is missing', async () => {
+    setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ detail: 'Jamendo client id is not set' }, 503),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click((await screen.findAllByRole('button', action))[0]!)
+    expect(await screen.findByText('Jamendo client id is not set')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '#/settings')
+  })
+
+  it('shows any other start error as a message', async () => {
+    setup({
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ detail: 'nothing to describe' }, 422),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click((await screen.findAllByRole('button', action))[0]!)
+    expect(await screen.findByText("Couldn't start the job")).toBeInTheDocument()
+    expect(screen.getByText('nothing to describe')).toBeInTheDocument()
+  })
+
+  it('hides the finished import of an old search when a new search runs', async () => {
+    setup({
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    source().emit('done', { report: REPORT })
+    await screen.findByText('Added 2 tracks from Jamendo')
+    await userEvent.clear(box())
+    await searchFor('another')
+    await waitFor(() => expect(screen.queryByText('Added 2 tracks from Jamendo')).not.toBeInTheDocument())
+    expect(screen.queryByText('New')).not.toBeInTheDocument()
+  })
+
+  it('keeps a running import on screen when another search runs, and leaves those results alone', async () => {
+    let calls = 0
+    const mock = setup({
+      'POST /api/search': () => {
+        calls += 1
+        return response([item(calls)], { match: WEAK })
+      },
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await startImport()
+    await userEvent.clear(box())
+    await searchFor('another')
+    await screen.findByText('Track 2')
+    expect(screen.getByRole('region', progressRegion)).toBeInTheDocument()
+    expect(screen.queryByRole('button', action)).not.toBeInTheDocument()
+
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText(/Added 2 tracks from Jamendo for "cozy town"/)).toBeInTheDocument()
+    expect(screen.getByText('Track 2')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')).toHaveLength(2)
+    expect((await screen.findAllByRole('button', action)).length).toBeGreaterThan(0)
+  })
+
+  it('reattaches to a running import for the search shown', async () => {
+    setup({
+      ...twoStageSearch(),
+      'GET /api/jobs': {
+        jobs: [
+          importJob({ id: 'other', params: { text: 'something else', limit: 50 } }),
+          importJob({ id: 'j9' }),
+        ],
+      },
+    })
+    const first = renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    first.unmount()
+    FakeEventSource.instances = []
+
+    renderWithProviders(<SearchPage />)
+    expect(await screen.findByRole('region', progressRegion)).toBeInTheDocument()
+    expect(screen.queryByRole('button', action)).not.toBeInTheDocument()
+    expect(source().url).toBe('/api/jobs/j9/events')
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Jamendo')).toBeInTheDocument()
+    expect(screen.getByText('Track 3')).toBeInTheDocument()
+  })
+
+  it('does not reattach to a running import for another search', async () => {
+    setup({
+      'POST /api/search': response([item(1)], { match: FINE }),
+      'GET /api/jobs': { jobs: [importJob({ params: { text: 'something else', limit: 50 } })] },
+    })
+    const first = renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    first.unmount()
+    renderWithProviders(<SearchPage />)
+    expect(await screen.findByRole('button', action)).toBeInTheDocument()
+    expect(screen.queryByRole('region', progressRegion)).not.toBeInTheDocument()
   })
 })

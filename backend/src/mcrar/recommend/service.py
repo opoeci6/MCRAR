@@ -34,7 +34,7 @@ from mcrar.recommend.explain import explain
 from mcrar.recommend.parser import QueryParser, RuleParser
 from mcrar.recommend.query import ParsedQuery, SearchFilters, SearchRequest
 from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
-from mcrar.recommend.results import SearchItem, SearchResult, TagScore
+from mcrar.recommend.results import MatchQuality, SearchItem, SearchResult, TagScore
 from mcrar.recommend.tags import (
     CompositeTagScorer,
     StandardisedTagScorer,
@@ -51,6 +51,12 @@ if TYPE_CHECKING:
 
 QUERY_CACHE_SIZE = 256
 TOP_TAGS = 5
+# Raw top-1 cosine under which a text search is "weak", per embedder key (overridden by
+# ``search.weak_cosine``). CLAP on the owner's 1,054-track catalog: 15 rated game-music queries
+# scored 0.41-0.66 with good results; clearly weak ones were "intense fight" 0.32, "anime
+# opening" 0.37 and "bagpipes" 0.39. CLAP cannot tell J-pop from pop ("j-pop" 0.57, "japanese
+# vocal" 0.47), so the UI offers the import for every text search, not only the weak ones.
+WEAK_COSINE_DEFAULTS = {"clap": 0.40}
 EmbedderLoader = Callable[[], Any]
 
 
@@ -78,6 +84,7 @@ class _Outcome:
     tag_arrays: dict[tuple[str, str], np.ndarray]  # (label set, label) -> score per pool track
     top_sets: tuple[str, ...]
     unembedded: int
+    top_cosine: float | None = None  # highest raw cosine of the ranked candidates (text only)
 
 
 # -- relaxation ---------------------------------------------------------------------------------
@@ -280,7 +287,31 @@ class SearchService:
             model_id=self.model_id,
             elapsed_ms=(time.perf_counter() - started) * 1000.0,
             notes=notes,
+            match=self._match(attempt, outcome),
         )
+
+    def parse(self, request: SearchRequest) -> ParsedQuery:
+        """The request as the search understands it (no retrieval, no model)."""
+        return self._parser.parse(request, self.vocab)
+
+    def weak_cosine(self) -> float | None:
+        """The weak-match threshold: ``search.weak_cosine``, else the default of the embedder
+        this service searches with; None when neither is known (nothing is then weak)."""
+        configured = self._settings.search.weak_cosine
+        if configured is not None:
+            return configured
+        from mcrar.ml import MODELS
+
+        key = next((k for k, spec in MODELS.items() if spec.model_id == self.model_id), None)
+        return WEAK_COSINE_DEFAULTS.get(key) if key is not None else None
+
+    def _match(self, attempt: ParsedQuery, outcome: _Outcome) -> MatchQuality:
+        if not attempt.semantic_text:
+            return MatchQuality()
+        threshold = self.weak_cosine()
+        top = outcome.top_cosine
+        weak = threshold is not None and (top is None or top < threshold)
+        return MatchQuality(top_cosine=top, weak=weak)
 
     def _check_labels(self, parsed: ParsedQuery) -> None:
         for label_set, label in parsed.requested_labels():
@@ -381,6 +412,9 @@ class SearchService:
             tag_arrays=tag_arrays,
             top_sets=top_sets,
             unembedded=unembedded,
+            top_cosine=max((float(cosines[r.track_id]) for r in ranked), default=None)
+            if q.semantic_text
+            else None,
         )
 
     def _item(self, ranked: Ranked, outcome: _Outcome, q: ParsedQuery, with_explanation: bool):

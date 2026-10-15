@@ -6,6 +6,8 @@ import type { RatingValue, SearchFilters, SearchItem, SearchResponse } from '../
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { usePersistentState } from '../../app/usePersistentState'
 import { useToast } from '../../app/toastContext'
+import { InlineJobProgress } from '../../features/jobs/InlineJobProgress'
+import { StartError } from '../../features/jobs/StartError'
 import { TrackDrawer } from '../../features/track/TrackDrawer'
 import { strings } from '../../strings'
 import { Button } from '../../ui/Button'
@@ -20,6 +22,8 @@ import type { FilterState } from './filters'
 import { FiltersPanel } from './FiltersPanel'
 import { ResultRow } from './ResultRow'
 import { searchStrings as s } from './strings'
+import { useJamendoImport } from './useJamendoImport'
+import type { ImportOutcome } from './useJamendoImport'
 import styles from './SearchPage.module.css'
 
 const PAGE_SIZE = 20
@@ -41,7 +45,16 @@ interface ResultSet {
   unembedded: number
   model: string
   elapsedMs: number
+  /** The best match was weak, so Jamendo may have more. Absent in results saved by an older version. */
+  weak?: boolean
+  /** Tracks imported from Jamendo for this search, marked "New". */
+  newTrackIds?: number[]
+  /** How many tracks the last import for this search added; unset until one has finished. */
+  imported?: number | null
 }
+
+/** What a re-run after an import carries over to the new results. */
+type Imported = Pick<ResultSet, 'newTrackIds' | 'imported'>
 
 type Problem = { kind: 'unavailable' | 'invalid' | 'failed'; message: string }
 
@@ -50,6 +63,7 @@ function toResultSet(
   request: SubmittedQuery,
   response: SearchResponse,
   previous: SearchItem[],
+  imported?: Imported,
 ): ResultSet {
   const known = new Set(previous.map((item) => item.track_id))
   return {
@@ -62,6 +76,8 @@ function toResultSet(
     unembedded: response.unembedded_count,
     model: response.model_id,
     elapsedMs: response.elapsed_ms,
+    weak: Boolean(request.text) && Boolean(response.match?.weak),
+    ...imported,
   }
 }
 
@@ -95,7 +111,7 @@ export default function SearchPage() {
   useEffect(() => () => controller.current?.abort(), [])
 
   const run = useCallback(
-    async (request: SubmittedQuery, previous: SearchItem[], runId: number) => {
+    async (request: SubmittedQuery, previous: SearchItem[], runId: number, imported?: Imported, refresh = false) => {
       controller.current?.abort()
       const own = new AbortController()
       controller.current = own
@@ -114,11 +130,14 @@ export default function SearchPage() {
           { signal: own.signal },
         )
         if (own.signal.aborted) return
-        setResults(toResultSet(runId, request, response, previous))
+        setResults(toResultSet(runId, request, response, previous, imported))
       } catch (caught) {
         if (own.signal.aborted) return
         if (more) {
           toast.error(`${s.errors.loadMoreFailed}: ${errorMessage(caught)}`)
+        } else if (refresh) {
+          // Keep what is on screen: the import itself worked.
+          toast.error(`${s.jamendo.rerunFailed}: ${errorMessage(caught)}`)
         } else {
           setResults(null)
           setProblem(problemFor(caught))
@@ -130,6 +149,32 @@ export default function SearchPage() {
     [setResults, toast],
   )
 
+  const resultsRef = useRef(results)
+  useEffect(() => {
+    resultsRef.current = results
+  })
+
+  // The import is for the search on screen. When it ends the same search runs again, so the
+  // new tracks are ranked with the catalog.
+  const onImported = useCallback(
+    ({ text: importedText, newTrackIds }: ImportOutcome) => {
+      const shown = resultsRef.current
+      if (shown && shown.request.text === importedText) {
+        runCount.current += 1
+        void run(shown.request, [], runBase + runCount.current, { newTrackIds, imported: newTrackIds.length }, true)
+      } else if (newTrackIds.length > 0) {
+        toast.info(s.jamendo.addedElsewhere(newTrackIds.length, importedText))
+      }
+    },
+    [run, runBase, toast],
+  )
+  const jamendo = useJamendoImport({
+    text: results?.request.text,
+    filters: results?.request.filters,
+    onFinished: onImported,
+  })
+  const resetImport = jamendo.reset
+
   const submit = (override?: string) => {
     const query = (override ?? text).trim()
     if (override !== undefined) setText(override)
@@ -140,6 +185,7 @@ export default function SearchPage() {
       return
     }
     setInputError(null)
+    resetImport()
     runCount.current += 1
     void run({ text: query || undefined, filters: api }, [], runBase + runCount.current)
   }
@@ -243,10 +289,27 @@ export default function SearchPage() {
               {problem.message}
             </Notice>
           ) : null}
+          {jamendo.active ? (
+            <InlineJobProgress
+              key={jamendo.active.job.id}
+              job={jamendo.active.job}
+              title={s.jamendo.progressTitle(jamendo.active.text)}
+              onSettled={jamendo.onSettled}
+            />
+          ) : null}
+          <StartError error={jamendo.error} />
+          {jamendo.failure ? (
+            <Notice kind="error" title={s.jamendo.failedTitle}>
+              {jamendo.failure}
+            </Notice>
+          ) : null}
           {results ? (
             <ResultsView
               results={results}
               loading={loading}
+              canImport={!jamendo.active}
+              importPending={jamendo.pending}
+              onImport={jamendo.start}
               loadingMore={busy === 'more'}
               onLoadMore={() => void run(results.request, results.items, results.runId)}
               onOpen={setDrawerId}
@@ -266,13 +329,32 @@ interface ResultsViewProps {
   results: ResultSet
   loading: boolean
   loadingMore: boolean
+  /** No import is running, so one may start (a text search only). */
+  canImport: boolean
+  importPending: boolean
+  onImport: () => void
   onLoadMore: () => void
   onOpen: (trackId: number) => void
   onRate: (item: SearchItem, rating: RatingValue | null) => void
 }
 
-function ResultsView({ results, loading, loadingMore, onLoadMore, onOpen, onRate }: ResultsViewProps) {
-  const { items, total, relaxed, notes, unembedded, model, elapsedMs } = results
+function ResultsView({
+  results,
+  loading,
+  loadingMore,
+  canImport,
+  importPending,
+  onImport,
+  onLoadMore,
+  onOpen,
+  onRate,
+}: ResultsViewProps) {
+  const { items, total, relaxed, notes, unembedded, model, elapsedMs, weak, newTrackIds, imported } = results
+  const hasText = Boolean(results.request.text)
+  const fresh = new Set(newTrackIds)
+  const importButtonText = importPending ? s.jamendo.starting : s.jamendo.action
+  // Weak results: the notice carries the one import button, so the quiet one below is hidden.
+  const suggestImport = hasText && Boolean(weak) && canImport && imported == null
   const hasMore = items.length < total
   const summary = [
     s.results.summary(items.length, total),
@@ -283,6 +365,21 @@ function ResultsView({ results, loading, loadingMore, onLoadMore, onOpen, onRate
     <div className={loading ? styles.stale : undefined}>
       <p className={styles.summary}>{summary.join(' · ')}</p>
       <div className={styles.notices}>
+        {suggestImport ? (
+          <Notice
+            kind="warning"
+            action={
+              <Button size="sm" variant="primary" disabled={importPending} onClick={onImport}>
+                {importButtonText}
+              </Button>
+            }
+          >
+            {s.jamendo.weakNotice}
+          </Notice>
+        ) : null}
+        {imported != null ? (
+          <Notice>{imported > 0 ? s.jamendo.added(imported) : s.jamendo.noneFound}</Notice>
+        ) : null}
         {relaxed.length > 0 ? (
           <Notice kind="warning">{s.results.relaxed(relaxed.join('; '))}</Notice>
         ) : null}
@@ -297,7 +394,7 @@ function ResultsView({ results, loading, loadingMore, onLoadMore, onOpen, onRate
         <ul className={styles.list}>
           {items.map((item) => (
             <li key={item.track_id}>
-              <ResultRow item={item} onOpen={onOpen} onRate={onRate} />
+              <ResultRow item={item} isNew={fresh.has(item.track_id)} onOpen={onOpen} onRate={onRate} />
             </li>
           ))}
         </ul>
@@ -306,6 +403,13 @@ function ResultsView({ results, loading, loadingMore, onLoadMore, onOpen, onRate
         <div className={styles.more}>
           <Button disabled={loadingMore} onClick={onLoadMore}>
             {loadingMore ? s.results.loadingMore : s.results.loadMore}
+          </Button>
+        </div>
+      ) : null}
+      {hasText && canImport && !suggestImport ? (
+        <div className={styles.more}>
+          <Button variant="ghost" disabled={importPending} onClick={onImport}>
+            {importButtonText}
           </Button>
         </div>
       ) : null}

@@ -68,6 +68,7 @@ class SearchUpdate(_Body):
     pool_size: int | None = None
     max_per_artist: int | None = None
     min_results: int | None = None
+    weak_cosine: float | None = None
     weights: WeightsUpdate | None = None
 
 
@@ -99,6 +100,7 @@ def settings_view(settings: Settings) -> dict[str, Any]:
                 "pool_size": search.pool_size,
                 "max_per_artist": search.max_per_artist,
                 "min_results": search.min_results,
+                "weak_cosine": search.weak_cosine,
                 "weights": search.weights.model_dump(),
             },
         },

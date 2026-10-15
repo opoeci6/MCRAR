@@ -28,6 +28,7 @@ def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> Non
         "pool_size",
         "max_per_artist",
         "min_results",
+        "weak_cosine",
         "weights",
     }
     assert set(body["editable"]["search"]["weights"]) == {"semantic", "tags", "bpm", "energy"}
@@ -136,6 +137,8 @@ def test_a_field_pinned_by_the_environment_is_a_409_naming_it(
         {"search": {"weights": {"nope": 1}}},
         {"commercial_mode": False},  # the removed setting is no longer accepted
         {"search": {"pool_size": 0}},
+        {"search": {"weak_cosine": 1.5}},
+        {"search": {"weak_cosine": -0.1}},
         {"search": {"pool_size": "many"}},
         {"search": {"weights": {"tags": -1}}},
         {"search": {"weights": {"semantic": 0, "tags": 0, "bpm": 0, "energy": 0}}},
@@ -159,3 +162,14 @@ def test_cross_origin_writes_are_refused_on_every_new_route(tmp_path: Path) -> N
         assert client.post("/api/analyze", headers=EVIL).status_code == 403
         assert client.put("/api/secrets/x", json={"value": "v"}, headers=EVIL).status_code == 403
         assert client.delete("/api/secrets/x", headers=EVIL).status_code == 403
+
+
+def test_the_weak_match_threshold_is_editable_and_unset_by_default(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        assert client.get("/api/settings").json()["editable"]["search"]["weak_cosine"] is None
+        response = client.put("/api/settings", json={"search": {"weak_cosine": 0.5}})
+        assert response.status_code == 200
+        assert response.json()["editable"]["search"]["weak_cosine"] == 0.5
+        assert state.settings.search.weak_cosine == 0.5
+        assert disk(state.settings.home) == {"search": {"weak_cosine": 0.5}}

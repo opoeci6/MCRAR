@@ -48,6 +48,19 @@ class SearchItem:
 
 
 @dataclass(frozen=True)
+class MatchQuality:
+    """How well the catalog matched the query text. ``top_cosine`` is the highest raw cosine
+    similarity (not the min-max normalised score, which is always 1.0 for the top hit) of the
+    ranked candidates of the final attempt; None without text or when nothing was ranked.
+    ``weak`` says the text matched poorly (or nothing was ranked), judged against the
+    ``search.weak_cosine`` threshold; it is never set for a filter-only search or an embedder
+    with no known threshold."""
+
+    top_cosine: float | None = None
+    weak: bool = False
+
+
+@dataclass(frozen=True)
 class SearchResult:
     """``total_candidates`` is the number of ranked candidates (after the per-artist cap) that
     ``offset`` and ``limit`` page through. ``parsed`` is the query as understood, before any
@@ -62,6 +75,7 @@ class SearchResult:
     model_id: str
     elapsed_ms: float
     notes: list[str] = field(default_factory=list)
+    match: MatchQuality = field(default_factory=MatchQuality)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

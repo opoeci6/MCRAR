@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { Job } from '../../api'
 
 /** Runs a request that starts a job, and keeps its pending state and error. */
@@ -17,5 +17,6 @@ export function useStartJob(onStarted: (job: Job) => void) {
       setPending(false)
     }
   }
-  return { pending, error, start }
+  const reset = useCallback(() => setError(null), [])
+  return { pending, error, start, reset }
 }

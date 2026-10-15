@@ -107,6 +107,9 @@ class SearchSettings(BaseModel):
     pool_size: int = Field(200, ge=1)  # candidates retrieved and ranked per query
     max_per_artist: int = Field(2, ge=1)  # results per artist in one result list
     min_results: int = Field(1, ge=0)  # fewer results than this relaxes the hard filters
+    # Raw top-1 cosine below which a text search is a weak match (the UI then offers a Jamendo
+    # import). None: the embedder's default, ``recommend.service.WEAK_COSINE_DEFAULTS``.
+    weak_cosine: float | None = Field(None, ge=0, le=1)
     weights: SearchWeights = SearchWeights()
 
 

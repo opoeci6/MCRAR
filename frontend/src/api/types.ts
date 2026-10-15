@@ -127,6 +127,14 @@ export interface ParsedQuery {
   notes: string[]
 }
 
+/** How well the best result matched a text search. */
+export interface MatchQuality {
+  /** Cosine similarity of the best result, or `null` without text or without results. */
+  top_cosine: number | null
+  /** The best match is weak, so importing more tracks may help. Only ever true with text. */
+  weak: boolean
+}
+
 export interface SearchResponse {
   items: SearchItem[]
   /** Ranked candidates that `offset` and `limit` page through. */
@@ -139,6 +147,8 @@ export interface SearchResponse {
   elapsed_ms: number
   /** Messages for the user (missing embeddings, an empty result and why). */
   notes: string[]
+  /** Absent from an older backend: read it as `{ top_cosine: null, weak: false }`. */
+  match?: MatchQuality
 }
 
 // -- tracks --------------------------------------------------------------------------------
@@ -369,6 +379,8 @@ export interface JobReport {
   failures_total: number
   elapsed_s: number
   aborted?: string | null
+  /** Tracks this job added to the catalog (import-for-search jobs). */
+  new_track_ids?: number[]
 }
 
 export interface JobDetail extends Job {
@@ -386,6 +398,15 @@ export interface JamendoIngestRequest {
   limit?: number
   embed?: boolean
   force?: boolean
+}
+
+/** Searches Jamendo for the text of a search and imports the candidates found. */
+export interface SearchImportRequest {
+  text: string
+  /** The filters of the search, the same object that `SearchRequest` takes. */
+  filters?: SearchFilters
+  /** 1 to 100; the backend defaults to 50. */
+  limit?: number
 }
 
 export interface LocalIngestRequest {

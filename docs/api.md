@@ -25,7 +25,7 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 | Area | Routes |
 |---|---|
 | Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
-| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query |
+| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, 0.40 for CLAP by default); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
 | Ratings | `PUT /ratings` `{text?, filters?, track_id, rating: 0\|1\|2}`; `DELETE /ratings` (same body without `rating`); `GET /ratings?limit&offset`. A rating is keyed by the lowercased query text, or by canonical filters for a filter-only search. |
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
 | Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=` |
@@ -58,7 +58,8 @@ Errors are JSON `{"detail": "..."}`:
   0.5 means "an average track for this label", and genre and mood scores share one scale. The
   raw stored probabilities are in `GET /tracks/{id}`. A genre/mood filter without text needs no
   `ml` extra when every matching track has stored tags from the allowed model.
-- **Ingest jobs.** Only one job runs at a time (a second gets 409). Jobs use the same loaded
+- **Ingest jobs.** Only one job runs at a time (a second gets 409). A finished job's report
+  lists `new_track_ids` (up to 200). Jobs use the same loaded
   model as search.
   - The event stream replays from `Last-Event-ID` or `?after=` and ends with `done`, `failed` or
     `cancelled`.
