@@ -9,7 +9,7 @@ Status: in development. Done: M0 toolchain, M1 audio analysis, M2 catalog and Ja
 ingest with licensing, M3a text-to-music embeddings (CLAP by default), M3b genre and mood
 tagging (`mcrar tag`; see [docs/model_card.md](docs/model_card.md)), M4 search and ranking
 (`mcrar search`), M5 local HTTP API (`mcrar serve`; see [docs/api.md](docs/api.md)).
-Next: M6 UI.
+M6 UI (open `http://127.0.0.1:8000` after `mcrar serve`). Next: M7–M10.
 
 - **Current state, decisions and open items: [docs/STATUS.md](docs/STATUS.md)**
 - Development setup (everything stays inside the repo folder): [docs/dev-setup.md](docs/dev-setup.md)

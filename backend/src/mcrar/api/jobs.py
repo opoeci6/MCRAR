@@ -245,7 +245,10 @@ class JobManager:
             report = run(ProgressSink(job))
         except JobCancelled as exc:
             partial = getattr(exc, "report", None)
-            job.finish("cancelled", None if partial is None else report_to_dict(partial))
+            report = None if partial is None else report_to_dict(partial)
+            if report is not None:
+                report["aborted"] = "cancelled"  # not the internal "JobCancelled" exception text
+            job.finish("cancelled", report)
         except BaseException as exc:  # noqa: BLE001 - whatever happens, the job must end
             log.warning("job %s failed (%s)", job.id, type(exc).__name__)
             partial = getattr(exc, "report", None)

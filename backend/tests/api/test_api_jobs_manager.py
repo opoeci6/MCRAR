@@ -132,6 +132,7 @@ def test_cancelling_stops_at_the_next_event_and_keeps_the_partial_report() -> No
     wait_ended(job)
     assert job.status == "cancelled"
     assert job.report is not None and job.report["processed"] == 2
+    assert job.report["aborted"] == "cancelled"  # a plain reason, not the exception's name
     events = job.events_after(0)
     assert events[-1]["type"] == "cancelled" and events[-1]["data"]["report"]["processed"] == 2
     kinds = [e["data"]["kind"] for e in events if e["type"] == "progress"]

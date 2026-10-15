@@ -25,7 +25,8 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 | Area | Routes |
 |---|---|
 | Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
-| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown and explanation |
+| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query |
+| Ratings | `PUT /ratings` `{text?, filters?, track_id, rating: 0\|1\|2}`; `DELETE /ratings` (same body without `rating`); `GET /ratings?limit&offset`. A rating is keyed by the lowercased query text, or by canonical filters for a filter-only search. |
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
 | Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=` |
 | Settings | `GET/PUT /settings` (editable: `commercial_mode`, `default_embedder`, `search.*`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |

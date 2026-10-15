@@ -117,8 +117,24 @@ CREATE TABLE shortlist_items (
 CREATE INDEX idx_shortlist_items_track ON shortlist_items (track_id);
 """
 
+# Ratings of results per query: query_key is built by mcrar.recommend.ratings.query_key, the
+# stored text and filters let the query be run again. Rows go with their track.
+_V2 = """
+CREATE TABLE ratings (
+    query_key TEXT NOT NULL,
+    query_text TEXT,
+    filters_json TEXT NOT NULL DEFAULT '{}',
+    track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+    rating INTEGER NOT NULL CHECK (rating IN (0, 1, 2)),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (query_key, track_id)
+);
+CREATE INDEX idx_ratings_track ON ratings (track_id);
+"""
+
 # Append only; never edit a released script. Schema version == len(applied scripts).
-MIGRATIONS: tuple[str, ...] = (_V1,)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2)
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

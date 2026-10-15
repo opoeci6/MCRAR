@@ -216,7 +216,9 @@ class SearchService:
             return np.asarray(self._get_embedder().embed_text(list(texts)), dtype=np.float32)
 
     def _embed_query(self, text: str) -> np.ndarray:
-        key = " ".join(text.split())
+        # CLAP's text encoder is case-sensitive ("Tense ..." and "tense ..." ranked differently);
+        # one intent should give one ranking, and ratings are keyed case-insensitively too.
+        key = " ".join(text.split()).lower()
         with self._lock:
             cached = self._queries.get(key)
             if cached is not None:

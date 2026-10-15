@@ -16,6 +16,7 @@ EXPECTED_TABLES = {
     "ingest_log",
     "projects",
     "shortlist_items",
+    "ratings",
 }
 
 
