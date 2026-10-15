@@ -24,7 +24,7 @@ from mcrar.audio import AudioFeatures
 from mcrar.catalog import CatalogRepository, TrackRecord
 from mcrar.config import Settings, get_settings
 from mcrar.ml import MODELS
-from mcrar.recommend import SearchService
+from mcrar.recommend import SearchService, StoredTagScorer
 from mcrar.sources import SourceTrack
 
 DIM = 8
@@ -367,7 +367,13 @@ def make_service(
     **search: Any,
 ) -> tuple[SearchService, MapEmbedder]:
     embedder = embedder or MapEmbedder(QUERY_TEXTS)
-    service = SearchService(repo, make_settings(**search), embedder_loader=lambda: embedder)
+    # Stored tags are trusted whatever their model version (the licence gate has its own tests).
+    service = SearchService(
+        repo,
+        make_settings(**search),
+        embedder_loader=lambda: embedder,
+        stored_tags=StoredTagScorer(repo),
+    )
     return service, embedder
 
 

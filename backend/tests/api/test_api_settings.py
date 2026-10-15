@@ -1,0 +1,185 @@
+"""GET/PUT /api/settings: the editable subset, the file, the live reload and the refusals."""
+
+from __future__ import annotations
+
+import tomllib
+from pathlib import Path
+
+import pytest
+from api_support import make_client
+
+from mcrar.config import settings_file
+
+EVIL = {"Origin": "https://evil.test"}
+
+
+def disk(home: Path) -> dict:
+    return tomllib.loads(settings_file(home).read_text(encoding="utf-8"))
+
+
+def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        body = client.get("/api/settings").json()
+        settings = client.app.state.mcrar.settings
+    assert set(body) == {"editable", "read_only", "overridden_by_env", "embedders"}
+    assert body["editable"]["commercial_mode"] is True
+    assert body["editable"]["default_embedder"] == "clap"
+    assert set(body["editable"]["search"]) == {
+        "pool_size",
+        "max_per_artist",
+        "min_results",
+        "weights",
+    }
+    assert set(body["editable"]["search"]["weights"]) == {"semantic", "tags", "bpm", "energy"}
+    assert body["read_only"] == {
+        "home": str(settings.home),
+        "data_dir": str(settings.data_dir),
+        "models_dir": str(settings.models_dir),
+        "cache_dir": str(settings.cache_dir),
+        "secrets_dir": str(settings.secrets_dir),
+        "secrets_backend": "file",
+        "api_host": "127.0.0.1",
+        "api_port": 8000,
+    }
+    assert body["overridden_by_env"] == []
+    by_key = {e["key"]: e for e in body["embedders"]}
+    assert set(by_key) == {"clap", "glap", "muq-mulan"}
+    assert by_key["clap"]["allowed"] is True
+    assert by_key["muq-mulan"]["commercial_ok"] is False
+    assert by_key["muq-mulan"]["allowed"] is False
+    assert by_key["muq-mulan"]["model_id"].startswith("muq-mulan@")
+
+
+def test_put_writes_the_file_and_reloads_the_running_state(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        old_search = state.search
+        response = client.put("/api/settings", json={"commercial_mode": False})
+        assert response.status_code == 200
+        assert response.json()["editable"]["commercial_mode"] is False
+        assert state.settings.commercial_mode is False
+        assert state.search is not old_search  # the search service was rebuilt
+        assert disk(state.settings.home) == {"commercial_mode": False}
+        allowed = {e["key"]: e["allowed"] for e in response.json()["embedders"]}
+        assert allowed["muq-mulan"] is True
+        assert client.get("/api/settings").json() == response.json()
+
+
+def test_put_nested_search_settings_are_merged(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        client.put("/api/settings", json={"search": {"pool_size": 77}})
+        response = client.put(
+            "/api/settings", json={"search": {"weights": {"tags": 0.9}, "min_results": 0}}
+        )
+        assert response.status_code == 200
+        state = client.app.state.mcrar
+        assert state.settings.search.pool_size == 77
+        assert state.settings.search.min_results == 0
+        assert state.settings.search.weights.tags == 0.9
+        assert state.settings.search.weights.semantic == 0.6
+        assert disk(state.settings.home) == {
+            "search": {"pool_size": 77, "min_results": 0, "weights": {"tags": 0.9}}
+        }
+
+
+def test_put_keeps_the_paths_of_the_running_server(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        before = client.get("/api/settings").json()["read_only"]
+        client.put("/api/settings", json={"search": {"pool_size": 10}})
+        assert client.get("/api/settings").json()["read_only"] == before
+
+
+def test_an_empty_put_changes_nothing(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        assert client.put("/api/settings", json={}).status_code == 200
+        assert not settings_file(client.app.state.mcrar.settings.home).exists()
+
+
+def test_a_non_commercial_embedder_is_refused_in_commercial_mode(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        response = client.put("/api/settings", json={"default_embedder": "muq-mulan"})
+        assert response.status_code == 422
+        assert "commercial mode off first" in response.json()["detail"]
+        state = client.app.state.mcrar
+        assert state.settings.default_embedder == "clap"
+        assert not settings_file(state.settings.home).exists()
+
+
+def test_a_non_commercial_embedder_is_accepted_together_with_commercial_off(
+    tmp_path: Path,
+) -> None:
+    with make_client(tmp_path) as client:
+        response = client.put(
+            "/api/settings", json={"default_embedder": "muq-mulan", "commercial_mode": False}
+        )
+        assert response.status_code == 200
+        assert client.app.state.mcrar.settings.default_embedder == "muq-mulan"
+
+
+def test_commercial_mode_cannot_be_turned_on_under_a_non_commercial_embedder(
+    tmp_path: Path,
+) -> None:
+    overrides = {"commercial_mode": False, "default_embedder": "muq-mulan"}
+    with make_client(tmp_path, settings_overrides=overrides) as client:
+        response = client.put("/api/settings", json={"commercial_mode": True})
+        assert response.status_code == 422
+        assert "commercial embedder" in response.json()["detail"]
+        assert client.app.state.mcrar.settings.commercial_mode is False
+
+
+def test_an_unknown_embedder_is_refused(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        response = client.put("/api/settings", json={"default_embedder": "nope"})
+        assert response.status_code == 422
+        assert "nope" in response.json()["detail"]
+
+
+def test_a_field_pinned_by_the_environment_is_a_409_naming_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MCRAR_SEARCH__POOL_SIZE", "42")
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        assert client.get("/api/settings").json()["overridden_by_env"] == ["search.pool_size"]
+        response = client.put("/api/settings", json={"search": {"pool_size": 5}})
+        assert response.status_code == 409
+        assert "search.pool_size" in response.json()["detail"]
+        assert not settings_file(state.settings.home).exists()
+        # other fields stay editable, and the env value still wins in the reloaded settings
+        assert client.put("/api/settings", json={"search": {"min_results": 3}}).status_code == 200
+        assert state.settings.search.pool_size == 42
+        assert state.settings.search.min_results == 3
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"api_port": 1},
+        {"home": "/x"},
+        {"search": {"unknown": 1}},
+        {"search": {"weights": {"nope": 1}}},
+        {"commercial_mode": "yes"},
+        {"search": {"pool_size": 0}},
+        {"search": {"pool_size": "many"}},
+        {"search": {"weights": {"tags": -1}}},
+        {"search": {"weights": {"semantic": 0, "tags": 0, "bpm": 0, "energy": 0}}},
+        {"default_embedder": ""},
+    ],
+)
+def test_invalid_bodies_are_422_and_change_nothing(tmp_path: Path, body: dict) -> None:
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        before = state.settings
+        assert client.put("/api/settings", json=body).status_code == 422
+        assert state.settings is before
+        assert not settings_file(before.home).exists()
+
+
+def test_cross_origin_writes_are_refused_on_every_new_route(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        put = client.put("/api/settings", json={"commercial_mode": False}, headers=EVIL)
+        assert put.status_code == 403
+        assert client.app.state.mcrar.settings.commercial_mode is True
+        assert client.post("/api/analyze", headers=EVIL).status_code == 403
+        assert client.put("/api/secrets/x", json={"value": "v"}, headers=EVIL).status_code == 403
+        assert client.delete("/api/secrets/x", headers=EVIL).status_code == 403

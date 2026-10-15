@@ -17,7 +17,7 @@ try {
     $uvExe = (Get-Command uv -CommandType Application).Source
     Write-Host 'Starting backend on http://127.0.0.1:8000 ...'
     $backendProc = Start-Process -FilePath $uvExe -WorkingDirectory $backendDir -NoNewWindow -PassThru `
-        -ArgumentList @('run', 'uvicorn', 'mcrar.api.app:app', '--host', '127.0.0.1', '--port', '8000', '--reload')
+        -ArgumentList @('run', 'uvicorn', '--factory', 'mcrar.api.app:create_app', '--host', '127.0.0.1', '--port', '8000', '--reload')
 
     Write-Host 'Starting frontend (Vite) ...'
     Push-Location (Join-Path $Root 'frontend')

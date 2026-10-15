@@ -3,15 +3,26 @@
 All paths are repo-relative by default and resolved against ``home``.
 There is deliberately no import-time singleton: call :func:`get_settings` (tests can pass
 overrides or set ``MCRAR_HOME`` and friends via ``monkeypatch``).
+
+The settings page edits the file through :func:`save_settings_update`: only the keys in
+:data:`EDITABLE_KEYS` can be changed, the merged result is validated before anything is written,
+and the file is replaced atomically, so a rejected or interrupted update never leaves a broken
+file behind. :func:`env_overrides` lists the fields an ``MCRAR_*`` variable currently pins (the
+file value would lose against it).
 """
 
 from __future__ import annotations
 
+import copy
 import os
+import tempfile
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+import tomli_w
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -129,3 +140,120 @@ class Settings(BaseSettings):
 def get_settings(**overrides: Any) -> Settings:
     """Build a fresh Settings object (no caching, so tests and callers can override)."""
     return Settings(**overrides)
+
+
+# -- editing the settings file (the settings page) ----------------------------------------------
+
+EDITABLE_KEYS = frozenset({"commercial_mode", "default_embedder", "search"})
+_ENV_PREFIX = "MCRAR_"
+
+
+class _EditableSettings(BaseModel):
+    """The editable subset of :class:`Settings`, used to validate an update before it is saved."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    commercial_mode: bool = True
+    default_embedder: str = Field("clap", min_length=1)
+    search: SearchSettings = SearchSettings()
+
+
+def settings_file(home: Path) -> Path:
+    return home / SETTINGS_FILE
+
+
+def _deep_merge(base: dict[str, Any], update: Mapping[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(base)
+    for key, value in update.items():
+        if isinstance(value, Mapping) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        elif isinstance(value, Mapping):
+            merged[key] = _deep_merge({}, value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _describe(exc: ValidationError) -> str:
+    return "; ".join(
+        f"{'.'.join(str(p) for p in err['loc']) or 'settings'}: {err['msg']}"
+        for err in exc.errors(include_input=False, include_url=False)
+    )
+
+
+def save_settings_update(home: Path, update: Mapping[str, Any]) -> None:
+    """Merge ``update`` into ``<home>/config/settings.toml`` and write it atomically.
+
+    ``update`` holds only editable keys (``commercial_mode``, ``default_embedder``, ``search`` with
+    its nested ``weights``); nested tables are merged key by key and every other key already in
+    the file is kept. Raises ``ValueError`` (file untouched) for a key that is not editable or a
+    value that does not validate.
+    """
+    unknown = sorted(set(update) - EDITABLE_KEYS)
+    if unknown:
+        raise ValueError(f"not an editable setting: {', '.join(unknown)}")
+    path = settings_file(home)
+    existing: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            existing = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ValueError(f"cannot read {path}: {type(exc).__name__}") from None
+    merged = _deep_merge(existing, update)
+    try:
+        _EditableSettings.model_validate({k: v for k, v in merged.items() if k in EDITABLE_KEYS})
+    except ValidationError as exc:
+        raise ValueError(f"invalid settings: {_describe(exc)}") from None
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".settings-", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            tomli_w.dump(merged, handle)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _leaves(model: type[BaseModel], prefix: str = "") -> list[str]:
+    names: list[str] = []
+    for name, field in model.model_fields.items():
+        inner = field.annotation
+        if isinstance(inner, type) and issubclass(inner, BaseModel):
+            names.extend(_leaves(inner, f"{prefix}{name}."))
+        else:
+            names.append(f"{prefix}{name}")
+    return names
+
+
+def env_overrides() -> list[str]:
+    """Dotted names of the settings fields an ``MCRAR_*`` environment variable currently sets
+    (``commercial_mode``, ``search.pool_size``, ``search.weights.tags``), sorted.
+
+    ``MCRAR_HOME``, ``MCRAR_SECRET_*`` and variables that name no settings field are ignored. A
+    variable that sets a whole table (``MCRAR_SEARCH='{...}'``) counts for every field in it.
+    """
+    found: set[str] = set()
+    for key in os.environ:
+        if not key.upper().startswith(_ENV_PREFIX):
+            continue
+        parts = key[len(_ENV_PREFIX) :].lower().split("__")
+        if parts[0] == "home" or parts[0].startswith("secret_"):  # location; secrets
+            continue
+        model: type[BaseModel] = Settings
+        path: list[str] = []
+        for index, part in enumerate(parts):
+            field = model.model_fields.get(part)
+            if field is None:
+                break
+            path.append(part)
+            inner = field.annotation
+            if isinstance(inner, type) and issubclass(inner, BaseModel):
+                model = inner
+                if index == len(parts) - 1:
+                    found.update(_leaves(inner, ".".join(path) + "."))
+            else:
+                if index == len(parts) - 1:
+                    found.add(".".join(path))
+                break
+    return sorted(found)

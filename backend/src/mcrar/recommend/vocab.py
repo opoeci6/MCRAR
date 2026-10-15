@@ -170,6 +170,14 @@ class Vocabulary:
     def display_name(self, label_set: str, label: str) -> str:
         return self._sets[label_set].display_name(label)
 
+    def synonyms(self, label_set: str, label: str) -> tuple[str, ...]:
+        """The built-in synonym phrases that point at this label (not its id or display name)."""
+        return tuple(
+            phrase
+            for phrase, targets in SYNONYMS.items()
+            if (label_set, label) in targets and self.has(label_set, label)
+        )
+
     def has(self, label_set: str, label: str) -> bool:
         return label_set in self._sets and label in self._sets[label_set].labels
 

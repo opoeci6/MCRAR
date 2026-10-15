@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-12.
+Last updated: 2026-10-14.
 
 ## 1. Milestones
 
@@ -17,11 +17,11 @@ Last updated: 2026-10-12.
 | M3b Tagging | Done (PR [#3](https://github.com/opoeci6/MCRAR/pull/3), merged 2026-10-12) | `dev` | By collaborator NineJZ356 with Codex. `mcrar datasets/tagging/tag`; results in `docs/model_card.md`; see §3.7 |
 | M3c CNN baseline (optional) | Not done | — | The collaborator skipped it; unassigned |
 | M4 Search and ranking | Done | `dev` | `mcrar search`; ingest embeds by default |
-| M5 API | Not started | — | Next; waiting for the owner's go (§5.3) |
+| M5 API | Done (2026-10-14) | `dev` | `mcrar serve`; routes, security model and limits in `docs/api.md`; see §3.8 |
 | M6–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`: 996 passed, 30 skipped (default); 993 passed without the `ml` extra (CI);
-29 real-model tests with `-m models`.
+Test suite on `dev`: 1,267 passed, 30 skipped (default); 1,264 passed without the `ml` extra
+(CI); 29 real-model tests with `-m models`.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -157,6 +157,41 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   844 comparable tracks. The main confusions are classical/folk → instrumental and hip-hop/pop →
   electronic.
 
+### 3.8 HTTP API (M5, 2026-10-14)
+- **Shape.**
+  - `create_app()` factory; a lifespan owns one `AppState` (catalog, `ModelPool`,
+    `SearchService`, `JobManager`).
+  - Sync endpoints run on the threadpool. That is safe because the repository and the search
+    service lock their shared state.
+  - The pool loads each model once and serialises calls to it, and search and ingest jobs share
+    that one loaded model.
+- **Local-only security.**
+  - Host allow-list (against DNS rebinding) and a loopback-`Origin` check on state-changing
+    requests.
+  - No CORS; the dev UI goes through the Vite proxy.
+  - Secrets are write-only over HTTP.
+  - Hosting for others needs authentication first, and `ingest/local` and `analyze` turned off
+    (`docs/api.md`).
+- **Licence gating.** Stored tags count only when their `model_version` is the registry entry
+  selected for the current mode. Without this, NC-head tags would have kept ranking after
+  switching back to commercial mode.
+- **Never re-host audio.** Jamendo previews are 307 redirects to a fresh URL, which carries no
+  client id. Local files are served from the catalog path, with Range support.
+- **Ingest jobs.**
+  - One at a time. Cancel works by raising from the progress callback, because the pipeline
+    has no cancel token.
+  - Server-Sent Events with replay.
+  - `ingest.stages.build_stages` is shared with the CLI.
+- **End-to-end on a copy of the real catalog** (24/24 checks):
+  - text search 0.1–0.2 s with CLAP warm
+  - stream 307 with no `client_id`
+  - local ingest, then a Range 206 on the file
+  - project credits
+  - settings round trip
+  - Jamendo ingest over SSE, 409 on a second job, and cancel
+  - foreign `Host` gets 400 and a foreign `Origin` gets 403
+  - no secret in the server log
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -184,8 +219,15 @@ M3b is merged and the real catalog is tagged. Still open:
 - **M4: normalise mood scores per label in the tag term.** Calibrated mood probabilities are
   low in absolute terms (multi-label base rates), so a mood counts far less than a genre, and the
   commercial zero-shot mood scores are uncalibrated.
-- **CLI search speed.** `mcrar search` with text loads CLAP on every run (about 15 s); the M5
-  server should keep it loaded.
+- **CLI search speed.** `mcrar search` with text still loads CLAP on every run (about 15 s). The
+  API server keeps it loaded, so use `mcrar serve` for repeated searches.
+- **Filter-only genre or mood search needs torch.** Zero-shot scores need the text model, even
+  when every track has stored tags. It could fall back to stored tags only.
+- **API polish:**
+  - The 50 MB analyze limit is checked after Starlette has spooled the upload.
+  - Duplicate project names return 422, not 409.
+  - On Windows, stopping `uv run mcrar serve` by killing its parent can leave the Python child
+    running; use Ctrl+C.
 - **Torch temp files.** torch writes a small kernel cache (about 250 KB) to the system temp
   folder; it could be redirected into `.cache/`.
 - **Starlette warning:** a deprecation warning about `httpx` in tests (harmless).
@@ -196,9 +238,15 @@ M3b is merged and the real catalog is tagged. Still open:
   PLAN §7 says.
 
 ### 5.3 Next milestone (waiting for the owner's go)
-**M5 API:** FastAPI wrapping search (CLAP kept loaded), track details, preview/stream redirects,
-settings, ingest with progress over SSE, reference upload, projects/shortlists and credits
-export. M6 (the UI) builds on it.
+**M6 UI** (React + Vite, `frontend/`), built on the M5 API:
+- query box and filters, including a "safe for commercial game" toggle and a duration range
+- results with an inline player, tag chips, the score breakdown, and a licence badge with
+  attribution
+- download where allowed
+- projects and shortlists, plus a credits export
+- settings: API keys, commercial mode and ingest with live progress
+
+M7 (LLM), M8 (Spotify), M9 (game-scene tags) and M10 (reference song) can follow in any order.
 
 ## 6. GitHub history
 
