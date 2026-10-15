@@ -9,7 +9,6 @@ is served from the file path stored in the catalog, with HTTP Range support (Sta
 from __future__ import annotations
 
 import mimetypes
-import re
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
@@ -17,6 +16,7 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response
 
+from mcrar.api.routes._files import credits_download, safe_stem
 from mcrar.api.state import AppState, StateDep
 from mcrar.catalog import StoredTrack
 from mcrar.licensing import track_credits
@@ -26,12 +26,6 @@ from mcrar.sources import JamendoError
 
 router = APIRouter()
 
-CREDITS_TYPES = {
-    "txt": ("text/plain; charset=utf-8", "txt"),
-    "md": ("text/markdown; charset=utf-8", "md"),
-    "json": ("application/json", "json"),
-}
-
 
 def _track(state: AppState, track_id: int) -> StoredTrack:
     track = state.repo.get_track(track_id)
@@ -40,7 +34,7 @@ def _track(state: AppState, track_id: int) -> StoredTrack:
     return track
 
 
-def _summary(track: StoredTrack) -> dict[str, Any]:
+def track_summary(track: StoredTrack) -> dict[str, Any]:
     return {
         "id": track.id,
         "title": track.title,
@@ -66,7 +60,7 @@ def list_tracks(
         raise ValueError("risk must be one of: green, amber, red, unknown")
     tracks, total = state.repo.list_tracks(source=source, risk=risk, limit=limit, offset=offset)
     return {
-        "items": [_summary(t) for t in tracks],
+        "items": [track_summary(t) for t in tracks],
         "total": total,
         "limit": limit,
         "offset": offset,
@@ -88,7 +82,7 @@ def track_detail(track_id: int, state: StateDep) -> dict[str, Any]:
         if state.stored_tags.accepts(p.head, p.model_version)
     ]
     return {
-        **_summary(track),
+        **track_summary(track),
         "source_id": track.source_id,
         "album": track.album,
         "release_date": track.release_date,
@@ -175,10 +169,5 @@ def credits(
     fmt: Annotated[Literal["txt", "md", "json"], Query(alias="format")] = "txt",
 ) -> Response:
     track = _track(state, track_id)
-    media_type, extension = CREDITS_TYPES[fmt]
-    stem = re.sub(r"[^A-Za-z0-9._-]+", "-", track.title or "").strip("-.")[:60] or "track"
-    return Response(
-        track_credits(track, fmt),
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{stem}-license.{extension}"'},
-    )
+    stem = safe_stem(track.title, "track")
+    return credits_download(track_credits(track, fmt), fmt, stem=stem, suffix="license")

@@ -5,7 +5,14 @@ using music in a commercial game (syncing to visuals may create an adaptation), 
 """
 
 from mcrar.licensing.attribution import attribution_text
-from mcrar.licensing.credits import LICENSE_DISCLAIMER, CreditItem, render_credits, track_credits
+from mcrar.licensing.credits import (
+    LICENSE_DISCLAIMER,
+    CreditItem,
+    project_credits,
+    render_credits,
+    track_credit_item,
+    track_credits,
+)
 from mcrar.licensing.model import (
     RISK_ORDER,
     Family,
@@ -26,7 +33,9 @@ __all__ = [
     "attribution_text",
     "custom_license",
     "parse_license",
+    "project_credits",
     "render_credits",
     "risk_at_most",
+    "track_credit_item",
     "track_credits",
 ]

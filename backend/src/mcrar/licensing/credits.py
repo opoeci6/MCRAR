@@ -37,9 +37,13 @@ class CreditItem:
     source_url: str | None = None
     attribution_extra: str | None = None
     commercial_license_url: str | None = None
+    # A stored, ready-made credit line (catalog ``attribution_text``); used verbatim when set.
+    attribution_override: str | None = None
 
     @property
     def attribution(self) -> str:
+        if self.attribution_override:
+            return self.attribution_override
         return attribution_text(
             title=self.title,
             artist=self.artist,
@@ -79,8 +83,8 @@ def _heading(item: CreditItem) -> str:
     return f'"{item.title}" by {(item.artist or "").strip() or "Unknown artist"}'
 
 
-def _render_txt(items: list[CreditItem]) -> str:
-    out = ["MUSIC CREDITS", "", LICENSE_DISCLAIMER]
+def _render_txt(items: list[CreditItem], project: str | None) -> str:
+    out = ["MUSIC CREDITS" + (f": {project}" if project else ""), "", LICENSE_DISCLAIMER]
     for risk in _RENDER_ORDER:
         group = [i for i in items if i.license.risk == risk]
         if not group:
@@ -91,8 +95,9 @@ def _render_txt(items: list[CreditItem]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _render_md(items: list[CreditItem]) -> str:
-    out = ["# Music credits", "", f"> {LICENSE_DISCLAIMER}"]
+def _render_md(items: list[CreditItem], project: str | None) -> str:
+    title = "# Music credits" + (f": {project}" if project else "")
+    out = [title, "", f"> {LICENSE_DISCLAIMER}"]
     for risk in _RENDER_ORDER:
         group = [i for i in items if i.license.risk == risk]
         if not group:
@@ -103,45 +108,53 @@ def _render_md(items: list[CreditItem]) -> str:
     return "\n".join(out) + "\n"
 
 
-def _render_json(items: list[CreditItem]) -> str:
-    payload = {
-        "disclaimer": LICENSE_DISCLAIMER,
-        "items": [
-            {
-                "title": i.title,
-                "artist": i.artist,
-                "license": asdict(i.license),
-                "source_url": i.source_url,
-                "attribution_extra": i.attribution_extra,
-                "commercial_license_url": i.commercial_license_url,
-                "attribution": i.attribution,
-            }
-            for i in items
-        ],
-    }
+def _render_json(items: list[CreditItem], project: str | None) -> str:
+    payload: dict[str, object] = {"disclaimer": LICENSE_DISCLAIMER}
+    if project is not None:
+        payload["project"] = project
+    payload["items"] = [
+        {
+            "title": i.title,
+            "artist": i.artist,
+            "license": asdict(i.license),
+            "source_url": i.source_url,
+            "attribution_extra": i.attribution_extra,
+            "commercial_license_url": i.commercial_license_url,
+            "attribution": i.attribution,
+        }
+        for i in items
+    ]
     return json.dumps(payload, indent=2, ensure_ascii=False) + "\n"
 
 
-def render_credits(items: Sequence[CreditItem], fmt: Literal["txt", "md", "json"]) -> str:
+def render_credits(
+    items: Sequence[CreditItem],
+    fmt: Literal["txt", "md", "json"],
+    *,
+    project: str | None = None,
+) -> str:
     """Render credits grouped by risk (green, amber, unknown, red last), sorted deterministically.
 
-    The json format is an object `{"disclaimer": ..., "items": [...]}`.
+    The json format is an object `{"disclaimer": ..., "items": [...]}`. With ``project`` the txt
+    and md titles carry the name and the json object gains a ``"project"`` key.
     """
     ordered = _sorted(items)
     if fmt == "txt":
-        return _render_txt(ordered)
+        return _render_txt(ordered, project)
     if fmt == "md":
-        return _render_md(ordered)
+        return _render_md(ordered, project)
     if fmt == "json":
-        return _render_json(ordered)
+        return _render_json(ordered, project)
     raise ValueError(f"unsupported credits format: {fmt!r}")
 
 
-def track_credits(track: StoredTrack, fmt: Literal["txt", "md", "json"]) -> str:
-    """The credits / licence report of one catalog track (what the track page downloads).
+def track_credit_item(track: StoredTrack) -> CreditItem:
+    """One credit entry from a catalog row.
 
-    A first version: one item from the stored licence columns. A user-declared attribution
-    suffix kept in the stored ``attribution_text`` is passed on as the item's extra.
+    The licence is rebuilt from the stored columns (not by parsing the URL: a user-declared custom
+    licence has none), so its risk and flags are exactly what the catalog holds. The stored
+    ``attribution_text`` already carries any user-declared suffix and is the credit line verbatim;
+    a row without one gets the generated TASL line.
     """
     license_info = LicenseInfo(
         family=track.license_family or "unknown",  # type: ignore[arg-type]
@@ -161,12 +174,29 @@ def track_credits(track: StoredTrack, fmt: Literal["txt", "md", "json"]) -> str:
     )
     stored = (track.attribution_text or "").strip()
     extra = stored[len(generated) :].strip() if stored.startswith(generated) else ""
-    item = CreditItem(
+    return CreditItem(
         title=title,
         artist=track.artist,
         license=license_info,
         source_url=track.source_url,
         attribution_extra=extra or None,
         commercial_license_url=track.commercial_license_url,
+        attribution_override=stored or None,
     )
-    return render_credits([item], fmt)
+
+
+def track_credits(track: StoredTrack, fmt: Literal["txt", "md", "json"]) -> str:
+    """The credits / licence report of one catalog track (what the track page downloads)."""
+    return render_credits([track_credit_item(track)], fmt)
+
+
+def project_credits(
+    project_name: str, tracks: Sequence[StoredTrack], fmt: Literal["txt", "md", "json"]
+) -> str:
+    """The credits report of a project's shortlist, titled with the project name.
+
+    Every track is listed, a track with an unknown licence in the unknown group. The json
+    format gains a ``"project"`` key next to ``disclaimer`` and ``items``.
+    """
+    items = [track_credit_item(t) for t in tracks]
+    return render_credits(items, fmt, project=project_name)

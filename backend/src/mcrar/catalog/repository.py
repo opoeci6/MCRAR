@@ -117,6 +117,15 @@ class Project:
     created_at: str
 
 
+@dataclass(frozen=True)
+class ShortlistEntry:
+    """One shortlisted track with the note and the time it was added."""
+
+    track: StoredTrack
+    note: str | None
+    added_at: str
+
+
 _TRACK_FIELDS = tuple(f.name for f in fields(TrackRecord))
 _BOOL_FIELDS = frozenset(
     {
@@ -688,6 +697,35 @@ class CatalogRepository:
         rows = self._query("SELECT id, name, created_at FROM projects ORDER BY id")
         return [Project(*tuple(r)) for r in rows]
 
+    def shortlist_counts(self) -> dict[int, int]:
+        """Number of shortlisted tracks per project id (projects without any are absent)."""
+        rows = self._query("SELECT project_id, COUNT(*) FROM shortlist_items GROUP BY project_id")
+        return {int(r[0]): int(r[1]) for r in rows}
+
+    def get_project(self, project_id: int) -> Project | None:
+        rows = self._query("SELECT id, name, created_at FROM projects WHERE id = ?", (project_id,))
+        return Project(*tuple(rows[0])) if rows else None
+
+    def rename_project(self, project_id: int, name: str) -> None:
+        if not name.strip():
+            raise ValueError("project name must be non-empty")
+        with self._write() as conn:
+            if (
+                conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone()
+                is None
+            ):
+                raise LookupError(f"no project with id {project_id}")
+            if conn.execute(
+                "SELECT 1 FROM projects WHERE name = ? AND id <> ?", (name, project_id)
+            ).fetchone():
+                raise ValueError(f"project {name!r} already exists")
+            conn.execute("UPDATE projects SET name = ? WHERE id = ?", (name, project_id))
+
+    def delete_project(self, project_id: int) -> bool:
+        """Delete a project and (by cascade) its shortlist; the tracks stay. False if unknown."""
+        with self._write() as conn:
+            return conn.execute("DELETE FROM projects WHERE id = ?", (project_id,)).rowcount > 0
+
     def add_to_shortlist(self, project_id: int, track_id: int, note: str | None = None) -> None:
         """Add (or update the note of) a track in a project's shortlist."""
         with self._write() as conn:
@@ -721,3 +759,19 @@ class CatalogRepository:
             (project_id,),
         )
         return [_stored_track(r) for r in rows]
+
+    def shortlist_entries(self, project_id: int) -> list[ShortlistEntry]:
+        """Shortlisted tracks with note and add time, oldest first (ties by track id)."""
+        if self.get_project(project_id) is None:
+            raise LookupError(f"no project with id {project_id}")
+        tracks = {t.id: t for t in self.shortlist(project_id)}
+        rows = self._query(
+            "SELECT track_id, note, added_at FROM shortlist_items "
+            "WHERE project_id = ? ORDER BY added_at, track_id",
+            (project_id,),
+        )
+        return [
+            ShortlistEntry(tracks[r["track_id"]], r["note"], r["added_at"])
+            for r in rows
+            if r["track_id"] in tracks
+        ]
