@@ -120,3 +120,25 @@ def test_unknown_vocalinstrumental_and_image_fallback() -> None:
 
 def test_track_without_id_is_skipped() -> None:
     assert parse_track({"name": "no id"}) is None
+
+
+def test_html_entities_in_names_are_decoded() -> None:
+    data = copy.deepcopy(REAL_TRACK)
+    data["name"] = "Rock &amp; Roll &quot;Live&quot; &#39;99"
+    data["artist_name"] = "Jazyus &amp; EdSeGaMe"
+    data["album_name"] = "Tom &amp; Jerry&#039;s &lt;Best&gt; &amp;lt;"
+    track = parse_track(data)
+    assert track is not None
+    assert track.title == 'Rock & Roll "Live" \'99'
+    assert track.artist == "Jazyus & EdSeGaMe"
+    assert track.album == "Tom & Jerry's <Best> &lt;"  # one level only
+
+
+def test_entity_decoding_keeps_empty_and_missing_names() -> None:
+    data = copy.deepcopy(REAL_TRACK)
+    data["name"] = "  "
+    data["artist_name"] = None
+    data["album_name"] = ""
+    track = parse_track(data)
+    assert track is not None
+    assert (track.title, track.artist, track.album) == ("", "", None)

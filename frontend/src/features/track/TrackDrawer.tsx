@@ -3,6 +3,7 @@ import { getTrack, trackCreditsUrl } from '../../api/endpoints'
 import type { TrackDetail, TrackFeatures, TrackTag } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { formatNumber, formatTime } from '../../lib/format'
+import { linkify } from '../../lib/linkify'
 import { usePlayer } from '../../player/playerContext'
 import { strings } from '../../strings'
 import { Button, IconButton } from '../../ui/Button'
@@ -125,7 +126,7 @@ function LicenseSection({ track }: { track: TrackDetail }) {
       {license.attribution_text ? (
         <div>
           <div className={styles.hint}>{t.licence.credit}</div>
-          <p className={styles.credit}>{license.attribution_text}</p>
+          <p className={styles.credit}>{linkify(license.attribution_text)}</p>
         </div>
       ) : null}
       <ul className={styles.links}>

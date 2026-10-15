@@ -133,8 +133,25 @@ CREATE TABLE ratings (
 CREATE INDEX idx_ratings_track ON ratings (track_id);
 """
 
+# Jamendo sent HTML-escaped names ("Jazyus &amp; EdSeGaMe") that were stored as is. One level of
+# decoding, with &amp; last so that "&amp;lt;" becomes "&lt;" and not "<". New data is decoded at
+# parse time (mcrar.sources.jamendo.parse_track). In SQL, '''' is one single quote.
+_V3 = """
+UPDATE tracks SET
+    title = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(title,
+        '&quot;', '"'), '&#39;', ''''), '&#039;', ''''), '&apos;', ''''), '&lt;', '<'),
+        '&gt;', '>'), '&amp;', '&'),
+    artist = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(artist,
+        '&quot;', '"'), '&#39;', ''''), '&#039;', ''''), '&apos;', ''''), '&lt;', '<'),
+        '&gt;', '>'), '&amp;', '&'),
+    album = REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(album,
+        '&quot;', '"'), '&#39;', ''''), '&#039;', ''''), '&apos;', ''''), '&lt;', '<'),
+        '&gt;', '>'), '&amp;', '&')
+WHERE title LIKE '%&%' OR artist LIKE '%&%' OR album LIKE '%&%';
+"""
+
 # Append only; never edit a released script. Schema version == len(applied scripts).
-MIGRATIONS: tuple[str, ...] = (_V1, _V2)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3)
 
 
 def connect(path: str | Path) -> sqlite3.Connection:
