@@ -18,10 +18,12 @@ Last updated: 2026-10-15.
 | M3c CNN baseline (optional) | Not done | — | The collaborator skipped it; unassigned |
 | M4 Search and ranking | Done | `dev` | `mcrar search`; ingest embeds by default |
 | M5 API | Done (2026-10-14) | `dev` | `mcrar serve`; routes, security model and limits in `docs/api.md`; see §3.8 |
-| M6–M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M6 UI | Done (2026-10-15) | `dev` | React UI served by `mcrar serve` at `/`; result ratings; see §3.9 |
+| M7–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`: 1,290 passed, 30 skipped (default); 1,287 passed without the `ml` extra
-(CI); 29 real-model tests with `-m models`.
+Test suite on `dev`: 1,337 passed, 30 skipped (default); 1,334 passed without the `ml` extra
+(CI); 29 real-model tests with `-m models`. Frontend: 190 vitest tests, plus oxlint and the
+build (CI runs all three).
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -216,6 +218,46 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   - foreign `Host` gets 400 and a foreign `Origin` gets 403
   - no secret in the server log
 
+### 3.9 UI and ratings (M6, 2026-10-15)
+- **Owner's choices:**
+  - a clean look that follows the system light or dark theme
+  - English only, with all text in `strings.ts` modules so a translation can be added later
+  - result ratings as a real user feature, stored locally
+- **Stack.** React 19 with no UI kit, router or data-fetching library.
+  - Pages are hash tabs: Search, Projects, Library, Settings.
+  - There is one typed API client in `frontend/src/api/`.
+  - Styling is CSS Modules with design tokens on `:root`, redefined for dark mode.
+  - Tests use vitest, jsdom and Testing Library.
+- **Audio is never fetched in JavaScript.** One `<audio>` element plays
+  `/api/tracks/{id}/stream`, which redirects to Jamendo or serves the local file.
+- **Download** opens the source's own download page and also saves the track's licence file
+  (`/api/tracks/{id}/credits?format=txt`).
+- **Ratings** ("Not a fit / OK / Good fit", stored as 0/1/2).
+  - Storage: a `ratings` table, added by catalog migration v2.
+  - Key: the lowercased, whitespace-collapsed query text; a filter-only search uses canonical
+    filter JSON instead.
+  - The UI rates against the exact request that produced the results, not the edited form.
+  - `mcrar ratings import` loaded the 88 listening-test ratings in testing.
+  - `mcrar ratings eval` reproduces the 1.25 top-2 mean (24 rated / 6 unrated) on a copy of the
+    catalog.
+- **Query text is lowercased before embedding.** CLAP's text encoder is case-sensitive:
+  "Tense stealth level" and "tense stealth level" gave completely different top results. The
+  rated queries were all lowercase, so the benchmark is unchanged.
+- **End-to-end in the built-in browser,** on a copy of the real catalog with `mcrar serve
+  --warm`:
+  - text search in about 0.6 s cold and 70 ms warm
+  - a rating that persists for the same query
+  - Jamendo preview playback through the redirect
+  - "safe for commercial game" leaving only green results
+  - creating a project from the result menu
+  - the risk summary with the restricted warning
+  - credits md export with the full attribution lines
+  - a Jamendo ingest of 3 tracks with live progress
+  - cancelling a 15-track ingest after 2 tracks
+  - the commercial-mode round trip with confirmation
+  - the secret never shown
+  - dark mode: body text at 15.7:1 contrast and badges at 9.6:1
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -255,17 +297,23 @@ M3b is merged and the real catalog is tagged. Still open:
 - **BPM on slow classical.** Octave folding into 70–180 gives some slow classical pieces 160–174
   BPM (seen in a calm classical search). Low tempo confidence should widen the BPM match (×½), as
   PLAN §7 says.
+- **UI follow-ups:**
+  - **Tag scores display.** Top-tag chips show standardised scores as percentages (e.g.
+    "Trailer 94%"). They are relative strengths, not probabilities, so a label such as "strong /
+    typical" may read better.
+  - **Shortlist badges.** The shortlist's licence badges show risk and code only; the items
+    endpoint has no attribution.
+  - **Add-to-project menu.** It makes one request per project to find which projects already
+    hold a track; a "projects containing track" endpoint would be cleaner if there are many
+    projects.
+  - **Narrow windows.** Below about 900 px the header scrolls sideways; the UI is desktop-first.
+  - **Cancelled imports.** Tracks whose metadata was saved before a cancel stay in the catalog
+    without analysis or embedding; "Re-embed missing tracks" completes them.
 
 ### 5.3 Next milestone (waiting for the owner's go)
-**M6 UI** (React + Vite, `frontend/`), built on the M5 API:
-- query box and filters, including a "safe for commercial game" toggle and a duration range
-- results with an inline player, tag chips, the score breakdown, and a licence badge with
-  attribution
-- download where allowed
-- projects and shortlists, plus a credits export
-- settings: API keys, commercial mode and ingest with live progress
-
-M7 (LLM), M8 (Spotify), M9 (game-scene tags) and M10 (reference song) can follow in any order.
+M7 (LLM query parsing and rerank, API key first), M8 (Spotify metadata section), M9 (game-scene
+tags, with a hand-labelled set that can use the new rating UI) and M10 (reference song) can follow
+in any order; M11 (desktop packaging) comes last.
 
 ## 6. GitHub history
 
