@@ -712,11 +712,9 @@ def _ingest_embed_keys(embed: str | None, no_embed: bool, settings: Settings) ->
 
 def _tagging_stages(settings: Settings) -> list:
     """Tagging stages from M3b (tags from stored embeddings); none until that module exists."""
-    try:
-        from mcrar.ml.tagging import tagging_stages
-    except ImportError:
-        return []
-    return list(tagging_stages(settings))
+    from mcrar.ingest.stages import tagging_stages_for
+
+    return tagging_stages_for(settings)
 
 
 @contextmanager
@@ -726,16 +724,13 @@ def _ingest_stages(keys: list[str], settings: Settings) -> Iterator[list | None]
     Yields None (the pipeline's default, analysis only) when no models are asked for. Tagging
     reads the CLAP embedding, so its stages are added only when ``clap`` is among the models.
     """
-    from mcrar.ingest import AnalysisStage, EmbeddingStage
+    from mcrar.ingest.stages import build_stages
 
     if not keys:
         yield None
         return
     with _embedders(keys, settings) as embedders:
-        stages = [AnalysisStage(), *(EmbeddingStage(e) for e in embedders)]
-        if "clap" in keys:
-            stages += _tagging_stages(settings)
-        yield stages
+        yield build_stages(settings, embedders)
 
 
 @app.command()

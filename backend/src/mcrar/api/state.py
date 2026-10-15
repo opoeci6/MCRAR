@@ -3,7 +3,8 @@
 One state is built when the app starts (the lifespan in :mod:`mcrar.api.app`) and closed when it
 stops. It holds the catalog repository, the :class:`~mcrar.api.models.ModelPool`, the
 :class:`~mcrar.recommend.SearchService` that uses the pool, a factory for Jamendo clients and the
-cache of fresh Jamendo stream URLs. Routes get it through :func:`get_state`.
+cache of fresh Jamendo stream URLs and the :class:`~mcrar.api.jobs.JobManager` that runs ingest
+jobs. Routes get it through :func:`get_state`.
 
 ``reload_settings`` swaps the settings at run time (the settings page): it tells the pool and
 rebuilds the search service when the licence mode, the default embedder or the search settings
@@ -21,7 +22,8 @@ from typing import TYPE_CHECKING, Annotated, Any
 
 from fastapi import Depends, Request
 
-from mcrar.api.models import ModelPool, ModelUnavailableError
+from mcrar.api.jobs import JobManager
+from mcrar.api.models import ModelPool, ModelUnavailableError, torch_installed
 from mcrar.catalog import CatalogRepository, open_catalog
 from mcrar.recommend import SearchService, StoredTagScorer
 from mcrar.recommend.tags import allowed_tag_versions
@@ -109,6 +111,8 @@ class AppState:
             deps.jamendo_factory or default_jamendo_factory
         )
         self.stream_urls = StreamUrlCache()
+        self.torch_available: Callable[[], bool] = deps.torch_available or torch_installed
+        self.jobs = JobManager()
         self._lock = threading.Lock()
         try:
             self.stored_tags, self.search = self._build_search(settings)
@@ -178,6 +182,7 @@ class AppState:
         return thread
 
     def close(self) -> None:
+        self.jobs.close()  # a running job uses the pool and the repo: stop it first
         with self._lock:
             self.search.close()
             self.pool.close()

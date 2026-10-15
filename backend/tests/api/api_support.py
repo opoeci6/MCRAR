@@ -7,8 +7,10 @@
 
 from __future__ import annotations
 
+import json
 import sys
-from collections.abc import Sequence
+import time
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -19,7 +21,12 @@ for _folder in ("recommend", "ml"):  # tests/ has no __init__.py: import the sib
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from recommend_support import QUERY_TEXTS, MapEmbedder, build_catalog  # noqa: E402
+from recommend_support import (  # noqa: E402
+    QUERY_TEXTS,
+    FakeJamendoClient,
+    MapEmbedder,
+    build_catalog,
+)
 from tagging_support import register as register_tagging  # noqa: E402,F401
 
 from mcrar.api.app import create_app  # noqa: E402
@@ -127,3 +134,60 @@ def make_client(
     client.repo, client.ids, client.settings = repo, ids, settings
     client.embedder, client.loader, client.jamendo = embedder, loader, jamendo
     return client
+
+
+# -- ingest jobs ---------------------------------------------------------------------------------
+
+
+class IngestJamendo(FakeJamendoClient):
+    """A Jamendo client for the ingest routes: ``count`` new tracks (source ids from 9001, which
+    the synthetic catalog does not use), synthetic audio, nothing else."""
+
+    FIRST_ID = 9001
+
+    def __init__(self, count: int = 3) -> None:
+        super().__init__(count)
+        self.queries: list[dict[str, Any]] = []
+
+    def search_tracks(self, **kwargs: Any) -> Iterator[SourceTrack]:
+        self.queries.append(kwargs)
+        return iter(
+            SourceTrack(
+                source="jamendo",
+                source_id=str(self.FIRST_ID + n),
+                title=f"New Track {n + 1}",
+                artist=f"New Artist {n + 1}",
+                stream_url=f"https://audio.example/{self.FIRST_ID + n}",
+                license_url="https://creativecommons.org/licenses/by/4.0/",
+            )
+            for n in range(min(self.count, kwargs.get("limit", self.count)))
+        )
+
+
+def wait_done(client: ApiClient, job_id: str, timeout_s: float = 30.0) -> dict[str, Any]:
+    """Block until the job ended (no polling sleeps: it waits on the job's condition) and return
+    its detail as the API shows it."""
+    job = client.app.state.mcrar.jobs.get(job_id)
+    deadline = time.monotonic() + timeout_s
+    seen = 0
+    while True:
+        events, ended = job.wait_for_events(seen, 0.5)
+        seen += len(events)
+        if ended:
+            return client.get(f"/api/jobs/{job_id}").json()["job"]
+        if time.monotonic() > deadline:
+            raise AssertionError(f"job {job_id} did not end within {timeout_s} s")
+
+
+def parse_sse(text: str) -> list[dict[str, Any]]:
+    """The events of an SSE body as ``{"id", "event", "data"}`` dicts (comments are skipped)."""
+    events = []
+    for block in text.split("\n\n"):
+        lines = [line for line in block.split("\n") if line and not line.startswith(":")]
+        if not lines:
+            continue
+        fields = dict(line.split(": ", 1) for line in lines)
+        events.append(
+            {"id": int(fields["id"]), "event": fields["event"], "data": json.loads(fields["data"])}
+        )
+    return events
