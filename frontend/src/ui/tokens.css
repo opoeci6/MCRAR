@@ -1,0 +1,121 @@
+/*
+ * Design tokens. Every colour, space, radius and shadow used by the UI comes from here, so the
+ * light and dark themes only differ in this file. The theme follows the system setting.
+ *
+ * Spacing is a 4 px scale: --space-1 = 4px, --space-2 = 8px, --space-3 = 12px, ...
+ * Risk colours (text on background) are all at least 8:1 in both themes; --color-border-strong
+ * (control outlines) is at least 3:1 against surfaces.
+ */
+:root {
+  color-scheme: light dark;
+
+  /* Type */
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.625rem;
+  --leading: 1.5;
+
+  /* Spacing (4 px scale) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* Shape */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* Layout */
+  --header-h: 56px;
+  --player-h: 72px;
+  --content-max: 1120px;
+
+  /* Light theme */
+  --color-bg: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef0f4;
+  --color-border: #d6dae2;
+  --color-border-strong: #808899;
+  --color-text: #1a1d24;
+  --color-text-muted: #596071;
+  --color-accent: #3451c7;
+  --color-accent-hover: #2a43a8;
+  --color-accent-contrast: #ffffff;
+  --color-accent-soft: #e4e9fb;
+  --color-focus: #3451c7;
+  --color-overlay: rgb(15 18 28 / 0.45);
+
+  --shadow-sm: 0 1px 2px rgb(20 24 36 / 0.08);
+  --shadow-md: 0 4px 16px rgb(20 24 36 / 0.12);
+  --shadow-lg: 0 12px 40px rgb(20 24 36 / 0.2);
+
+  /* Status colours: foreground / background / border */
+  --risk-green-fg: #0f5132;
+  --risk-green-bg: #d9f5e3;
+  --risk-green-border: #8bd3a8;
+  --risk-amber-fg: #6b3a00;
+  --risk-amber-bg: #fdecc4;
+  --risk-amber-border: #e4b658;
+  --risk-red-fg: #7a1620;
+  --risk-red-bg: #fddde0;
+  --risk-red-border: #ea9aa2;
+  --risk-unknown-fg: #374151;
+  --risk-unknown-bg: #e5e7eb;
+  --risk-unknown-border: #b4bac4;
+
+  --color-info-fg: #1e3a8a;
+  --color-info-bg: #e4ecfd;
+  --color-info-border: #9db6ee;
+  --color-success: #167a43;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #101218;
+    --color-surface: #191c24;
+    --color-surface-2: #222632;
+    --color-border: #303644;
+    --color-border-strong: #6c7589;
+    --color-text: #e9ebf1;
+    --color-text-muted: #a2aabb;
+    --color-accent: #8ea3f7;
+    --color-accent-hover: #a9b9fa;
+    --color-accent-contrast: #0e1222;
+    --color-accent-soft: #263055;
+    --color-focus: #a9b9fa;
+    --color-overlay: rgb(0 0 0 / 0.6);
+
+    --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-md: 0 4px 16px rgb(0 0 0 / 0.45);
+    --shadow-lg: 0 12px 40px rgb(0 0 0 / 0.6);
+
+    --risk-green-fg: #8ee3ad;
+    --risk-green-bg: #0f2e1d;
+    --risk-green-border: #26704a;
+    --risk-amber-fg: #f6cf74;
+    --risk-amber-bg: #38280a;
+    --risk-amber-border: #7d5d1a;
+    --risk-red-fg: #f6a5ac;
+    --risk-red-bg: #3a1217;
+    --risk-red-border: #86303a;
+    --risk-unknown-fg: #cdd2db;
+    --risk-unknown-bg: #292e3a;
+    --risk-unknown-border: #4d566a;
+
+    --color-info-fg: #b9c9fb;
+    --color-info-bg: #1b2547;
+    --color-info-border: #384a86;
+    --color-success: #6fd69b;
+  }
+}

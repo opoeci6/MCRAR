@@ -1,0 +1,55 @@
+.group {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.option {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-left: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.option:first-child {
+  border-left: 0;
+}
+
+.option:hover:not(:disabled) {
+  background: var(--color-surface-2);
+}
+
+.option:disabled {
+  opacity: 0.5;
+}
+
+/* Keep the focus ring visible inside the clipped group. */
+.option:focus-visible {
+  outline-offset: -2px;
+}
+
+.selected.bad {
+  background: var(--risk-red-bg);
+  color: var(--risk-red-fg);
+}
+
+.selected.mid {
+  background: var(--color-accent-soft);
+  color: var(--color-text);
+}
+
+.selected.good {
+  background: var(--risk-green-bg);
+  color: var(--risk-green-fg);
+}

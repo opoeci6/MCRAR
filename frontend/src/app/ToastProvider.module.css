@@ -1,0 +1,56 @@
+.region {
+  position: fixed;
+  z-index: 80;
+  right: var(--space-4);
+  bottom: calc(var(--player-h) + var(--space-4));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-2);
+  max-width: min(420px, calc(100vw - 2 * var(--space-4)));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  border: 1px solid var(--toast-border);
+  border-radius: var(--radius-md);
+  background: var(--toast-bg);
+  color: var(--toast-fg);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  pointer-events: auto;
+  animation: pop 0.16s ease-out;
+}
+
+.info {
+  --toast-fg: var(--color-text);
+  --toast-bg: var(--color-surface);
+  --toast-border: var(--color-border-strong);
+}
+
+.error {
+  --toast-fg: var(--risk-red-fg);
+  --toast-bg: var(--risk-red-bg);
+  --toast-border: var(--risk-red-border);
+}
+
+.message {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.close {
+  flex: none;
+  color: inherit;
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}

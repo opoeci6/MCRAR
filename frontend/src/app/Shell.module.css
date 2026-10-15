@@ -1,0 +1,142 @@
+.shell {
+  min-height: 100vh;
+}
+
+.skip {
+  position: absolute;
+  left: var(--space-4);
+  top: -48px;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  background: var(--color-accent);
+  color: var(--color-accent-contrast);
+  text-decoration: none;
+}
+
+.skip:focus {
+  top: var(--space-2);
+  color: var(--color-accent-contrast);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.headerInner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  max-width: var(--content-max);
+  height: var(--header-h);
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.brand {
+  font-size: var(--text-lg);
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.brand:hover {
+  color: var(--color-text);
+}
+
+.nav {
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  gap: var(--space-1);
+}
+
+.tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  color: var(--color-text-muted);
+  font-weight: 550;
+  text-decoration: none;
+}
+
+.tab:hover {
+  color: var(--color-text);
+}
+
+.activeTab {
+  color: var(--color-text);
+}
+
+.activeTab::after {
+  content: '';
+  position: absolute;
+  left: var(--space-3);
+  right: var(--space-3);
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--color-accent);
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--risk-unknown-border);
+}
+
+.online {
+  background: var(--color-success);
+}
+
+.offline {
+  background: var(--risk-red-fg);
+}
+
+.main {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-6) var(--space-12);
+}
+
+.main:focus {
+  outline: none;
+}
+
+.withPlayer {
+  padding-bottom: calc(var(--player-h) + var(--space-8));
+}
+
+.banner {
+  margin-bottom: var(--space-6);
+}
+
+@media (max-width: 1000px) {
+  .headerInner {
+    gap: var(--space-3);
+    padding: 0 var(--space-4);
+  }
+
+  .tab {
+    padding: 0 var(--space-3);
+  }
+
+  .main {
+    padding: var(--space-6) var(--space-4) var(--space-10);
+  }
+}

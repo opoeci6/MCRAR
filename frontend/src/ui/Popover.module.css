@@ -1,0 +1,42 @@
+.wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.panel {
+  position: absolute;
+  z-index: 40;
+  min-width: 220px;
+  max-width: min(360px, 90vw);
+  padding: var(--space-2);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+
+.panel:focus {
+  outline: none;
+}
+
+.bottom-start {
+  top: calc(100% + var(--space-1));
+  left: 0;
+}
+
+.bottom-end {
+  top: calc(100% + var(--space-1));
+  right: 0;
+}
+
+.top-start {
+  bottom: calc(100% + var(--space-1));
+  left: 0;
+}
+
+.top-end {
+  bottom: calc(100% + var(--space-1));
+  right: 0;
+}
