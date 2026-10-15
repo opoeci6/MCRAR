@@ -1524,6 +1524,184 @@ def search(
     _print_search_result(result, explain=not no_explain, offset=offset)
 
 
+# -- ratings ---------------------------------------------------------------------------------------
+
+ratings_app = typer.Typer(
+    help="Your ratings of search results: import listening-test files, measure ranking quality.",
+    no_args_is_help=True,
+)
+app.add_typer(ratings_app, name="ratings")
+
+
+def _query_texts(data: object) -> dict[str, str]:
+    """``{query id: text}`` from a candidates file (``{"queries": [{"id", "text", ...}]}``)."""
+    from mcrar.ml.bakeoff import BakeoffError
+
+    entries = data.get("queries") if isinstance(data, dict) else None
+    if not isinstance(entries, list):
+        raise BakeoffError('queries file must look like {"queries": [{"id", "text", ...}]}')
+    texts: dict[str, str] = {}
+    for n, entry in enumerate(entries, start=1):
+        try:
+            texts[str(entry["id"])] = str(entry["text"])
+        except (KeyError, TypeError):
+            raise BakeoffError(f"query #{n} needs an id and a text") from None
+    return texts
+
+
+@ratings_app.command("import")
+def ratings_import(
+    ratings_file: Annotated[
+        Path, typer.Argument(help='JSON: {"ratings": [{"query_id", "track_id", "score"}]}')
+    ],
+    queries: Annotated[
+        Path,
+        typer.Option(
+            "--queries", help="The candidates_<timestamp>.json that holds the query texts."
+        ),
+    ],
+    replace: Annotated[
+        bool,
+        typer.Option(
+            "--replace",
+            help="First delete the stored ratings of the queries in the file (default: merge).",
+        ),
+    ] = False,
+) -> None:
+    """Store the ratings of a listening-test file as ratings of the query texts (repeatable)."""
+    from mcrar.ml.bakeoff import BakeoffError, common
+    from mcrar.ml.bakeoff import candidates as cand
+    from mcrar.recommend import SearchFilters
+    from mcrar.recommend.ratings import filters_to_json, normalise_text, query_key
+
+    try:
+        parsed = cand.parse_ratings(common.read_json(ratings_file))
+        texts = _query_texts(common.read_json(queries))
+        unknown = sorted({q for q, _ in parsed} - set(texts))
+        if unknown:
+            raise BakeoffError(f"the queries file has no query {', '.join(unknown)}")
+        keys = {q: query_key(texts[q], SearchFilters()) for q in {q for q, _ in parsed}}
+    except (BakeoffError, ValueError) as exc:
+        raise _fail(str(exc), 1) from None
+    filters_json = filters_to_json(SearchFilters())
+    stored = skipped = removed = 0
+    with _open_repo() as repo:
+        known = {t.id for t in repo.iter_tracks()}
+        if replace:
+            for rating in repo.iter_ratings():
+                if rating.query_key in keys.values():
+                    removed += repo.delete_rating(rating.query_key, rating.track_id)
+        for (query_id, track_id), score in sorted(parsed.items()):
+            if track_id not in known:
+                skipped += 1
+                continue
+            repo.set_rating(
+                keys[query_id],
+                track_id,
+                score,
+                query_text=normalise_text(texts[query_id]),
+                filters_json=filters_json,
+            )
+            stored += 1
+    if removed:
+        _line(f"Removed {removed} earlier rating(s) of these queries.")
+    _line(f"Stored {stored} rating(s) for {len(set(keys.values()))} query text(s).")
+    if skipped:
+        _line(f"Skipped {skipped} rating(s) of tracks that are not in the catalog.")
+
+
+def _mean(values: list[int]) -> float | None:
+    return sum(values) / len(values) if values else None
+
+
+def _eval_row(label: str, mean: float | None, rated: int, unrated: int) -> tuple[str, ...]:
+    return (label, "n/a" if mean is None else f"{mean:.2f}", str(rated), str(unrated))
+
+
+@ratings_app.command("eval")
+def ratings_eval(
+    k: Annotated[int, typer.Option("--k", min=1, help="Hits per query to look at.")] = 2,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Run every rated query through the current search and average your ratings of the top k.
+
+    Hits you did not rate are left out and counted. The overall mean pools all rated hits.
+    """
+    from contextlib import closing
+
+    from mcrar.ml import ModelError
+    from mcrar.recommend import SearchError, SearchRequest, SearchService
+    from mcrar.recommend.ratings import filters_from_json
+
+    settings = _settings()
+    with _open_repo() as repo:
+        queries = repo.rating_queries()
+        if not queries:
+            raise _fail("there are no ratings yet; rate results or run: mcrar ratings import", 1)
+        if any(text for _, text, _, _ in queries) and not _torch_available():
+            raise _fail(
+                "text queries need the ml extra (torch is not installed): uv sync --extra ml", 1
+            )
+
+        def load_embedder():  # noqa: ANN202 - called once, on the first text query
+            _line(f"Loading {settings.default_embedder} ...", err=True)
+            return _load_embedder(settings.default_embedder, settings)
+
+        report: list[dict] = []
+        try:
+            with closing(SearchService(repo, settings, embedder_loader=load_embedder)) as service:
+                for key, text, filters_json, _ in queries:
+                    request = SearchRequest(
+                        text=text, filters=filters_from_json(filters_json), limit=k, explain=False
+                    )
+                    items = service.search(request).items
+                    given = repo.ratings_for(key, (i.track_id for i in items))
+                    scores = [given[i.track_id] for i in items if i.track_id in given]
+                    report.append(
+                        {
+                            "query_key": key,
+                            "query_text": text,
+                            "filters": json.loads(filters_json),
+                            "mean": _mean(scores),
+                            "rated": len(scores),
+                            "unrated": len(items) - len(scores),
+                            "hits": [
+                                {"track_id": i.track_id, "rating": given.get(i.track_id)}
+                                for i in items
+                            ],
+                        }
+                    )
+        except (SearchError, ModelError) as exc:
+            raise _fail(str(exc), 1) from None
+        except ValueError as exc:
+            raise _fail(f"a stored query cannot be run ({exc})", 1) from None
+        except Exception as exc:  # never show a traceback
+            raise _fail(f"eval failed ({type(exc).__name__}: {str(exc)[:200]})", 1) from None
+    pooled = [h["rating"] for q in report for h in q["hits"] if h["rating"] is not None]
+    overall = {
+        "mean": _mean(pooled),
+        "rated": len(pooled),
+        "unrated": sum(q["unrated"] for q in report),
+    }
+    if as_json:
+        typer.echo(json.dumps({"k": k, "queries": report, "overall": overall}, indent=2))
+        return
+    rows = [("Query", f"Top-{k} mean", "Rated", "Unrated")]
+    for q in report:
+        label = q["query_text"] or q["query_key"].removeprefix("filters:")
+        mean, rated, unrated = q["mean"], q["rated"], q["unrated"]
+        rows.append(_eval_row(_shorten(label, SEARCH_TITLE_WIDTH), mean, rated, unrated))
+    rows.append(_eval_row("Overall (rated hits pooled)", **overall))
+    widths = [max(len(row[i]) for row in rows) for i in range(4)]
+    for row in rows:
+        _line(
+            "  ".join(
+                cell.ljust(w) if i == 0 else cell.rjust(w)
+                for i, (cell, w) in enumerate(zip(row, widths, strict=True))
+            )
+        )
+
+
 # -- serve -----------------------------------------------------------------------------------------
 
 

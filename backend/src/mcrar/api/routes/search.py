@@ -3,7 +3,8 @@
 The body mirrors the CLI: free text and/or structured filters. Filter values go through the same
 validation as the CLI's options (:func:`mcrar.recommend.request.build_filters`). Text search loads
 the embedding model on first use and answers 503 when the ``ml`` extra is missing; a search with
-filters only never loads it.
+filters only never loads it. Each item carries the owner's ``rating`` (0-2, or null) for this
+query (:mod:`mcrar.recommend.ratings`).
 """
 
 from __future__ import annotations
@@ -15,7 +16,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mcrar.api.state import StateDep
 from mcrar.recommend import SearchError, SearchFilters, SearchRequest
+from mcrar.recommend.ratings import query_key
 from mcrar.recommend.request import build_filters
+from mcrar.recommend.vocab import Vocabulary
 
 router = APIRouter()
 
@@ -44,11 +47,11 @@ class SearchBody(BaseModel):
     explain: bool = True
 
 
-@router.post("/api/search")
-def search(body: SearchBody, state: StateDep) -> dict[str, Any]:
-    f = body.filters
-    filters = build_filters(
-        state.search.vocab,
+def resolve_filters(f: FiltersBody, vocab: Vocabulary) -> SearchFilters:
+    """The body's filters as ``SearchFilters``, validated like the CLI options (shared with the
+    ratings routes, so a rating is filed under the same key as the search it came from)."""
+    return build_filters(
+        vocab,
         genres=f.genres,
         moods=f.moods,
         bpm=(f.bpm_min, f.bpm_max),
@@ -58,9 +61,20 @@ def search(body: SearchBody, state: StateDep) -> dict[str, Any]:
         sources=f.sources,
         arg=lambda name: "sources" if name == "source" else name,  # the body field is plural
     )
+
+
+@router.post("/api/search")
+def search(body: SearchBody, state: StateDep) -> dict[str, Any]:
+    filters = resolve_filters(body.filters, state.search.vocab)
     if not (body.text or "").strip() and filters == SearchFilters():
         raise SearchError("give a search text or at least one filter")
     request = SearchRequest(
         text=body.text, filters=filters, limit=body.limit, offset=body.offset, explain=body.explain
     )
-    return state.search.search(request).to_dict()
+    result = state.search.search(request).to_dict()
+    ratings = state.repo.ratings_for(
+        query_key(body.text, filters), (item["track_id"] for item in result["items"])
+    )
+    for item in result["items"]:
+        item["rating"] = ratings.get(item["track_id"])
+    return result

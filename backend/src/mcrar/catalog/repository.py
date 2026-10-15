@@ -126,6 +126,26 @@ class ShortlistEntry:
     added_at: str
 
 
+@dataclass(frozen=True)
+class Rating:
+    """How well one track fits one query (0 not a fit, 1 OK, 2 good fit).
+
+    ``query_key`` identifies the query (see :mod:`mcrar.recommend.ratings`); ``query_text`` and
+    ``filters_json`` are what was asked, kept so the query can be run again.
+    """
+
+    query_key: str
+    query_text: str | None
+    filters_json: str
+    track_id: int
+    rating: int
+    created_at: str
+    updated_at: str
+
+
+RATING_VALUES = (0, 1, 2)
+_RATING_COLUMNS = "query_key, query_text, filters_json, track_id, rating, created_at, updated_at"
+
 _TRACK_FIELDS = tuple(f.name for f in fields(TrackRecord))
 _BOOL_FIELDS = frozenset(
     {
@@ -804,3 +824,88 @@ class CatalogRepository:
             for r in rows
             if r["track_id"] in tracks
         ]
+
+    # -- ratings -----------------------------------------------------------------------------
+
+    def set_rating(
+        self,
+        query_key: str,
+        track_id: int,
+        rating: int,
+        *,
+        query_text: str | None = None,
+        filters_json: str = "{}",
+    ) -> Rating:
+        """Rate a track for a query; rating it again replaces the score (``created_at`` stays)."""
+        if not query_key:
+            raise ValueError("query_key must be non-empty")
+        if isinstance(rating, bool) or rating not in RATING_VALUES:
+            raise ValueError(f"rating must be one of {RATING_VALUES}, got {rating!r}")
+        now = self._now()
+        with self._write() as conn:
+            self._require_track(conn, track_id)
+            conn.execute(
+                f"INSERT INTO ratings ({_RATING_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (query_key, track_id) DO UPDATE SET "
+                "query_text = excluded.query_text, filters_json = excluded.filters_json, "
+                "rating = excluded.rating, updated_at = excluded.updated_at",
+                (query_key, query_text, filters_json, track_id, rating, now, now),
+            )
+            row = conn.execute(
+                f"SELECT {_RATING_COLUMNS} FROM ratings WHERE query_key = ? AND track_id = ?",
+                (query_key, track_id),
+            ).fetchone()
+        return Rating(*tuple(row))
+
+    def delete_rating(self, query_key: str, track_id: int) -> bool:
+        with self._write() as conn:
+            cur = conn.execute(
+                "DELETE FROM ratings WHERE query_key = ? AND track_id = ?", (query_key, track_id)
+            )
+            return cur.rowcount > 0
+
+    def ratings_for(self, query_key: str, track_ids: Iterable[int]) -> dict[int, int]:
+        """The ratings of a query among these tracks, keyed by track id (unrated ids absent)."""
+        out: dict[int, int] = {}
+        for chunk in _chunks(track_ids):
+            marks = ", ".join("?" * len(chunk))
+            rows = self._query(
+                "SELECT track_id, rating FROM ratings "
+                f"WHERE query_key = ? AND track_id IN ({marks})",
+                (query_key, *chunk),
+            )
+            out.update((int(r["track_id"]), int(r["rating"])) for r in rows)
+        return out
+
+    def iter_ratings(self) -> list[Rating]:
+        """Every rating, ordered by query key then track id."""
+        rows = self._query(f"SELECT {_RATING_COLUMNS} FROM ratings ORDER BY query_key, track_id")
+        return [Rating(*tuple(r)) for r in rows]
+
+    def list_ratings(self, *, limit: int = 100, offset: int = 0) -> tuple[list[Rating], int]:
+        """One page of ratings, most recently changed first, and how many ratings exist."""
+        total = int(self._query("SELECT COUNT(*) FROM ratings")[0][0])
+        rows = self._query(
+            f"SELECT {_RATING_COLUMNS} FROM ratings "
+            "ORDER BY updated_at DESC, query_key, track_id LIMIT ? OFFSET ?",
+            (max(limit, 0), max(offset, 0)),
+        )
+        return [Rating(*tuple(r)) for r in rows], total
+
+    def rating_queries(self) -> list[tuple[str, str | None, str, int]]:
+        """``(query_key, query_text, filters_json, rating count)`` per rated query, by key.
+
+        When the ratings of a query were stored with different text or filters (the key ignores
+        the filters of a text query) the most recently changed rating's values are reported.
+        """
+        rows = self._query(
+            "SELECT query_key, query_text, filters_json FROM ratings "
+            "ORDER BY query_key, updated_at DESC, track_id"
+        )
+        out: dict[str, list[Any]] = {}
+        for row in rows:
+            entry = out.setdefault(
+                row["query_key"], [row["query_key"], row["query_text"], row["filters_json"], 0]
+            )
+            entry[3] += 1
+        return [(k, text, filters, count) for k, text, filters, count in out.values()]
