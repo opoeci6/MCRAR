@@ -39,7 +39,7 @@ Errors are JSON `{"detail": "..."}`:
 | 422 | Bad input |
 | 404 | Unknown id |
 | 409 | Conflict: a job is already running, a field is pinned by an environment variable, or the secret backend is read-only |
-| 503 | Missing prerequisite: no `ml` extra for text search, or no Jamendo client id |
+| 503 | Missing prerequisite: no `ml` extra for text search (or for a genre/mood filter when a matching track has no usable stored tags), or no Jamendo client id |
 | 502 | Jamendo failed |
 
 ## Behaviour worth knowing
@@ -52,6 +52,11 @@ Errors are JSON `{"detail": "..."}`:
   stored tags count only when they come from the tagging model selected for the mode. Tags
   written by a non-commercial head are ignored after switching back to commercial mode, until
   `mcrar tag` re-tags.
+- **Tag scores in search results** (the `tags` term, `top_tags` and the explanation) are not raw
+  probabilities. Each label is standardised over the catalog and passed through a sigmoid, so
+  0.5 means "an average track for this label", and genre and mood scores share one scale. The
+  raw stored probabilities are in `GET /tracks/{id}`. A genre/mood filter without text needs no
+  `ml` extra when every matching track has stored tags from the allowed model.
 - **Ingest jobs.** Only one job runs at a time (a second gets 409). Jobs use the same loaded
   model as search.
   - The event stream replays from `Last-Event-ID` or `?after=` and ends with `done`, `failed` or

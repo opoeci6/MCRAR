@@ -354,6 +354,15 @@ QUERY_TEXTS = {
 }
 
 
+def catalog_score(probs: Sequence[float], i: int) -> float:
+    """The documented standardised tag score of the i-th of the tagged tracks' probabilities
+    for one label: ``sigmoid(1.7 * z)`` (0.5 when they are all equal)."""
+    values = np.asarray(probs, dtype=np.float64)
+    std = values.std()
+    z = 0.0 if std < 1e-9 else (values[i] - values.mean()) / std
+    return float(1.0 / (1.0 + np.exp(-1.7 * z)))
+
+
 def make_settings(**search: Any) -> Settings:
     """Settings for the tests; ``search`` overrides ``[search]`` (for example ``pool_size=5``)."""
     base: dict[str, Any] = {"max_per_artist": 50}  # most tests do not want the artist cap

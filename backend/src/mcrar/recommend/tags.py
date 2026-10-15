@@ -4,17 +4,27 @@
 with values in [0, 1].
 
 - :class:`StoredTagScorer` reads the ``tag_probs`` rows written by the tagging models (M3b),
-  optionally only those of the model version the current licence mode allows.
+  optionally only those of the model version the current licence mode allows. The values are
+  the raw probabilities, whose scale differs a lot per label and per model (a genre head is
+  peaky, a zero-shot mood head says 0.6-0.97 for nearly everything).
+- :class:`StandardisedTagScorer` puts those on one scale: per label, the stored probabilities
+  of the tagged tracks of the catalog give a mean and a standard deviation, and a track scores
+  ``sigmoid(1.7 * (p - mean) / std)``. The statistics are cached with a cheap signature of the
+  head's rows, so tagging more tracks refreshes them. It never touches the embedder.
 - :class:`ZeroShotTagScorer` is the fallback until a track is tagged: the cosine between the
   track's embedding and the text embedding of ``"<display name> music"``, standardised over the
   whole catalog and squashed with a sigmoid, so a score does not depend on the query's pool.
 - :class:`CompositeTagScorer` uses stored rows for the tracks that have them and zero-shot for
-  the rest. Both are in [0, 1] and stable across queries, so they mix reasonably while a
-  catalog is only partly tagged.
+  the rest.
+
+Standardised stored and zero-shot scores are both a catalog z-score through the same sigmoid, in
+(0, 1) and stable across queries: 0.5 means "an average track for this label". So they mix
+sensibly while a catalog is only partly tagged, and the labels of different sets can be averaged.
 """
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -30,12 +40,28 @@ PROMPT = "{} music"  # text prompt per label, filled with the label's display na
 SLOPE = 1.7  # sigmoid slope on the z-score of a track's cosine
 MIN_STD = 1e-9  # a smaller spread counts as none: every track scores 0.5
 
+# Cached statistics: (the head's row signature, {label: (mean, std)})
+_Stats = tuple[tuple[int, int | None, float], dict[str, tuple[float, float]]]
+
 
 @runtime_checkable
 class TagScorer(Protocol):
     def scores(
         self, track_ids: Sequence[int], label_set: str, labels: Sequence[str]
     ) -> dict[str, np.ndarray]: ...
+
+
+class CoverageScorer(Protocol):
+    """A scorer that also says which tracks it knows (see :class:`StoredTagScorer`)."""
+
+    def scores_with_coverage(
+        self, track_ids: Sequence[int], label_set: str, labels: Sequence[str]
+    ) -> tuple[dict[str, np.ndarray], np.ndarray]: ...
+
+
+def squash(z: np.ndarray) -> np.ndarray:
+    """``sigmoid(SLOPE * z)``, safe for huge |z|, in [0, 1]."""
+    return np.clip(1.0 / (1.0 + np.exp(-SLOPE * np.clip(z, -50.0, 50.0))), 0.0, 1.0)
 
 
 def allowed_tag_versions(settings: Settings) -> dict[str, str | None]:
@@ -75,6 +101,10 @@ class StoredTagScorer:
         self._repo = repo
         self.allowed_versions = allowed_versions
 
+    @property
+    def repo(self) -> CatalogRepository:
+        return self._repo
+
     def accepts(self, label_set: str, model_version: str | None) -> bool:
         if self.allowed_versions is None:
             return True
@@ -100,6 +130,74 @@ class StoredTagScorer:
             for row in probs:
                 if row.label in out:
                     out[row.label][i] = min(max(row.prob, 0.0), 1.0)
+        return out, covered
+
+    def scores(
+        self, track_ids: Sequence[int], label_set: str, labels: Sequence[str]
+    ) -> dict[str, np.ndarray]:
+        return self.scores_with_coverage(track_ids, label_set, labels)[0]
+
+
+class StandardisedTagScorer:
+    """Stored probabilities, standardised per label over the catalog's tagged tracks.
+
+    For a label set and the model version the licence allows (every row when the stored scorer
+    accepts all), the tracks with rows are the covered tracks; per label, the mean and standard
+    deviation of their probabilities (a covered track without a row for the label counts as 0)
+    give the score ``sigmoid(1.7 * (p - mean) / std)``. So 0.5 is an average tagged track, the
+    score does not depend on which other tracks are scored, and labels from different heads are
+    comparable. If every covered track has the same probability (std 0) they all score 0.5; a
+    label with no rows at all scores 0 (the head says nothing about it). Tracks without rows
+    score 0 and stay uncovered, so :class:`CompositeTagScorer` gives them the zero-shot score.
+
+    The statistics are cached per (label set, version) together with the head's row signature and
+    recomputed when it changes; a lock guards the cache because searches run on several threads.
+    This class only reads ``tag_probs``: it never loads the text model.
+    """
+
+    def __init__(self, stored: StoredTagScorer) -> None:
+        self._stored = stored
+        self._lock = threading.Lock()
+        self._cache: dict[tuple[str, str | None], _Stats] = {}
+
+    def _stats(self, label_set: str, version: str | None) -> dict[str, tuple[float, float]]:
+        """``{label: (mean, std)}`` of the covered tracks; labels without rows are absent."""
+        repo = self._stored.repo
+        signature = repo.tag_probs_signature(label_set)
+        key = (label_set, version)
+        with self._lock:
+            cached = self._cache.get(key)
+            if cached is not None and cached[0] == signature:
+                return cached[1]
+            tracks, moments = repo.tag_prob_moments(label_set, version)
+            stats: dict[str, tuple[float, float]] = {}
+            for label, (total, squares) in moments.items():
+                mean = total / tracks
+                stats[label] = (mean, float(np.sqrt(max(squares / tracks - mean * mean, 0.0))))
+            # The signature was read before the rows: if they changed meanwhile, the next call
+            # sees another signature and recomputes.
+            self._cache[key] = (signature, stats)
+            return stats
+
+    def scores_with_coverage(
+        self, track_ids: Sequence[int], label_set: str, labels: Sequence[str]
+    ) -> tuple[dict[str, np.ndarray], np.ndarray]:
+        """Standardised scores (0 where unknown) and which tracks have stored rows for the set."""
+        out, covered = self._stored.scores_with_coverage(track_ids, label_set, labels)
+        allowed = self._stored.allowed_versions
+        version = None if allowed is None else allowed.get(label_set)
+        if (allowed is not None and version is None) or not covered.any():
+            return out, covered  # nothing usable is stored: nothing to standardise
+        stats = self._stats(label_set, version)
+        for label in labels:
+            if label not in stats:
+                out[label][:] = 0.0  # no covered track has a row for it
+                continue
+            mean, std = stats[label]
+            if std <= MIN_STD:
+                out[label][covered] = 0.5
+            else:
+                out[label][covered] = squash((out[label][covered] - mean) / std)
         return out, covered
 
     def scores(
@@ -178,16 +276,20 @@ class ZeroShotTagScorer:
         mean, std = self._label_stats(index, label_set, labels, vectors)
         z = np.zeros((int(found.sum()), len(labels)))
         np.divide(matrix @ vectors.T - mean, std, out=z, where=std > MIN_STD)
-        scores = np.clip(1.0 / (1.0 + np.exp(-SLOPE * np.clip(z, -50.0, 50.0))), 0.0, 1.0)
+        scores = squash(z)
         for j, label in enumerate(labels):
             out[label][found] = scores[:, j]
         return out
 
 
 class CompositeTagScorer:
-    """Stored rows where a track has them, zero-shot for the other tracks."""
+    """Stored rows where a track has them, zero-shot for the other tracks.
 
-    def __init__(self, stored: StoredTagScorer, zero_shot: TagScorer | None) -> None:
+    ``stored`` is a :class:`StoredTagScorer` (raw probabilities) or a
+    :class:`StandardisedTagScorer` (the same, on the zero-shot scale).
+    """
+
+    def __init__(self, stored: CoverageScorer, zero_shot: TagScorer | None) -> None:
         self._stored = stored
         self._zero_shot = zero_shot
 

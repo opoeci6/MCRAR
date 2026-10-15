@@ -12,7 +12,9 @@ Flow of one search
    vocal filter. The licence risk and the sources are never relaxed.
 
 The text embedder is loaded on first use and kept; the vector index is cached and rebuilt when
-the catalog's embeddings change. Torch is only imported when a text embedding is needed.
+the catalog's embeddings change. Torch is only imported when a text embedding is needed: a
+filter-only genre/mood search is answered from the stored tags alone when every track in the pool
+has them, and loads the text model (zero-shot scores) only for a pool track that lacks them.
 """
 
 from __future__ import annotations
@@ -35,6 +37,7 @@ from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
 from mcrar.recommend.results import SearchItem, SearchResult, TagScore
 from mcrar.recommend.tags import (
     CompositeTagScorer,
+    StandardisedTagScorer,
     StoredTagScorer,
     TagScorer,
     ZeroShotTagScorer,
@@ -142,6 +145,9 @@ class SearchService:
     ``stored_tags`` reads the tag rows of tracks. By default it only trusts the rows written by
     the tagging model the current ``commercial_mode`` allows (:func:`allowed_tag_versions`), so a
     track tagged by a non-commercial model is scored zero-shot instead while the mode is on.
+    Stored probabilities are standardised per label over the catalog
+    (:class:`StandardisedTagScorer`) before they rank or explain, which puts them on the scale
+    of the zero-shot scores.
     """
 
     def __init__(
@@ -173,8 +179,9 @@ class SearchService:
         self._index_stats: tuple[int, str | None] | None = None
         self._queries: OrderedDict[str, np.ndarray] = OrderedDict()
         self._stored = stored_tags or StoredTagScorer(repo, allowed_tag_versions(settings))
+        self._ranked_tags = StandardisedTagScorer(self._stored)
         self._tags_with_text = CompositeTagScorer(
-            self._stored, ZeroShotTagScorer(self._index, self._embed_texts, self.vocab)
+            self._ranked_tags, ZeroShotTagScorer(self._index, self._embed_texts, self.vocab)
         )
 
     # -- lifecycle -------------------------------------------------------------------------
@@ -280,12 +287,13 @@ class SearchService:
 
     def _scorer(self, parsed: ParsedQuery, requested: list[tuple[str, str]]) -> TagScorer:
         """Zero-shot tag scoring needs the text model: use it when the search loads it anyway
-        (a text query, requested labels) or it is already loaded; else only stored tags."""
+        (a text query, requested labels) or it is already loaded; else only stored tags. Both
+        are standardised per label over the catalog, so ranking and top tags share one scale."""
         if self._custom_tags is not None:
             return self._custom_tags
         if parsed.semantic_text or requested or self.embedder_loaded:
             return self._tags_with_text
-        return self._stored
+        return self._ranked_tags
 
     def _execute(self, q: ParsedQuery) -> _Outcome:
         f, prefs = q.filters, q.preferences

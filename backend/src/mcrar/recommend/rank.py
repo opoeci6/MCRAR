@@ -3,7 +3,8 @@
 Each active term is in [0, 1]:
 
 - ``semantic``: min-max of the cosine over the candidate pool (1.0 when all candidates tie).
-- ``tags``: mean score of the requested genre/mood labels (scores come from a tag scorer).
+- ``tags``: mean score of the requested genre/mood labels (scores come from a tag scorer, which
+  standardises each label over the catalog so that genre and mood scores share one scale).
 - ``bpm``: ``exp(-((b - target) / 15) ** 2)``, where ``b`` is the best of the tempo, half of it
   and double of it when the tempo's confidence is low (< 0.5) because it may be off by an octave.
 - ``energy``: ``1 - |energy - target|``.

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from recommend_support import MODEL_ID, QUERY_TEXTS, MapEmbedder, make_service, make_settings
+from recommend_support import (
+    MODEL_ID,
+    QUERY_TEXTS,
+    MapEmbedder,
+    catalog_score,
+    make_service,
+    make_settings,
+)
 
 from mcrar.catalog import CatalogRepository, NumpyVectorIndex, TrackRecord
 from mcrar.recommend import (
@@ -181,17 +188,23 @@ def test_search_ranks_by_stored_tags_when_they_exist(
         repo.set_tag_probs(ids[title], "genre", "head", "genre-mlp@1", {"rock": 0.99, "jazz": 0.0})
     for title in ("Smooth Cafe", "Epic Quest"):
         repo.set_tag_probs(ids[title], "genre", "head", "genre-mlp@1", {"rock": 0.0, "jazz": 0.5})
+    for title in ("Lullaby", "Ambient Pad", "Sunny Day", "Shadow Walk"):
+        repo.set_tag_probs(ids[title], "genre", "head", "genre-mlp@1", {"rock": 0.0, "jazz": 0.1})
     service, embedder = make_service(repo)
     result = service.search(
         SearchRequest("", SearchFilters(genres=("rock",), max_risk="red"), limit=50)
     )
     best = {i.title: i for i in result.items}
-    assert best["Garage Band"].breakdown["tags"]["raw"] == pytest.approx(0.99)  # stored value
+    # Stored values are standardised over the eight tagged tracks: rock is 0.99 twice, else 0.
+    rock = [0.99, 0.99] + [0.0] * 6
+    high, low = catalog_score(rock, 0), catalog_score(rock, 2)
+    assert 0.9 < high < 1.0 and 0.0 < low < 0.5
+    assert best["Garage Band"].breakdown["tags"]["raw"] == pytest.approx(high)
     assert best["Garage Band"].top_tags[0].label == "rock"
-    assert best["Garage Band"].top_tags[0].score == pytest.approx(0.99)
+    assert best["Garage Band"].top_tags[0].score == pytest.approx(high)
     assert best["Garage Band"].top_tags[0].display == "Rock"
     assert best["Garage Band"].top_tags[0].label_set == "genre"
-    assert best["Smooth Cafe"].breakdown["tags"]["raw"] == 0.0
+    assert best["Smooth Cafe"].breakdown["tags"]["raw"] == pytest.approx(low)  # tagged, not rock
     # Untagged tracks are scored zero-shot against the whole catalog: stable, in (0, 1).
     assert embedder.calls
     party = best["Party Time"].breakdown["tags"]["raw"]
@@ -204,20 +217,33 @@ def test_a_fully_tagged_catalog_never_needs_the_model(
 ) -> None:
     for track_id in ids.values():
         repo.set_tag_probs(track_id, "genre", "head", "genre-mlp@1", {"jazz": 0.2, "rock": 0.3})
+    # One track stands out, so the label statistics have a spread.
+    repo.set_tag_probs(ids["Smooth Cafe"], "genre", "head", "genre-mlp@1", {"jazz": 0.9})
     service, embedder = make_service(repo)
     result = service.search(
         SearchRequest("", SearchFilters(genres=("jazz",), vocal="instrumental"), limit=5)
     )
     assert result.items and embedder.calls == [] and not service.embedder_loaded
-    assert [t.label for t in result.items[0].top_tags] == ["rock", "jazz"]  # stored, best first
+    assert result.items[0].title == "Smooth Cafe"
+    other = next(i for i in result.items if i.title != "Smooth Cafe")
+    # Below average for jazz (0.2 against a mean of ~0.23), above for rock (0.3 against ~0.29).
+    assert [t.label for t in other.top_tags] == ["rock", "jazz"]
+    assert other.top_tags[0].score > 0.5 > other.top_tags[1].score
 
 
 def test_top_tags_cover_the_requested_label_sets(
     repo: CatalogRepository, ids: dict[str, int]
 ) -> None:
     track = ids["Smooth Cafe"]
-    repo.set_tag_probs(track, "genre", "head", "g@1", {"jazz": 0.9, "blues": 0.4})
-    repo.set_tag_probs(track, "moodtheme", "head", "m@1", {"calm": 0.8, "dark": 0.6})
+    others = [ids["Lullaby"], ids["Epic Quest"]]
+    probs = {
+        "genre": {"jazz": [0.9, 0.1, 0.3], "blues": [0.4, 0.0, 0.2]},
+        "moodtheme": {"calm": [0.8, 0.1, 0.4], "dark": [0.6, 0.7, 0.1]},
+    }
+    for label_set, labels in probs.items():
+        for n, track_id in enumerate([track, *others]):
+            row = {label: values[n] for label, values in labels.items()}
+            repo.set_tag_probs(track_id, label_set, "head", "g@1", row)
     service, _ = make_service(repo)
 
     both = service.search(SearchRequest("", SearchFilters(vocal="instrumental", max_risk="green")))
@@ -225,9 +251,11 @@ def test_top_tags_cover_the_requested_label_sets(
     assert [(t.label_set, t.label) for t in item.top_tags] == [
         ("genre", "jazz"),
         ("moodtheme", "calm"),
-        ("moodtheme", "dark"),
         ("genre", "blues"),
-    ]
+        ("moodtheme", "dark"),
+    ]  # best standardised score first
+    for tag in item.top_tags:
+        assert tag.score == pytest.approx(catalog_score(probs[tag.label_set][tag.label], 0))
     only_genre = service.search(
         SearchRequest("", SearchFilters(genres=("jazz",), vocal="instrumental", max_risk="green"))
     )

@@ -9,7 +9,13 @@ from mcrar.recommend.query import ParsedQuery, Preferences, SearchFilters, Searc
 from mcrar.recommend.rank import ScoreBreakdown, TermScore
 from mcrar.recommend.results import SearchItem, SearchResult, TagScore
 from mcrar.recommend.service import SearchError, SearchService
-from mcrar.recommend.tags import CompositeTagScorer, StoredTagScorer, TagScorer, ZeroShotTagScorer
+from mcrar.recommend.tags import (
+    CompositeTagScorer,
+    StandardisedTagScorer,
+    StoredTagScorer,
+    TagScorer,
+    ZeroShotTagScorer,
+)
 from mcrar.recommend.vocab import Vocabulary
 
 __all__ = [
@@ -25,6 +31,7 @@ __all__ = [
     "SearchRequest",
     "SearchResult",
     "SearchService",
+    "StandardisedTagScorer",
     "StoredTagScorer",
     "TagScore",
     "TagScorer",
