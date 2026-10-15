@@ -56,7 +56,11 @@ TOP_TAGS = 5
 # scored 0.41-0.66 with good results; clearly weak ones were "intense fight" 0.32, "anime
 # opening" 0.37 and "bagpipes" 0.39. CLAP cannot tell J-pop from pop ("j-pop" 0.57, "japanese
 # vocal" 0.47), so the UI offers the import for every text search, not only the weak ones.
-WEAK_COSINE_DEFAULTS = {"clap": 0.40}
+# MuQ-MuLan does not separate cleanly either: it scores "j-pop" lowest of all (0.38, "anime
+# opening" 0.40, "japanese vocal" 0.45), but 5 of 18 good queries also fall under 0.40 (as low
+# as 0.32). The notice is only a suggestion, so 0.40 favours catching the weak ones. GLAP's
+# cosines all sit near 0 (-0.07 to 0.11), so it has no threshold.
+WEAK_COSINE_DEFAULTS = {"clap": 0.40, "muq-mulan": 0.40}
 EmbedderLoader = Callable[[], Any]
 
 

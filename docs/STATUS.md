@@ -277,13 +277,20 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **Per-query Jamendo import.**
   - **The weak-match signal.** The ranked scores are min-max normalised (the top hit is always
     1.0), so search now also returns `match: {top_cosine, weak}`, the raw CLAP cosine of the
-    best hit. Its threshold is `search.weak_cosine`, by default 0.40 for CLAP.
+    best hit. Its threshold is `search.weak_cosine`, by default 0.40 for CLAP and for
+    MuQ-MuLan, and none for GLAP.
     - **Calibration** (raw top-1 cosine on the 1,054-track catalog): the 15 rated game-music
       queries scored 0.41–0.66. Clearly weak queries scored lower: "intense fight" 0.32, "anime
       opening" 0.37, "bagpipes" 0.39.
     - **J-pop isn't caught.** "j-pop" scores 0.57 and "japanese vocal" 0.47, because CLAP can't
       tell J-pop from pop. That is why the button is also always shown. A better weak-match
       judgment is a job for M7 (the LLM).
+    - **MuQ-MuLan** (same queries): it scores "j-pop" lowest of all (0.38, "anime opening" 0.40,
+      "japanese vocal" 0.45), but 5 of 18 good queries also fall under 0.40, as low as 0.32.
+      0.40 was chosen anyway, because the notice is only a suggestion and missing a weak search
+      costs more than an extra notice.
+    - **GLAP's** cosines all sit near 0 (−0.07 to 0.11) and carry no signal, so it has no
+      threshold.
   - **Jamendo queries** (`recommend/jamendo_query.py`), from a live check of the API:
     - `search=` is full-text over names and tags and works well. "j-pop" returns generic pop,
       but "jpop" works, so short hyphenated compounds are joined.
@@ -308,7 +315,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures), schema v3 (ratings table, decoded names); the next open with the new code applies v4 (decoded credit lines and accents) || Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
+| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures), schema v4 (ratings table; names and credit lines decoded, applied 2026-10-15) |
+| Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
@@ -329,8 +337,7 @@ M3b is merged and the real catalog is tagged. Still open:
   project can't be used commercially, for example hosted as a paid service, because MuQ-MuLan's
   weights and the MTG-Jamendo and DEAM labels behind the tagging heads are non-commercial.
 - **Per-query import polish:**
-  - The weak-match threshold is calibrated for CLAP only; with another default embedder the
-    notice never shows, but the button still works.
+  - With GLAP as the default embedder the weak notice never shows; the button still works.
   - A search limited to local sources still offers the Jamendo import.
   - `search.weak_cosine` can't be cleared back to the default through the API, only in
     `settings.toml`.

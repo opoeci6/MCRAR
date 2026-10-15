@@ -74,6 +74,8 @@ def test_a_weak_text_search_is_flagged_with_the_embedders_default_threshold(
     service, _ = off_topic_service(repo)
     result = search(service, OFF_TOPIC)
     assert WEAK_COSINE_DEFAULTS["clap"] == 0.40
+    assert WEAK_COSINE_DEFAULTS["muq-mulan"] == 0.40
+    assert "glap" not in WEAK_COSINE_DEFAULTS  # its cosines carry no signal (all near 0)
     assert result.items  # something was ranked, only badly
     assert result.match.top_cosine is not None and result.match.top_cosine < 0.40
     assert result.match.weak is True

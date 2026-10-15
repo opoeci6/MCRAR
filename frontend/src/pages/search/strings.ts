@@ -67,7 +67,7 @@ export const searchStrings = {
   },
   jamendo: {
     weakNotice:
-      'Few close matches in your library. Find about 50 more on Jamendo and rank them with your library (about 2 minutes).',
+      'Few close matches in your library. Find about 50 more on Jamendo and rank them with your library (2 to 3 minutes).',
     action: 'Search Jamendo for more',
     starting: 'Starting',
     progressTitle: (text: string) => `Searching Jamendo for "${text}"`,
