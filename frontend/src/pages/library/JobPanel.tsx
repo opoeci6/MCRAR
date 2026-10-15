@@ -5,7 +5,7 @@ import { errorMessage } from '../../api/useAsync'
 import { useToast } from '../../app/toastContext'
 import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
-import { initialJobView, isFinal, jobReducer } from './jobState'
+import { initialJobView, isFinal, jobReducer } from '../../features/jobs/jobState'
 import { libraryStrings as t } from './strings'
 import styles from './JobPanel.module.css'
 

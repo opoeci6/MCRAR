@@ -65,6 +65,20 @@ export const searchStrings = {
     disclaimer:
       'Licence levels are guidance, not legal advice. Check the source page before you ship a track.',
   },
+  jamendo: {
+    weakNotice:
+      'Few close matches in your library. Find about 50 more on Jamendo and rank them with your library (about 2 minutes).',
+    action: 'Search Jamendo for more',
+    starting: 'Starting',
+    progressTitle: (text: string) => `Searching Jamendo for "${text}"`,
+    added: (count: number) => `Added ${count} ${count === 1 ? 'track' : 'tracks'} from Jamendo`,
+    addedElsewhere: (count: number, text: string) =>
+      `Added ${count} ${count === 1 ? 'track' : 'tracks'} from Jamendo for "${text}"`,
+    noneFound: 'No new tracks found on Jamendo for this search',
+    failedTitle: 'The Jamendo search failed',
+    failedFallback: 'The job stopped without a message.',
+    rerunFailed: "Couldn't refresh the results",
+  },
   errors: {
     unavailableTitle: 'Text search is not available',
     unavailable: 'Text search needs the ML extra (torch). Filter-only search still works.',
@@ -84,6 +98,8 @@ export const searchStrings = {
     energy: (percent: number) => `Energy ${percent}%`,
     topTags: 'Top tags',
     tag: (display: string, percent: number) => `${display} ${percent}%`,
+    isNew: 'New',
+    newHint: 'Added from Jamendo for this search',
     why: 'Why this result',
     download: 'Download',
     downloadHint: 'Opens the download page and saves the licence file',

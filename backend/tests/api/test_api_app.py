@@ -97,7 +97,8 @@ def test_reload_settings_rebuilds_the_search_service_only_when_search_inputs_cha
         state.reload_settings(same_mode)
         assert state.search is before and state.settings is same_mode
 
-        state.reload_settings(client.settings.model_copy(update={"commercial_mode": False}))
+        search = client.settings.search.model_copy(update={"max_per_artist": 1})
+        state.reload_settings(client.settings.model_copy(update={"search": search}))
         assert state.search is not before and state.stored_tags is not stored_before
         assert not before.embedder_loaded  # the old service let go of the model...
         assert client.embedder.closed is False  # ...which the pool still owns
@@ -105,13 +106,13 @@ def test_reload_settings_rebuilds_the_search_service_only_when_search_inputs_cha
         assert client.loader.keys == ["clap"]  # no second load
 
         rebuilt = state.search
-        state.reload_settings(
-            client.settings.model_copy(
-                update={
-                    "commercial_mode": False,
-                    "search": client.settings.search.model_copy(update={"pool_size": 50}),
-                }
-            )
-        )
+        search = search.model_copy(update={"pool_size": 50})
+        state.reload_settings(client.settings.model_copy(update={"search": search}))
         assert state.search is not rebuilt  # new ranking settings need a new service
         assert state.search._settings.search.pool_size == 50
+
+        rebuilt = state.search
+        state.reload_settings(
+            client.settings.model_copy(update={"search": search, "default_embedder": "glap"})
+        )
+        assert state.search is not rebuilt  # another default embedder needs a new service

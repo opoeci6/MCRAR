@@ -140,6 +140,22 @@ describe('TrackDrawer', () => {
     expect(within(mood).getByText('Calm 70%')).toBeInTheDocument()
   })
 
+  it('names the valence and arousal sets and shows their single value as a percentage', async () => {
+    stubApi({
+      'GET /api/tracks/5': {
+        ...DETAIL,
+        tags: [tag('valence', 'value', 0.62), tag('arousal', 'value', 0.3)],
+      },
+    })
+    open(5)
+    await screen.findByRole('heading', { name: 'Rainy Window' })
+    const tags = screen.getByRole('region', { name: 'Tags' })
+    const valence = within(tags).getByRole('heading', { name: 'Positivity (valence)' }).parentElement as HTMLElement
+    expect(within(valence).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['62%'])
+    const arousal = within(tags).getByRole('heading', { name: 'Intensity (arousal)' }).parentElement as HTMLElement
+    expect(within(arousal).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['30%'])
+  })
+
   it('shows the first tags of a long set and the rest on request', async () => {
     const many = Array.from({ length: 12 }, (_, i) => tag('genre', `g${i}`, 0.9 - i * 0.05))
     stubApi({ 'GET /api/tracks/5': { ...DETAIL, tags: many } })

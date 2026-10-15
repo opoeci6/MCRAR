@@ -1,4 +1,4 @@
-"""Stored tags are only trusted when their model version is allowed in the current licence mode."""
+"""Stored tags are only trusted when they come from the tagging model version that is selected."""
 
 from __future__ import annotations
 
@@ -76,8 +76,8 @@ def test_the_composite_falls_back_to_zero_shot_for_rejected_rows(
 # -- from the registry --------------------------------------------------------------------------
 
 
-def settings_with_registry(commercial_mode: bool, *, entry_commercial: bool) -> Settings:
-    settings = get_settings(commercial_mode=commercial_mode, search={"max_per_artist": 50})
+def settings_with_registry(*, entry_commercial: bool) -> Settings:
+    settings = get_settings(search={"max_per_artist": 50})
     register(settings, commercial=entry_commercial)
     return settings
 
@@ -93,18 +93,11 @@ def test_a_broken_registry_means_no_allowed_version() -> None:
     assert allowed_tag_versions(settings) == {}
 
 
-def test_the_allowed_version_depends_on_the_mode() -> None:
-    settings = settings_with_registry(True, entry_commercial=False)
-    assert allowed_tag_versions(settings) == {"genre": None}
-    entry = allowed_tag_versions(get_settings(commercial_mode=False))["genre"]
-    assert entry is not None and entry.startswith("genre-logreg@")
-
-
-def test_a_commercial_entry_is_allowed_in_both_modes() -> None:
-    settings = settings_with_registry(True, entry_commercial=True)
+@pytest.mark.parametrize("entry_commercial", [True, False])
+def test_the_selected_entry_is_allowed_whatever_its_licence(entry_commercial: bool) -> None:
+    settings = settings_with_registry(entry_commercial=entry_commercial)
     entry = allowed_tag_versions(settings)["genre"]
     assert entry is not None and entry.startswith("genre-logreg@")
-    assert allowed_tag_versions(get_settings(commercial_mode=False)) == {"genre": entry}
 
 
 def service_for(repo: CatalogRepository, settings: Settings) -> SearchService:
@@ -127,36 +120,18 @@ def genre_score(service: SearchService, track_id: int) -> float:
     return next(t.score for t in item.top_tags if t.label == "a")
 
 
-def test_a_non_commercial_tag_is_ignored_in_commercial_mode_and_used_otherwise(
-    repo: CatalogRepository, ids: dict[str, int]
+@pytest.mark.parametrize("entry_commercial", [True, False])
+def test_tags_of_the_selected_version_are_used_whatever_its_licence(
+    repo: CatalogRepository, ids: dict[str, int], entry_commercial: bool
 ) -> None:
     track = ids["Shadow Walk"]
-    settings = settings_with_registry(True, entry_commercial=False)
-    version = allowed_tag_versions(get_settings(commercial_mode=False))["genre"]
-    tag_two(repo, ids, version)
-
-    commercial = service_for(repo, settings)
-    assert genre_score(commercial, track) != pytest.approx(STANDARDISED)  # zero-shot instead
-
-    non_commercial = service_for(repo, get_settings(commercial_mode=False))
-    assert genre_score(non_commercial, track) == pytest.approx(STANDARDISED)
-
-
-def test_a_commercial_tag_is_used_in_both_modes(
-    repo: CatalogRepository, ids: dict[str, int]
-) -> None:
-    track = ids["Shadow Walk"]
-    settings = settings_with_registry(True, entry_commercial=True)
-    version = allowed_tag_versions(settings)["genre"]
-    tag_two(repo, ids, version)
+    settings = settings_with_registry(entry_commercial=entry_commercial)
+    tag_two(repo, ids, allowed_tag_versions(settings)["genre"])
     assert genre_score(service_for(repo, settings), track) == pytest.approx(STANDARDISED)
-    assert genre_score(
-        service_for(repo, get_settings(commercial_mode=False)), track
-    ) == pytest.approx(STANDARDISED)
 
 
 def test_rows_of_an_older_version_are_ignored(repo: CatalogRepository, ids: dict[str, int]) -> None:
     track = ids["Shadow Walk"]
-    settings = settings_with_registry(True, entry_commercial=True)
+    settings = settings_with_registry(entry_commercial=True)
     tag_two(repo, ids, "genre-logreg@0000000")
     assert genre_score(service_for(repo, settings), track) != pytest.approx(STANDARDISED)

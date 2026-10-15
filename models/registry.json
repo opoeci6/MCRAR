@@ -1832,17 +1832,9 @@
     }
   },
   "selected": {
-    "commercial": {
-      "genre": "genre-logreg@2b67df0",
-      "moodtheme": "moodtheme-zeroshot-unsupervised@15d3513",
-      "valence": null,
-      "arousal": null
-    },
-    "non-commercial": {
-      "genre": "genre-logreg@2b67df0",
-      "moodtheme": "moodtheme-mlp@b2ac67d",
-      "valence": "valence-mlp@f2069d3",
-      "arousal": "arousal-mlp@51348c6"
-    }
+    "genre": "genre-logreg@2b67df0",
+    "moodtheme": "moodtheme-mlp@b2ac67d",
+    "valence": "valence-mlp@f2069d3",
+    "arousal": "arousal-mlp@51348c6"
   }
 }

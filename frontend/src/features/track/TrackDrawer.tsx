@@ -3,6 +3,7 @@ import { getTrack, trackCreditsUrl } from '../../api/endpoints'
 import type { TrackDetail, TrackFeatures, TrackTag } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { formatNumber, formatTime } from '../../lib/format'
+import { linkify } from '../../lib/linkify'
 import { usePlayer } from '../../player/playerContext'
 import { strings } from '../../strings'
 import { Button, IconButton } from '../../ui/Button'
@@ -23,6 +24,9 @@ export interface TrackDrawerProps {
 
 /** How many tags of a label set are shown before "Show all". */
 const TAGS_SHOWN = 8
+
+/** The one label of a regression set (valence, arousal): a value in 0 to 1, not a tag name. */
+const REGRESSION_LABEL = 'value'
 
 /**
  * The side panel with everything about one track: licence and credit line, audio features, and
@@ -125,7 +129,7 @@ function LicenseSection({ track }: { track: TrackDetail }) {
       {license.attribution_text ? (
         <div>
           <div className={styles.hint}>{t.licence.credit}</div>
-          <p className={styles.credit}>{license.attribution_text}</p>
+          <p className={styles.credit}>{linkify(license.attribution_text)}</p>
         </div>
       ) : null}
       <ul className={styles.links}>
@@ -242,7 +246,9 @@ function TagGroup({ set, items }: { set: string; items: TrackTag[] }) {
       <ul className={styles.tagList}>
         {shown.map((tag) => (
           <li key={tag.label} className={styles.tag}>
-            {t.tags.chipLabel(labelText(tag.label), Math.round(tag.prob * 100))}
+            {tag.label === REGRESSION_LABEL
+              ? t.tags.valueChip(Math.round(tag.prob * 100))
+              : t.tags.chipLabel(labelText(tag.label), Math.round(tag.prob * 100))}
           </li>
         ))}
       </ul>

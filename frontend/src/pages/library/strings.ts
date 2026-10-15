@@ -85,9 +85,6 @@ export const libraryStrings = {
     embedHint: 'Takes longer. You can do it later with "Re-embed missing tracks".',
     submit: 'Add from Jamendo',
     starting: 'Starting',
-    missingKeyTitle: 'Jamendo client id is not set',
-    missingKeyBody: 'Jamendo needs a client id before it can be searched.',
-    openSettings: 'Open Settings',
   },
 
   local: {
@@ -113,15 +110,13 @@ export const libraryStrings = {
     embedAction: 'Re-embed missing tracks',
     tagTitle: 'Re-tag catalog',
     tagBody:
-      'Recomputes genre and mood tags for every track. Run it after changing the licence mode, because the allowed tagging models change with it.',
+      'Recomputes genre and mood tags for every track with the selected tagging models.',
     tagAction: 'Re-tag catalog',
   },
 
   start: {
     busyTitle: 'Another job is running',
     busyBody: 'Wait for it to finish or cancel it, then try again.',
-    showRunning: 'Show the running job',
-    failed: "Couldn't start the job",
   },
 
   jobs: {
@@ -132,6 +127,7 @@ export const libraryStrings = {
       'ingest-local': 'Add from folder',
       'reprocess-embed': 'Re-embed missing tracks',
       'reprocess-tag': 'Re-tag catalog',
+      'ingest-query': 'Add for a search',
     } as Record<string, string>,
     statusNames: {
       connecting: 'Connecting',
@@ -193,6 +189,7 @@ export const libraryStrings = {
       if (params.path) parts.push(String(params.path))
       if (params.tags) parts.push(`tags: ${list(params.tags)}`)
       if (params.search) parts.push(`search: ${String(params.search)}`)
+      if (params.text) parts.push(`search: ${String(params.text)}`)
       if (params.license) parts.push(String(params.license))
       if (params.what) parts.push(String(params.what))
       if (params.limit) parts.push(`limit ${String(params.limit)}`)

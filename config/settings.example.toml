@@ -2,11 +2,9 @@
 # Precedence: constructor args > MCRAR_* environment variables > this file > defaults.
 # Relative paths are resolved against the repo root (MCRAR_HOME).
 
-# true: only commercially usable models and data are allowed; non-commercial parts are opt-in.
-commercial_mode = true
-
-# Text-audio model for `mcrar embed` and search: clap | glap | muq-mulan (muq-mulan needs
-# commercial_mode = false). "clap" won the M3a bake-off; see docs/embedder_bakeoff.md.
+# Text-audio model for `mcrar embed` and search: clap | glap | muq-mulan (muq-mulan's weights are
+# non-commercial). "clap" won the M3a bake-off; see docs/embedder_bakeoff.md. Tagging always
+# reads the clap embeddings.
 default_embedder = "clap"
 
 # data_dir = "data"

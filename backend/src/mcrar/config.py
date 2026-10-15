@@ -14,6 +14,7 @@ file value would lose against it).
 from __future__ import annotations
 
 import copy
+import logging
 import os
 import tempfile
 import tomllib
@@ -32,6 +33,7 @@ from pydantic_settings import (
 
 HOME_ENV_VAR = "MCRAR_HOME"
 SETTINGS_FILE = Path("config") / "settings.toml"
+log = logging.getLogger(__name__)
 _PATH_FIELDS = ("data_dir", "models_dir", "cache_dir", "secrets_dir")
 
 
@@ -55,12 +57,27 @@ def find_repo_root(start: Path | None = None) -> Path:
     )
 
 
+# Removed settings that an old settings.toml may still hold.
+_LEGACY_KEYS = frozenset({"commercial_mode"})
+_legacy_noted = False
+
+
 class _TomlSource(TomlConfigSettingsSource):
-    """TOML source that cannot relocate ``home`` (the file path itself depends on it)."""
+    """TOML source that cannot relocate ``home`` (the file path itself depends on it).
+
+    It also drops the keys in :data:`_LEGACY_KEYS`, so a settings file written by an older
+    version still loads (``Settings`` forbids unknown keys); the first one seen is logged.
+    """
 
     def __call__(self) -> dict[str, Any]:
+        global _legacy_noted
         data = dict(super().__call__())
         data.pop("home", None)
+        for key in _LEGACY_KEYS & data.keys():
+            del data[key]
+            if not _legacy_noted:
+                _legacy_noted = True
+                log.info("settings.toml: %s is no longer used and is ignored; delete it", key)
         return data
 
 
@@ -90,6 +107,9 @@ class SearchSettings(BaseModel):
     pool_size: int = Field(200, ge=1)  # candidates retrieved and ranked per query
     max_per_artist: int = Field(2, ge=1)  # results per artist in one result list
     min_results: int = Field(1, ge=0)  # fewer results than this relaxes the hard filters
+    # Raw top-1 cosine below which a text search is a weak match (the UI then offers a Jamendo
+    # import). None: the embedder's default, ``recommend.service.WEAK_COSINE_DEFAULTS``.
+    weak_cosine: float | None = Field(None, ge=0, le=1)
     weights: SearchWeights = SearchWeights()
 
 
@@ -104,8 +124,6 @@ class Settings(BaseSettings):
     cache_dir: Path = Path(".cache")
     secrets_dir: Path = Path(".secrets")
 
-    # True: only commercially usable models and data are allowed; non-commercial parts are opt-in.
-    commercial_mode: bool = True
     # Text-audio model used by `mcrar embed` (and later by search). "clap" won the M3a bake-off on
     # the user's blind ratings of game-music searches; see docs/embedder_bakeoff.md.
     default_embedder: str = "clap"
@@ -144,7 +162,7 @@ def get_settings(**overrides: Any) -> Settings:
 
 # -- editing the settings file (the settings page) ----------------------------------------------
 
-EDITABLE_KEYS = frozenset({"commercial_mode", "default_embedder", "search"})
+EDITABLE_KEYS = frozenset({"default_embedder", "search"})
 _ENV_PREFIX = "MCRAR_"
 
 
@@ -153,7 +171,6 @@ class _EditableSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    commercial_mode: bool = True
     default_embedder: str = Field("clap", min_length=1)
     search: SearchSettings = SearchSettings()
 
@@ -184,10 +201,10 @@ def _describe(exc: ValidationError) -> str:
 def save_settings_update(home: Path, update: Mapping[str, Any]) -> None:
     """Merge ``update`` into ``<home>/config/settings.toml`` and write it atomically.
 
-    ``update`` holds only editable keys (``commercial_mode``, ``default_embedder``, ``search`` with
-    its nested ``weights``); nested tables are merged key by key and every other key already in
-    the file is kept. Raises ``ValueError`` (file untouched) for a key that is not editable or a
-    value that does not validate.
+    ``update`` holds only editable keys (``default_embedder``, ``search`` with its nested
+    ``weights``); nested tables are merged key by key and every other key already in the file is
+    kept, except a legacy key (:data:`_LEGACY_KEYS`), which is dropped. Raises ``ValueError``
+    (file untouched) for a key that is not editable or a value that does not validate.
     """
     unknown = sorted(set(update) - EDITABLE_KEYS)
     if unknown:
@@ -199,7 +216,7 @@ def save_settings_update(home: Path, update: Mapping[str, Any]) -> None:
             existing = tomllib.loads(path.read_text(encoding="utf-8"))
         except (OSError, tomllib.TOMLDecodeError) as exc:
             raise ValueError(f"cannot read {path}: {type(exc).__name__}") from None
-    merged = _deep_merge(existing, update)
+    merged = _deep_merge({k: v for k, v in existing.items() if k not in _LEGACY_KEYS}, update)
     try:
         _EditableSettings.model_validate({k: v for k, v in merged.items() if k in EDITABLE_KEYS})
     except ValidationError as exc:
@@ -228,7 +245,7 @@ def _leaves(model: type[BaseModel], prefix: str = "") -> list[str]:
 
 def env_overrides() -> list[str]:
     """Dotted names of the settings fields an ``MCRAR_*`` environment variable currently sets
-    (``commercial_mode``, ``search.pool_size``, ``search.weights.tags``), sorted.
+    (``default_embedder``, ``search.pool_size``, ``search.weights.tags``), sorted.
 
     ``MCRAR_HOME``, ``MCRAR_SECRET_*`` and variables that name no settings field are ignored. A
     variable that sets a whole table (``MCRAR_SEARCH='{...}'``) counts for every field in it.

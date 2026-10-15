@@ -39,6 +39,7 @@ log = logging.getLogger(__name__)
 JobStatus = Literal["running", "done", "failed", "cancelled"]
 FINAL_EVENTS = frozenset({"done", "failed", "cancelled"})
 MAX_FAILURES = 50
+MAX_NEW_TRACK_IDS = 200
 MAX_MESSAGE_CHARS = 300
 KEEP_JOBS = 20
 CLOSE_TIMEOUT_S = 30.0
@@ -73,8 +74,11 @@ class JobCancelled(Exception):  # noqa: N818 - not an error condition, an intern
 
 
 def report_to_dict(report: Any) -> dict[str, Any]:
-    """An ``IngestReport`` as plain JSON data; the failure list is capped at ``MAX_FAILURES``."""
+    """An ``IngestReport`` as plain JSON data; the failure list is capped at ``MAX_FAILURES`` and
+    the new track ids at ``MAX_NEW_TRACK_IDS``."""
     data = {f.name: getattr(report, f.name) for f in fields(report) if f.name != "failures"}
+    if "new_track_ids" in data:
+        data["new_track_ids"] = list(data["new_track_ids"])[:MAX_NEW_TRACK_IDS]
     failures = list(report.failures)
     data["failures"] = [
         {

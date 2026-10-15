@@ -2,38 +2,11 @@ import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPersistentState } from '../../app/usePersistentState'
+import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
 import LibraryPage from './index'
-
-class FakeEventSource {
-  static instances: FakeEventSource[] = []
-  static readonly CLOSED = 2
-  readyState = 0
-  closed = false
-  private listeners = new Map<string, ((event: MessageEvent<string>) => void)[]>()
-  url: string
-
-  constructor(url: string) {
-    this.url = url
-    FakeEventSource.instances.push(this)
-  }
-
-  addEventListener(type: string, listener: (event: MessageEvent<string>) => void) {
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener])
-  }
-
-  close() {
-    this.closed = true
-    this.readyState = FakeEventSource.CLOSED
-  }
-
-  emit(type: string, data: unknown) {
-    const event = new MessageEvent(type, { data: JSON.stringify(data) })
-    act(() => this.listeners.get(type)?.forEach((listener) => listener(event)))
-  }
-}
 
 const STATS = {
   tracks: 120,

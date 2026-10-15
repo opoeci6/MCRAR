@@ -22,12 +22,13 @@ def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> Non
         body = client.get("/api/settings").json()
         settings = client.app.state.mcrar.settings
     assert set(body) == {"editable", "read_only", "overridden_by_env", "embedders"}
-    assert body["editable"]["commercial_mode"] is True
+    assert set(body["editable"]) == {"default_embedder", "search"}
     assert body["editable"]["default_embedder"] == "clap"
     assert set(body["editable"]["search"]) == {
         "pool_size",
         "max_per_artist",
         "min_results",
+        "weak_cosine",
         "weights",
     }
     assert set(body["editable"]["search"]["weights"]) == {"semantic", "tags", "bpm", "energy"}
@@ -44,9 +45,9 @@ def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> Non
     assert body["overridden_by_env"] == []
     by_key = {e["key"]: e for e in body["embedders"]}
     assert set(by_key) == {"clap", "glap", "muq-mulan"}
-    assert by_key["clap"]["allowed"] is True
+    assert by_key["clap"]["commercial_ok"] is True
     assert by_key["muq-mulan"]["commercial_ok"] is False
-    assert by_key["muq-mulan"]["allowed"] is False
+    assert all(set(e) == {"key", "model_id", "commercial_ok"} for e in body["embedders"])
     assert by_key["muq-mulan"]["model_id"].startswith("muq-mulan@")
 
 
@@ -54,14 +55,12 @@ def test_put_writes_the_file_and_reloads_the_running_state(tmp_path: Path) -> No
     with make_client(tmp_path) as client:
         state = client.app.state.mcrar
         old_search = state.search
-        response = client.put("/api/settings", json={"commercial_mode": False})
+        response = client.put("/api/settings", json={"default_embedder": "glap"})
         assert response.status_code == 200
-        assert response.json()["editable"]["commercial_mode"] is False
-        assert state.settings.commercial_mode is False
+        assert response.json()["editable"]["default_embedder"] == "glap"
+        assert state.settings.default_embedder == "glap"
         assert state.search is not old_search  # the search service was rebuilt
-        assert disk(state.settings.home) == {"commercial_mode": False}
-        allowed = {e["key"]: e["allowed"] for e in response.json()["embedders"]}
-        assert allowed["muq-mulan"] is True
+        assert disk(state.settings.home) == {"default_embedder": "glap"}
         assert client.get("/api/settings").json() == response.json()
 
 
@@ -95,36 +94,14 @@ def test_an_empty_put_changes_nothing(tmp_path: Path) -> None:
         assert not settings_file(client.app.state.mcrar.settings.home).exists()
 
 
-def test_a_non_commercial_embedder_is_refused_in_commercial_mode(tmp_path: Path) -> None:
+def test_a_non_commercial_embedder_can_be_selected_without_any_other_setting(
+    tmp_path: Path,
+) -> None:
     with make_client(tmp_path) as client:
         response = client.put("/api/settings", json={"default_embedder": "muq-mulan"})
-        assert response.status_code == 422
-        assert "commercial mode off first" in response.json()["detail"]
-        state = client.app.state.mcrar
-        assert state.settings.default_embedder == "clap"
-        assert not settings_file(state.settings.home).exists()
-
-
-def test_a_non_commercial_embedder_is_accepted_together_with_commercial_off(
-    tmp_path: Path,
-) -> None:
-    with make_client(tmp_path) as client:
-        response = client.put(
-            "/api/settings", json={"default_embedder": "muq-mulan", "commercial_mode": False}
-        )
         assert response.status_code == 200
         assert client.app.state.mcrar.settings.default_embedder == "muq-mulan"
-
-
-def test_commercial_mode_cannot_be_turned_on_under_a_non_commercial_embedder(
-    tmp_path: Path,
-) -> None:
-    overrides = {"commercial_mode": False, "default_embedder": "muq-mulan"}
-    with make_client(tmp_path, settings_overrides=overrides) as client:
-        response = client.put("/api/settings", json={"commercial_mode": True})
-        assert response.status_code == 422
-        assert "commercial embedder" in response.json()["detail"]
-        assert client.app.state.mcrar.settings.commercial_mode is False
+        assert disk(client.app.state.mcrar.settings.home) == {"default_embedder": "muq-mulan"}
 
 
 def test_an_unknown_embedder_is_refused(tmp_path: Path) -> None:
@@ -158,8 +135,10 @@ def test_a_field_pinned_by_the_environment_is_a_409_naming_it(
         {"home": "/x"},
         {"search": {"unknown": 1}},
         {"search": {"weights": {"nope": 1}}},
-        {"commercial_mode": "yes"},
+        {"commercial_mode": False},  # the removed setting is no longer accepted
         {"search": {"pool_size": 0}},
+        {"search": {"weak_cosine": 1.5}},
+        {"search": {"weak_cosine": -0.1}},
         {"search": {"pool_size": "many"}},
         {"search": {"weights": {"tags": -1}}},
         {"search": {"weights": {"semantic": 0, "tags": 0, "bpm": 0, "energy": 0}}},
@@ -177,9 +156,20 @@ def test_invalid_bodies_are_422_and_change_nothing(tmp_path: Path, body: dict) -
 
 def test_cross_origin_writes_are_refused_on_every_new_route(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
-        put = client.put("/api/settings", json={"commercial_mode": False}, headers=EVIL)
+        put = client.put("/api/settings", json={"default_embedder": "glap"}, headers=EVIL)
         assert put.status_code == 403
-        assert client.app.state.mcrar.settings.commercial_mode is True
+        assert client.app.state.mcrar.settings.default_embedder == "clap"
         assert client.post("/api/analyze", headers=EVIL).status_code == 403
         assert client.put("/api/secrets/x", json={"value": "v"}, headers=EVIL).status_code == 403
         assert client.delete("/api/secrets/x", headers=EVIL).status_code == 403
+
+
+def test_the_weak_match_threshold_is_editable_and_unset_by_default(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        assert client.get("/api/settings").json()["editable"]["search"]["weak_cosine"] is None
+        response = client.put("/api/settings", json={"search": {"weak_cosine": 0.5}})
+        assert response.status_code == 200
+        assert response.json()["editable"]["search"]["weak_cosine"] == 0.5
+        assert state.settings.search.weak_cosine == 0.5
+        assert disk(state.settings.home) == {"search": {"weak_cosine": 0.5}}

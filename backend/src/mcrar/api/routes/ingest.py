@@ -4,7 +4,11 @@ Design
 - ``POST /api/ingest/...`` validates the request, then starts one background job
   (:class:`~mcrar.api.jobs.JobManager`, one at a time, else 409) and answers 202 with the job.
   Everything that can fail fast fails before the job starts: a body that does not validate (422),
-  a missing Jamendo client id (503), no torch for a re-embed (503).
+  a missing Jamendo client id (503), no torch for a re-embed or a search import (503).
+- ``POST /api/search/import`` imports new Jamendo tracks for a text search (kind ``ingest-query``):
+  the text is parsed like a search, the Jamendo queries come from
+  :mod:`mcrar.recommend.jamendo_query` and the run stops after ``limit`` new tracks. It embeds
+  with the default model and with CLAP.
 - The job runs the same pipeline as the CLI (:mod:`mcrar.ingest.pipeline`) with the stages of
   :func:`mcrar.ingest.stages.build_stages`. Embedders come from the server's model pool, the same
   loaded model search uses; the job never closes it. Without torch an ingest still analyses the
@@ -32,7 +36,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mcrar.api.jobs import FINAL_EVENTS, Job, JobBusyError, JobNotRunningError, ProgressSink
 from mcrar.api.models import NO_TORCH_MESSAGE
+from mcrar.api.routes.search import FiltersBody, resolve_filters
 from mcrar.api.state import AppState, StateDep
+from mcrar.recommend import SearchRequest
 from mcrar.secrets import SecretError
 from mcrar.sources import JamendoError
 
@@ -46,6 +52,7 @@ router = APIRouter()
 POLL_S = 1.0  # longest wait for a new event before the stream checks on its client again
 KEEPALIVE_S = 15.0
 NO_JAMENDO_MESSAGE = "Jamendo client id is not set"
+IMPORT_NEEDS_TEXT_MESSAGE = "describe the music to search Jamendo for"
 NO_EMBED_WARNING = (
     "embedding skipped: torch is not installed, so tracks are analysed but not embedded "
     "(install the ml extra: uv sync --extra ml)"
@@ -65,6 +72,14 @@ class JamendoIngestBody(BaseModel):
     limit: int = Field(50, ge=1, le=1000)
     embed: bool = True
     force: bool = False
+
+
+class SearchImportBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=300)
+    filters: FiltersBody = Field(default_factory=FiltersBody)
+    limit: int = Field(50, ge=1, le=100)
 
 
 class LocalIngestBody(BaseModel):
@@ -159,6 +174,44 @@ def ingest_jamendo_route(body: JamendoIngestBody, state: StateDep) -> dict[str, 
     return _start(
         state, "ingest-jamendo", body.model_dump(exclude_none=True), run, cleanup=client.close
     )
+
+
+@router.post("/api/search/import", status_code=202)
+def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, Any]:
+    """Import new Jamendo tracks for a text search, so that CLAP can rank them next time."""
+    from mcrar.ingest import ingest_jamendo_queries
+    from mcrar.ingest.stages import TAGGING_EMBEDDER, build_stages
+    from mcrar.recommend.jamendo_query import jamendo_queries
+
+    filters = resolve_filters(body.filters, state.search.vocab)
+    parsed = state.search.parse(SearchRequest(text=body.text, filters=filters))
+    if not parsed.semantic_text:
+        raise ValueError(IMPORT_NEEDS_TEXT_MESSAGE)
+    if not state.torch_available():  # new tracks cannot be ranked without embeddings
+        raise HTTPException(status_code=503, detail=NO_TORCH_MESSAGE)
+    queries = jamendo_queries(parsed.semantic_text, parsed.filters)
+    client = _open_jamendo(state)
+
+    def run(sink: ProgressSink) -> IngestReport:
+        try:
+            # The tagging heads read CLAP vectors, so CLAP is embedded whatever the default is.
+            keys = dict.fromkeys([state.settings.default_embedder, TAGGING_EMBEDDER])
+            stages = build_stages(state.settings, [state.pool.get(key) for key in keys])
+            return ingest_jamendo_queries(
+                client,
+                state.repo,
+                queries=queries,
+                max_new=body.limit,
+                stages=stages,
+                on_progress=sink.on_event,
+            )
+        finally:
+            client.close()
+
+    # ``text`` is the request as sent (the page matches it against the search on screen),
+    # ``query`` what the parser made of it.
+    params = {"text": body.text.strip(), "limit": body.limit, "query": parsed.semantic_text}
+    return _start(state, "ingest-query", params, run, cleanup=client.close)
 
 
 @router.post("/api/ingest/local", status_code=202)

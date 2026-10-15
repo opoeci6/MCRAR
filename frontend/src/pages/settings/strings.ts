@@ -1,26 +1,11 @@
 /** Text of the Settings page. Add this page's strings here, not in src/strings.ts. */
 export const settingsStrings = {
   title: 'Settings',
-  description: 'Licence mode, search tuning and the Jamendo key.',
+  description: 'The default model, search tuning and the Jamendo key.',
   loadFailed: "Couldn't load the settings",
   saveFailed: "Couldn't save the settings",
   saved: 'Settings saved.',
   envPinned: (name: string) => `Set by environment variable ${name}. Unset it to change this here.`,
-
-  mode: {
-    heading: 'Licence mode',
-    toggle: 'Commercial mode',
-    explain:
-      'On: only models and tags trained on commercially usable data are used (recommended if you might sell your game). Off: also uses research-only models such as MuQ-MuLan and the MTG-Jamendo mood head.',
-    confirmTitle: 'Turn off commercial mode?',
-    confirmBody:
-      'Research-only models are not cleared for commercial use. Tags and rankings made with them should not be relied on for a project you sell.',
-    confirmAction: 'Turn off commercial mode',
-    keepOn: 'Keep it on',
-    retagTitle: 'Tags may be out of date',
-    retagBody: 'The allowed models changed. Run "Re-tag catalog" so the tags match the new mode.',
-    retagLink: 'Open Library maintenance',
-  },
 
   model: {
     heading: 'Model',
@@ -28,7 +13,6 @@ export const settingsStrings = {
     hint: 'The model that turns your search text and the music into comparable numbers.',
     commercial: 'commercial use OK',
     research: 'research only',
-    notAllowed: 'not available in commercial mode',
     save: 'Save model',
   },
 

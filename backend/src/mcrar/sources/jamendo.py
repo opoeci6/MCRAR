@@ -18,6 +18,7 @@ Design notes
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import logging
 import os
@@ -80,6 +81,12 @@ def _str(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _unescaped(value: object) -> str | None:
+    """Like ``_str`` for display names: the API sends HTML entities (``Jazyus &amp; EdSeGaMe``)."""
+    text = _str(value)
+    return _str(html.unescape(text)) if text is not None else None
 
 
 def _to_bool(value: object) -> bool | None:
@@ -147,9 +154,9 @@ def parse_track(data: Mapping[str, Any]) -> SourceTrack | None:
     return SourceTrack(
         source=SOURCE_NAME,
         source_id=source_id,
-        title=_str(data.get("name")) or "",
-        artist=_str(data.get("artist_name")) or "",
-        album=_str(data.get("album_name")),
+        title=_unescaped(data.get("name")) or "",
+        artist=_unescaped(data.get("artist_name")) or "",
+        album=_unescaped(data.get("album_name")),
         duration_s=_to_float(data.get("duration")),
         release_date=_str(data.get("releasedate")),
         source_url=_str(data.get("shareurl")) or _str(data.get("shorturl")),

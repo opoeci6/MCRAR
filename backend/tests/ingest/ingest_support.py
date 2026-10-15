@@ -100,8 +100,13 @@ class FakeClient:
         fetch_errors: Mapping[str, BaseException] | None = None,
         fetch_delay: float = 0.0,
         audio: bytes | None = None,
+        per_query: Mapping[str, list[SourceTrack]] | None = None,
     ) -> None:
         self.tracks = tracks
+        # Tracks per query, keyed by its ``search`` text (or its fuzzytags joined by spaces);
+        # a query that is not listed finds nothing. Without it every query finds ``tracks``.
+        self.per_query = None if per_query is None else dict(per_query)
+        self.pulled: list[str] = []  # source ids the pipeline took from a search, in order
         self.fetch_errors = dict(fetch_errors or {})
         self.fetch_delay = fetch_delay
         self.audio = audio if audio is not None else wav_bytes()
@@ -113,7 +118,16 @@ class FakeClient:
 
     def search_tracks(self, **kwargs: Any) -> Iterator[SourceTrack]:
         self.search_kwargs.append(kwargs)
-        return iter(self.tracks[: kwargs["limit"]])
+        tracks = self.tracks
+        if self.per_query is not None:
+            key = kwargs.get("search") or " ".join(kwargs.get("fuzzytags") or [])
+            tracks = self.per_query.get(key, [])
+        return self._results(tracks[: kwargs["limit"]])
+
+    def _results(self, tracks: list[SourceTrack]) -> Iterator[SourceTrack]:
+        for track in tracks:  # lazy, like the real client: only pulled tracks are recorded
+            self.pulled.append(track.source_id)
+            yield track
 
     def fetch_audio(self, track: SourceTrack) -> bytes:
         start = time.monotonic()

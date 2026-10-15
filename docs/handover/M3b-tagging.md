@@ -1,5 +1,9 @@
 # Handover: M3b (tagging) and M3c (optional CNN baseline)
 
+> **Update 2026-10-15:** `commercial_mode` no longer exists. `select_entry` now picks the best
+> test-split entry for each label set regardless of licence, and `registry.json` has one
+> `selected` map. The per-mode rules below describe M3b as it was delivered.
+
 **Audience:** a collaborator and their coding agents (Codex). Read `AGENTS.md` first: its
 environment rules are not optional. Product context is in `docs/PLAN.md` (§2b, §2c and the M3b and
 M3c rows of §5). Results that led here are in `docs/embedder_bakeoff.md`.

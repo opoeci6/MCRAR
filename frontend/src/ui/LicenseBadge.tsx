@@ -1,6 +1,9 @@
+import { useEffect, useRef, useState } from 'react'
 import type { Risk } from '../api/types'
 import { cx } from '../lib/cx'
+import { linkify } from '../lib/linkify'
 import { strings } from '../strings'
+import { Button } from './Button'
 import { AlertIcon, CheckIcon, CloseIcon, QuestionIcon } from './icons'
 import { Popover } from './Popover'
 import type { PopoverPlacement } from './Popover'
@@ -34,6 +37,48 @@ function BadgeFace({ risk, code }: Pick<LicenseBadgeProps, 'risk' | 'code'>) {
       <span className={styles.risk}>{strings.license.risk[risk]}</span>
       <span className={styles.code}>{code || strings.license.noCode}</span>
     </>
+  )
+}
+
+/** How long "Copied" stays on screen. */
+const STATUS_MS = 2000
+
+function canCopy(): boolean {
+  return typeof navigator !== 'undefined' && typeof navigator.clipboard?.writeText === 'function'
+}
+
+type CopyState = 'idle' | 'copied' | 'failed'
+
+/** Copies the credit line and says so in a polite live region. Renders nothing without a clipboard. */
+function CopyCredit({ text }: { text: string }) {
+  const [state, setState] = useState<CopyState>('idle')
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  useEffect(() => () => clearTimeout(timer.current), [])
+
+  if (!canCopy()) return null
+
+  const copy = () => {
+    const done = (next: CopyState) => {
+      setState(next)
+      clearTimeout(timer.current)
+      timer.current = setTimeout(() => setState('idle'), STATUS_MS)
+    }
+    navigator.clipboard.writeText(text).then(
+      () => done('copied'),
+      () => done('failed'),
+    )
+  }
+
+  return (
+    <div className={styles.copyRow}>
+      <Button size="sm" variant="ghost" onClick={copy}>
+        {strings.license.copyCredit}
+      </Button>
+      <span className={styles.copyStatus} role="status" aria-live="polite">
+        {state === 'copied' ? strings.license.copied : null}
+        {state === 'failed' ? strings.license.copyFailed : null}
+      </span>
+    </div>
   )
 }
 
@@ -77,7 +122,8 @@ export function LicenseBadge({
         {attribution ? (
           <div>
             <div className={styles.heading}>{strings.license.attribution}</div>
-            <p className={styles.credit}>{attribution}</p>
+            <p className={styles.credit}>{linkify(attribution)}</p>
+            <CopyCredit text={attribution} />
           </div>
         ) : null}
         {licenseUrl || commercialLicenseUrl ? (

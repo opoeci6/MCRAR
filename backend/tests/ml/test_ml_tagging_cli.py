@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from mcrar.catalog import TrackRecord, open_catalog
 from mcrar.cli import app
 from mcrar.config import get_settings
+from mcrar.ml.tagging.registry import read_registry
 
 runner = CliRunner()
 
@@ -40,7 +41,10 @@ def test_catalog_tagging_and_selection_cli_use_stored_vectors() -> None:
     with open_catalog(settings) as repo:
         assert len(repo.get_tag_probs(tid, "genre")) == 3
     result = runner.invoke(app, ["tagging", "select"])
-    assert result.exit_code == 0 and "non-commercial: genre:" in result.output
+    assert result.exit_code == 0 and "genre: genre-logreg@" in result.output
+    assert "mode" not in result.output.lower()
+    selected = read_registry(settings)["selected"]
+    assert list(selected) == ["genre"] and selected["genre"].startswith("genre-logreg@")
 
 
 def test_tag_progress_survives_a_narrow_console_code_page() -> None:

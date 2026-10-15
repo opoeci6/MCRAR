@@ -15,9 +15,9 @@ def read(home: Path) -> dict:
 
 
 def test_creates_the_file_and_the_config_folder(isolated_env: Path) -> None:
-    save_settings_update(isolated_env, {"commercial_mode": False})
-    assert read(isolated_env) == {"commercial_mode": False}
-    assert get_settings().commercial_mode is False
+    save_settings_update(isolated_env, {"default_embedder": "glap"})
+    assert read(isolated_env) == {"default_embedder": "glap"}
+    assert get_settings().default_embedder == "glap"
 
 
 def test_merges_into_the_existing_file_and_keeps_other_keys(isolated_env: Path) -> None:
@@ -45,6 +45,14 @@ def test_merges_into_the_existing_file_and_keeps_other_keys(isolated_env: Path) 
     assert (settings.search.pool_size, settings.search.weights.tags) == (50, 0.5)
 
 
+def test_a_save_drops_the_legacy_commercial_mode_key(isolated_env: Path) -> None:
+    path = settings_file(isolated_env)
+    path.parent.mkdir()
+    path.write_text("commercial_mode = false\napi_port = 9001\n", encoding="utf-8")
+    save_settings_update(isolated_env, {"search": {"pool_size": 10}})
+    assert read(isolated_env) == {"api_port": 9001, "search": {"pool_size": 10}}
+
+
 def test_a_write_leaves_no_temporary_files(isolated_env: Path) -> None:
     save_settings_update(isolated_env, {"search": {"pool_size": 10}})
     save_settings_update(isolated_env, {"search": {"pool_size": 20}})
@@ -59,7 +67,7 @@ def test_a_write_leaves_no_temporary_files(isolated_env: Path) -> None:
         {"search": {"weights": {"tags": -1}}},
         {"search": {"weights": {"semantic": 0, "tags": 0, "bpm": 0, "energy": 0}}},
         {"search": {"unknown": 1}},
-        {"commercial_mode": "maybe"},
+        {"commercial_mode": False},  # removed setting: no longer editable
         {"default_embedder": ""},
         {"api_port": 1},
         {"secrets_backend": "env"},
@@ -87,19 +95,19 @@ def test_a_broken_existing_file_is_reported_not_overwritten(isolated_env: Path) 
     path.parent.mkdir()
     path.write_text("this is = = not toml", encoding="utf-8")
     with pytest.raises(ValueError, match="cannot read"):
-        save_settings_update(isolated_env, {"commercial_mode": False})
+        save_settings_update(isolated_env, {"default_embedder": "glap"})
     assert path.read_text(encoding="utf-8") == "this is = = not toml"
 
 
 def test_env_overrides_lists_dotted_field_names(monkeypatch: pytest.MonkeyPatch) -> None:
     assert env_overrides() == []
-    monkeypatch.setenv("MCRAR_COMMERCIAL_MODE", "false")
+    monkeypatch.setenv("MCRAR_DEFAULT_EMBEDDER", "glap")
     monkeypatch.setenv("MCRAR_SEARCH__POOL_SIZE", "5")
     monkeypatch.setenv("MCRAR_SEARCH__WEIGHTS__TAGS", "1")
     monkeypatch.setenv("MCRAR_API_PORT", "1234")
     assert env_overrides() == [
         "api_port",
-        "commercial_mode",
+        "default_embedder",
         "search.pool_size",
         "search.weights.tags",
     ]
@@ -111,7 +119,7 @@ def test_env_overrides_ignores_home_secrets_and_unknown_names(
     monkeypatch.setenv("MCRAR_SECRET_JAMENDO_CLIENT_ID", "x")
     monkeypatch.setenv("MCRAR_NOT_A_SETTING", "x")
     monkeypatch.setenv("MCRAR_SEARCH__NOPE", "x")
-    monkeypatch.setenv("OTHER_COMMERCIAL_MODE", "x")
+    monkeypatch.setenv("OTHER_API_PORT", "x")
     monkeypatch.setenv("MCRAR_API_HOST", "127.0.0.1")
     assert env_overrides() == ["api_host"]  # MCRAR_HOME is set by the fixture, not listed
 

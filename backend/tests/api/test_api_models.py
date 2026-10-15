@@ -1,4 +1,4 @@
-"""The model pool: one load per key, serialised use, licence mode, missing ml extra."""
+"""The model pool: one load per key, serialised use, missing ml extra."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 
 from mcrar.api.models import NO_TORCH_MESSAGE, ModelPool, ModelUnavailableError
 from mcrar.config import Settings, get_settings
-from mcrar.ml import CommercialModeError
+from mcrar.ml import ModelLoadError
 
 
 class Model:
@@ -109,37 +109,34 @@ def test_without_torch_nothing_is_loaded() -> None:
 
 def test_load_failures_become_unavailable_errors_without_details() -> None:
     def refuse(key: str, settings: Settings) -> Model:
-        raise CommercialModeError("model 'muq-mulan' is not allowed in commercial mode")
+        raise ModelLoadError("could not load model 'muq-mulan'")
 
     def crash(key: str, settings: Settings) -> Model:
         raise RuntimeError("secret path C:/Users/someone/token")
 
-    with pytest.raises(ModelUnavailableError, match="not allowed in commercial mode"):
+    with pytest.raises(ModelUnavailableError, match="could not load model 'muq-mulan'"):
         pool_with(refuse).get("muq-mulan")
     with pytest.raises(ModelUnavailableError) as info:
         pool_with(crash).get("clap")
     assert "secret" not in str(info.value) and "RuntimeError" in str(info.value)
 
 
-def test_turning_commercial_mode_on_unloads_non_commercial_models() -> None:
-    models = {"clap": Model("clap"), "muq-mulan": Model("muq-mulan", commercial_ok=False)}
-    settings = get_settings(commercial_mode=False)
-    pool = ModelPool(settings, factory=lambda k, s: models[k], torch_available=lambda: True)
-    pool.get("clap")
+def test_a_non_commercial_model_loads_and_stays_loaded_across_a_settings_update() -> None:
+    model = Model("muq-mulan", commercial_ok=False)
+    pool = pool_with(lambda k, s: model)
     pool.get("muq-mulan")
-    pool.update_settings(get_settings(commercial_mode=True))
-    assert pool.loaded_keys() == ["clap"]
-    assert models["muq-mulan"].closed == 1 and models["clap"].closed == 0
+    pool.update_settings(get_settings(default_embedder="glap"))
+    assert pool.loaded_keys() == ["muq-mulan"] and model.closed == 0
 
 
 def test_the_factory_sees_the_current_settings() -> None:
-    seen: list[bool] = []
+    seen: list[str] = []
 
     def factory(key: str, settings: Settings) -> Model:
-        seen.append(settings.commercial_mode)
+        seen.append(settings.default_embedder)
         return Model(key)
 
     pool = ModelPool(get_settings(), factory=factory, torch_available=lambda: True)
-    pool.update_settings(get_settings(commercial_mode=False))
+    pool.update_settings(get_settings(default_embedder="glap"))
     pool.get("clap")
-    assert seen == [False]
+    assert seen == ["glap"]

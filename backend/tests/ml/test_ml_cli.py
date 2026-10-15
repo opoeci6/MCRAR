@@ -104,7 +104,7 @@ def test_help_lists_the_new_commands() -> None:
     assert "list" in sub.output and "benchmark" in sub.output
 
 
-def test_models_list_in_commercial_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_models_list_shows_licence_and_download_state(monkeypatch: pytest.MonkeyPatch) -> None:
     downloaded = {"clap": True, "glap": False, "muq-mulan": True}
     monkeypatch.setattr(
         "mcrar.ml.registry.is_downloaded", lambda spec, settings: downloaded[spec.key]
@@ -113,59 +113,32 @@ def test_models_list_in_commercial_mode(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.exit_code == 0, result.output
     rows = {line.split()[0]: line.split() for line in result.output.splitlines()[1:4]}
     assert result.output.splitlines()[0].split() == [
-        "KEY", "MODEL", "ID", "LICENSE", "COMMERCIAL", "ALLOWED", "DOWNLOADED"
+        "KEY", "MODEL", "ID", "LICENSE", "COMMERCIAL", "DOWNLOADED"
     ]  # fmt: skip
-    assert rows["clap"] == ["clap", "clap@195c3a3", "Apache-2.0", "yes", "yes", "yes"]
-    assert rows["glap"] == ["glap", "glap@79b1301", "Apache-2.0", "yes", "yes", "no"]
-    assert rows["muq-mulan"] == [
-        "muq-mulan",
-        "muq-mulan@2e01c79",
-        "CC-BY-NC-4.0",
-        "no",
-        "no",
-        "yes",
-    ]
-    assert "Commercial mode is on" in result.output
-    assert "MCRAR_COMMERCIAL_MODE=false" in result.output
+    assert rows["clap"] == ["clap", "clap@195c3a3", "Apache-2.0", "yes", "yes"]
+    assert rows["glap"] == ["glap", "glap@79b1301", "Apache-2.0", "yes", "no"]
+    assert rows["muq-mulan"] == ["muq-mulan", "muq-mulan@2e01c79", "CC-BY-NC-4.0", "no", "yes"]
+    assert "ommercial mode" not in result.output
 
 
-def test_models_list_with_commercial_mode_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MCRAR_COMMERCIAL_MODE", "false")
+def test_models_list_without_the_ml_extra_says_unknown(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("mcrar.ml.registry.is_downloaded", lambda spec, settings: None)
     result = runner.invoke(app, ["models", "list"])
     assert result.exit_code == 0, result.output
     muq = next(line for line in result.output.splitlines() if line.startswith("muq-mulan"))
-    assert muq.split()[3:6] == ["no", "yes", "unknown"]  # not commercial, but allowed now
-    assert "Commercial mode is off" in result.output
+    assert muq.split()[3:5] == ["no", "unknown"]
 
 
-# -- the commercial gate -------------------------------------------------------------------------
+# -- non-commercial models are not gated ---------------------------------------------------------
 
 
-def test_embed_refuses_a_non_commercial_model_in_commercial_mode(no_torch: None) -> None:
-    result = runner.invoke(app, ["embed", "--models", "muq-mulan"])
-    assert result.exit_code == 1
-    assert result.output.startswith("error: model 'muq-mulan'")
-    assert "MCRAR_COMMERCIAL_MODE=false" in result.output
-    assert "Traceback" not in result.output
-
-
-def test_embed_allows_it_when_commercial_mode_is_off(
-    monkeypatch: pytest.MonkeyPatch, loader: Loader, tmp_path: Path
+def test_embed_takes_a_non_commercial_model_without_any_setting(
+    loader: Loader, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("MCRAR_COMMERCIAL_MODE", "false")
     _local_catalog(tmp_path, 1)
     result = runner.invoke(app, ["embed", "--models", "muq-mulan"])
     assert result.exit_code == 0, result.output
     assert [key for key, _ in loader.calls] == ["muq-mulan"]
-
-
-def test_ingest_embed_checks_the_gate_before_doing_any_work(tmp_path: Path, no_torch: None) -> None:
-    write_wav(tmp_path / "lib" / "a.wav")
-    result = runner.invoke(app, ["ingest", "local", str(tmp_path / "lib"), "--embed", "muq-mulan"])
-    assert result.exit_code == 1
-    assert "MCRAR_COMMERCIAL_MODE=false" in result.output
-    assert _stats()["tracks"] == 0  # nothing was ingested
 
 
 def test_embed_rejects_unknown_models_and_sources(no_torch: None) -> None:
@@ -220,14 +193,14 @@ def test_embed_default_embedder_comes_from_settings(
     assert [key for key, _ in loader.calls] == ["glap"]
 
 
-def test_embed_non_commercial_default_is_refused_in_commercial_mode(
+def test_embed_takes_a_non_commercial_default_embedder(
     loader: Loader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _local_catalog(tmp_path, 1)
     monkeypatch.setenv("MCRAR_DEFAULT_EMBEDDER", "muq-mulan")
     result = runner.invoke(app, ["embed"])
-    assert result.exit_code == 1
-    assert loader.calls == []
+    assert result.exit_code == 0, result.output
+    assert [key for key, _ in loader.calls] == ["muq-mulan"]
 
 
 def test_embed_with_everything_current_loads_no_model(loader: Loader, tmp_path: Path) -> None:
@@ -373,6 +346,16 @@ def test_ingest_local_embed_adds_embedding_stages(
     assert all(e.closed for e in loader.loaded)
 
 
+def test_ingest_local_embed_takes_a_non_commercial_model_without_any_setting(
+    loader: Loader, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pipeline, "analyze_audio", _fake_features)
+    write_wav(tmp_path / "lib" / "a.wav")
+    result = runner.invoke(app, ["ingest", "local", str(tmp_path / "lib"), "--embed", "muq-mulan"])
+    assert result.exit_code == 0, result.output
+    assert _stats()["embeddings_by_model"] == {"muq-mulan@2e01c79": 1}
+
+
 def test_ingest_local_with_no_embed_never_touches_the_loader(
     no_torch: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -464,7 +447,11 @@ def test_models_benchmark_keeps_going_after_a_failure(monkeypatch: pytest.Monkey
     assert "1 model(s) failed" in result.output
 
 
-def test_models_benchmark_refuses_non_commercial_models(no_torch: None) -> None:
-    result = runner.invoke(app, ["models", "benchmark", "--models", "muq-mulan"])
-    assert result.exit_code == 1
-    assert "MCRAR_COMMERCIAL_MODE=false" in result.output
+def test_models_benchmark_includes_non_commercial_models(loader: Loader) -> None:
+    named = runner.invoke(app, ["models", "benchmark", "--models", "muq-mulan", "--seconds", "2"])
+    assert named.exit_code == 0, named.output
+    assert "muq-mulan@2e01c79" in named.output
+    loader.calls.clear()
+    default = runner.invoke(app, ["models", "benchmark", "--seconds", "2"])
+    assert default.exit_code == 0, default.output
+    assert [key for key, _ in loader.calls] == ["clap", "glap", "muq-mulan"]  # no --models: all

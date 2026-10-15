@@ -20,6 +20,7 @@ import type {
   RatingRequest,
   RatingTarget,
   ReprocessRequest,
+  SearchImportRequest,
   SearchRequest,
   SearchResponse,
   SecretsList,
@@ -50,6 +51,10 @@ export const getStats = (o?: CallOptions) => request<Stats>('GET', '/api/stats',
 
 export const search = (body: SearchRequest, o?: CallOptions) =>
   request<SearchResponse>('POST', '/api/search', { ...o, body })
+
+/** Starts a job that imports Jamendo candidates for a search. Re-run the search when it is done. */
+export const importForSearch = (body: SearchImportRequest, o?: CallOptions) =>
+  request<{ job: Job }>('POST', '/api/search/import', { ...o, body })
 
 // -- tracks --------------------------------------------------------------------------------
 

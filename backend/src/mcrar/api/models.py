@@ -10,9 +10,7 @@ Design
 - Loading needs the ``ml`` extra. Without torch (or when a load fails) the pool raises
   :class:`ModelUnavailableError`, which the routes report as HTTP 503; filter-only requests never
   touch the pool.
-- The licence mode is kept current with :meth:`ModelPool.update_settings`: models that are not
-  commercially usable are unloaded when ``commercial_mode`` turns on, and ``load_embedder``
-  refuses them while it is on.
+- :meth:`ModelPool.update_settings` hands later loads the current settings.
 
 Importing this module never imports torch; the default loader imports ``load_embedder`` lazily.
 """
@@ -39,7 +37,7 @@ NO_TORCH_MESSAGE = "text search needs the ml extra (torch is not installed)"
 
 
 class ModelUnavailableError(RuntimeError):
-    """A model cannot be used right now (no ml extra, refused by the licence mode, load failed).
+    """A model cannot be used right now (no ml extra, load failed).
 
     The message is fit to show to the user as it is.
     """
@@ -133,9 +131,7 @@ class ModelPool:
             ) from None
         model = LockedEmbedder(embedder)
         with self._lock:
-            # The pool closed, or the licence mode turned commercial, while the model loaded.
-            refused = self._settings.commercial_mode and not getattr(model, "commercial_ok", True)
-            keep = not (self._closed or refused)
+            keep = not self._closed  # the pool closed while the model loaded
             if keep:
                 self._models[key] = model
         if not keep:
@@ -154,17 +150,9 @@ class ModelPool:
     # -- settings and lifecycle --------------------------------------------------------------
 
     def update_settings(self, settings: Settings) -> None:
-        """Use new settings for later loads; unload models the new licence mode does not allow."""
+        """Use new settings for later loads (loaded models stay loaded)."""
         with self._lock:
             self._settings = settings
-            drop = (
-                [k for k, m in self._models.items() if not getattr(m, "commercial_ok", True)]
-                if settings.commercial_mode
-                else []
-            )
-            dropped = [self._models.pop(k) for k in drop]
-        for model in dropped:
-            model.unload()
 
     def close(self) -> None:
         with self._lock:

@@ -56,11 +56,6 @@ def no_torch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "_load_embedder", boom)
 
 
-@pytest.fixture
-def noncommercial(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MCRAR_COMMERCIAL_MODE", "false")
-
-
 def sdd_root(home: Path) -> Path:
     return home / "data" / "benchmarks" / "sdd"
 
@@ -141,21 +136,17 @@ def test_sdd_embed_all_done_loads_nothing(home: Path, loader: Loader) -> None:
     assert loader.calls == []
 
 
-def test_sdd_embed_respects_the_commercial_gate(home: Path, no_torch: None) -> None:
-    make_sdd(sdd_root(home))
-    result = run("sdd-embed", "--models", "muq-mulan", ok=False)
-    assert result.exit_code == 1
-    assert "MCRAR_COMMERCIAL_MODE=false" in result.output
-    assert not (sdd_root(home) / "embeddings").exists()
-
-
-def test_sdd_embed_allows_muq_when_commercial_mode_is_off(
-    home: Path, loader: Loader, noncommercial: None
-) -> None:
+def test_sdd_embed_takes_muq_without_any_setting(home: Path, loader: Loader) -> None:
     make_sdd(sdd_root(home))
     run("sdd-embed", "--models", "muq-mulan")
     assert loader.calls == ["muq-mulan"]
     assert (sdd_root(home) / "embeddings" / f"{MUQ}.npz").is_file()
+
+
+def test_sdd_embed_without_models_embeds_all_three(home: Path, loader: Loader) -> None:
+    make_sdd(sdd_root(home))
+    run("sdd-embed")
+    assert loader.calls == ["clap", "glap", "muq-mulan"]  # fakes: no real weights are loaded
 
 
 def test_sdd_embed_without_the_dataset_is_a_clean_error(home: Path, no_torch: None) -> None:
@@ -172,9 +163,7 @@ def test_sdd_embed_accepts_a_custom_folder(home: Path, loader: Loader, tmp_path:
 # -- sdd-eval ----------------------------------------------------------
 
 
-def test_sdd_eval_end_to_end(
-    home: Path, monkeypatch: pytest.MonkeyPatch, noncommercial: None
-) -> None:
+def test_sdd_eval_end_to_end(home: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cli, "_load_embedder", Loader(shifts={"muq-mulan": 1}))
     make_sdd(sdd_root(home))
     run("sdd-embed", "--models", "clap,glap,muq-mulan")
@@ -222,12 +211,6 @@ def test_sdd_eval_needs_the_embeddings(home: Path, no_torch: None) -> None:
     make_sdd(sdd_root(home))
     result = run("sdd-eval", "--models", "clap", ok=False)
     assert result.exit_code == 1 and "sdd-embed" in result.output
-
-
-def test_sdd_eval_refuses_muq_in_commercial_mode(home: Path, no_torch: None) -> None:
-    make_sdd(sdd_root(home))
-    result = run("sdd-eval", "--models", "clap,muq-mulan", ok=False)
-    assert result.exit_code == 1 and "MCRAR_COMMERCIAL_MODE=false" in result.output
 
 
 # -- catalog-based commands ----------------------------------------------------------
@@ -464,7 +447,7 @@ def test_score_ratings_errors_are_clean(home: Path, tmp_path: Path) -> None:
 
 
 def test_report_end_to_end_into_a_temp_path(
-    home: Path, monkeypatch: pytest.MonkeyPatch, noncommercial: None, tmp_path: Path
+    home: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(cli, "_load_embedder", Loader(shifts={"muq-mulan": 1}))
     make_sdd(sdd_root(home))

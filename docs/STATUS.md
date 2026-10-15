@@ -59,9 +59,12 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **Spotify is metadata and search only.** Since 2024–2026 its API gives no audio, no audio
   features and no previews for new apps, and Development Mode is limited to about 5 users. ML
   runs only on audio we can fetch: Jamendo, local folders and asset packs, and Freesound later.
-- **`commercial_mode = true` by default.** Anything trained on or calibrated with non-commercial
-  data (MuQ-MuLan weights, MTG-Jamendo and DEAM labels) is refused or skipped in that mode. The
-  owner keeps the commercial option open.
+- **No commercial mode (since 2026-10-15).** It used to default to on and refuse anything
+  trained on or calibrated with non-commercial data (MuQ-MuLan weights, MTG-Jamendo and DEAM
+  labels). The owner removed it: every model and head is usable, and the README will say the
+  project is not for commercial use (for example hosting it as a service) because of those
+  licences. `commercial_ok` stays in the registries as licence information. A leftover
+  `commercial_mode` line in `config/settings.toml` is ignored and dropped on the next save.
 - **Licence risk for game use** (`mcrar.licensing`):
   - green: CC0, PDM, CC BY, Pixabay
   - amber: CC BY-SA, Free Art License (share-alike may reach a game)
@@ -85,7 +88,7 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **`laion/larger_clap_music` is broken on Hugging Face:** `logit_scale` loads as 1.0 and every
   prompt gets the same embedding. A real-model regression test guards against this kind of
   collapse.
-- **MuQ-MuLan** stays available with `MCRAR_COMMERCIAL_MODE=false`.
+- **MuQ-MuLan** stays available as a non-default option (non-commercial weights).
 - **Pins:** torch is 2.11 (cu130) because torchaudio, which GLAP and MuQ need, stopped at 2.11.
   transformers is below 5 because muq breaks on 5.x.
 
@@ -149,7 +152,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   |---|---|---|
   | M4: zero-shot tags only, before M3b tagged the catalog | 1.35 | 23 / 7 |
   | Stored raw probabilities (M3b tags, until 2026-10-15) | 1.22 | 23 / 7 |
-  | Stored, standardised per label (current) | 1.25 | 24 / 6 |
+  | Stored, standardised per label (zero-shot mood head) | 1.25 | 24 / 6 |
+  | Same, with the MTG mood MLP after commercial mode was removed (current, 2026-10-15) | 1.32 | 22 / 8 |
 
   - For comparison, CLAP alone scored 1.40 on its own top 2 in the bake-off.
   - The sample is small: each step is one or two tracks changing.
@@ -170,13 +174,14 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - All heads read stored `clap@195c3a3` vectors. Runtime is numpy only, so `mcrar tag` needs no
   network, audio or torch. Artifacts are `.npz` files under `models/heads/`, listed in
   `models/registry.json` with content-derived ids and data licences.
-- **Selection** (the best test-split primary metric allowed in each mode):
+- **Selection** (the best test-split primary metric; until 2026-10-15 commercial mode fell back
+  to `moodtheme-zeroshot-unsupervised@15d3513` and had no valence/arousal):
 
-  | Label set | Commercial mode (default) | Non-commercial mode |
-  |---|---|---|
-  | genre (FMA) | `genre-logreg@2b67df0`, macro F1 0.51 | same |
-  | mood/theme (MTG) | `moodtheme-zeroshot-unsupervised@15d3513`, ROC-AUC 0.66, poorly calibrated | `moodtheme-mlp@b2ac67d`, PR-AUC 0.14 |
-  | valence, arousal (DEAM) | none | MLP, R² 0.67 / 0.69 |
+  | Label set | Selected head |
+  |---|---|
+  | genre (FMA) | `genre-logreg@2b67df0`, macro F1 0.51 |
+  | mood/theme (MTG) | `moodtheme-mlp@b2ac67d`, PR-AUC 0.14 (zero-shot: 0.08) |
+  | valence, arousal (DEAM) | MLP, R² 0.67 / 0.69 (shown in the track drawer, not used in ranking) |
 
 - The genre MLP did not beat logreg on macro F1 (0.508 vs 0.511), so the rule selects logreg.
 - On the owner's catalog, genre top-1 agrees with the uploaders' Jamendo genre tags on 66% of
@@ -198,9 +203,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   - Secrets are write-only over HTTP.
   - Hosting for others needs authentication first, and `ingest/local` and `analyze` turned off
     (`docs/api.md`).
-- **Licence gating.** Stored tags count only when their `model_version` is the registry entry
-  selected for the current mode. Without this, NC-head tags would have kept ranking after
-  switching back to commercial mode.
+- **Tag versions.** Stored tags count only when their `model_version` is the registry entry
+  currently selected, so tags from a replaced head stop ranking until `mcrar tag` re-tags.
 - **Never re-host audio.** Jamendo previews are 307 redirects to a fresh URL, which carries no
   client id. Local files are served from the catalog path, with Range support.
 - **Ingest jobs.**
@@ -254,16 +258,57 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   - credits md export with the full attribution lines
   - a Jamendo ingest of 3 tracks with live progress
   - cancelling a 15-track ingest after 2 tracks
-  - the commercial-mode round trip with confirmation
+  - the commercial-mode round trip with confirmation (the mode was removed afterwards)
   - the secret never shown
   - dark mode: body text at 15.7:1 contrast and badges at 9.6:1
+
+### 3.10 After M6 (2026-10-15)
+- **`frontend/src/lib/` was never committed.** The Python template's `lib/` rule in `.gitignore`
+  hid it, so a fresh clone of the M6 UI could not build. It is now un-ignored and tracked.
+- **Licence card.** The credit line's URLs are links, the card no longer selects as a whole, and
+  a "Copy credit" button copies the line.
+- **HTML entities in Jamendo names.** The API sends names like "Jazyus &amp; EdSeGaMe".
+  - `parse_track` now decodes the title, artist and album.
+  - Catalog migration v3 decodes the stored names.
+  - v4 decodes the stored credit lines and accents such as `&eacute;`, without decoding
+    anything twice.
+- **Commercial mode removed** (§3.1). The real catalog was re-tagged with the selected heads, and
+  the top-2 mean rose to 1.32 (§3.5).
+- **Per-query Jamendo import.**
+  - **The weak-match signal.** The ranked scores are min-max normalised (the top hit is always
+    1.0), so search now also returns `match: {top_cosine, weak}`, the raw CLAP cosine of the
+    best hit. Its threshold is `search.weak_cosine`, by default 0.40 for CLAP.
+    - **Calibration** (raw top-1 cosine on the 1,054-track catalog): the 15 rated game-music
+      queries scored 0.41–0.66. Clearly weak queries scored lower: "intense fight" 0.32, "anime
+      opening" 0.37, "bagpipes" 0.39.
+    - **J-pop isn't caught.** "j-pop" scores 0.57 and "japanese vocal" 0.47, because CLAP can't
+      tell J-pop from pop. That is why the button is also always shown. A better weak-match
+      judgment is a job for M7 (the LLM).
+  - **Jamendo queries** (`recommend/jamendo_query.py`), from a live check of the API:
+    - `search=` is full-text over names and tags and works well. "j-pop" returns generic pop,
+      but "jpop" works, so short hyphenated compounds are joined.
+    - `lang=` fails with an internal error, so no language filter is sent.
+    - The queries, in order: the normalised text, the original text, then the content words as
+      `fuzzytags`. Each carries the vocal, duration and green-licence filters.
+  - **The pipeline** (`ingest_jamendo_queries`) skips tracks already in the catalog before any
+    download and stops after 50 new ones.
+  - **The job** embeds with the default embedder and CLAP (tags need CLAP), then tags.
+  - **The UI.** A weak result shows a notice with "Search Jamendo for more"; otherwise the
+    button sits under the results of every text search. While the job runs, its progress shows
+    inline with Cancel. When it finishes, the search re-runs and the new tracks are marked "New".
+  - **End-to-end on a catalog copy:**
+    - "j-pop": 50 new tracks in 145 s, 0 failures. A Japanese track ranked first, but only 2 of
+      the top 20 were new.
+    - "japanese vocal": 10 of its top 20 were new.
+    - "anime opening" showed the weak notice. Cancelling its import after a few seconds kept 6
+      tracks, and the search re-ran.
+    - The licence card links opened, and the server log had no client id.
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (commercial mode: genre and mood/theme; tagged 2026-10-12, 0 failures) |
-| Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
+| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures), schema v3 (ratings table, decoded names); the next open with the new code applies v4 (decoded credit lines and accents) || Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
@@ -278,10 +323,20 @@ M3b is merged and the real catalog is tagged. Still open:
 - **M3c** (optional CNN baseline) and the optional "m3b-embeddings" Release asset were not done.
 - **No weak-label evaluation on the owner's catalog.** The collaborator didn't run it; the 66%
   genre agreement in §3.7 is the only check on the owner's data.
-- **Tagging in non-commercial mode** (adds valence, arousal and the MTG mood head):
-  `MCRAR_COMMERCIAL_MODE=false mcrar tag --force`.
 
 ### 5.2 Follow-ups
+- **README (near the end of the project).** The README is still a TODO. It must state that the
+  project can't be used commercially, for example hosted as a paid service, because MuQ-MuLan's
+  weights and the MTG-Jamendo and DEAM labels behind the tagging heads are non-commercial.
+- **Per-query import polish:**
+  - The weak-match threshold is calibrated for CLAP only; with another default embedder the
+    notice never shows, but the button still works.
+  - A search limited to local sources still offers the Jamendo import.
+  - `search.weak_cosine` can't be cleared back to the default through the API, only in
+    `settings.toml`.
+- **A flaky backend test?** One full run on 2026-10-15 had a single failure that did not
+  reproduce in the next nine runs, and the job tests passed six times in a row. If it shows up
+  again, note the test name.
 - **CLI search speed.** `mcrar search` with text still loads CLAP on every run (about 15 s). The
   API server keeps it loaded, so use `mcrar serve` for repeated searches.
 - **API polish:**

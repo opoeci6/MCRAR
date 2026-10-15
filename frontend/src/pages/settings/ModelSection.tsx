@@ -4,7 +4,7 @@ import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
 import { envVarName } from './env'
-import type { SectionProps } from './ModeSection'
+import type { SectionProps } from './types'
 import { settingsStrings as t } from './strings'
 import { useSettingsSave } from './useSettingsSave'
 import styles from './Section.module.css'
@@ -27,10 +27,10 @@ export function ModelSection({ view, onUpdated }: SectionProps) {
         onChange={(event) => setDraft(event.target.value)}
       >
         {view.embedders.map((embedder) => (
-          <option key={embedder.key} value={embedder.key} disabled={!embedder.allowed}>
+          <option key={embedder.key} value={embedder.key}>
             {`${embedder.key} (${embedder.model_id}): ${
               embedder.commercial_ok ? t.model.commercial : t.model.research
-            }${embedder.allowed ? '' : `, ${t.model.notAllowed}`}`}
+            }`}
           </option>
         ))}
       </Select>

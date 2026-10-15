@@ -44,7 +44,11 @@ export const trackFeatureStrings = {
     sets: {
       genre: 'Genre',
       moodtheme: 'Mood and theme',
+      valence: 'Positivity (valence)',
+      arousal: 'Intensity (arousal)',
     } as Record<string, string>,
+    /** A regression set (valence, arousal) stores one value in 0 to 1: shown as a percentage. */
+    valueChip: (percent: number) => `${percent}%`,
     showAll: (count: number) => `Show all ${count}`,
     showFewer: 'Show fewer',
     chipLabel: (label: string, percent: number) => `${label} ${percent}%`,

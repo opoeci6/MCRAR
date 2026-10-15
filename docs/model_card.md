@@ -99,14 +99,14 @@ Only **held-out test** songs with ids 2001–2058 appear below. Including their 
 
 ## Selection and licences
 
-Selection is the highest finite test primary metric among permitted entries; ties use the entry id for deterministic ordering. Evaluation labels alone do not fit the unlabelled commercial fallback. All parameters fitted to MTG/DEAM labels, including calibration, are non-commercial.
+Selection is the highest finite test primary metric among all entries; ties use the entry id for deterministic ordering. Evaluation labels alone do not fit the unsupervised zero-shot variant. All parameters fitted to MTG/DEAM labels, including calibration, are non-commercial.
 
-| Label set | Commercial mode | Non-commercial mode |
-|---|---|---|
-| genre | genre-logreg@2b67df0 | genre-logreg@2b67df0 |
-| moodtheme | moodtheme-zeroshot-unsupervised@15d3513 | moodtheme-mlp@b2ac67d |
-| valence | no entry | valence-mlp@f2069d3 |
-| arousal | no entry | arousal-mlp@51348c6 |
+| Label set | Selected entry |
+|---|---|
+| genre | genre-logreg@2b67df0 |
+| moodtheme | moodtheme-mlp@b2ac67d |
+| valence | valence-mlp@f2069d3 |
+| arousal | arousal-mlp@51348c6 |
 
 ## Heads and calibration
 
@@ -120,7 +120,7 @@ Prompt scores are mean cosine over templates × synonyms; the averaged text vect
 
 FMA uses 30 s clips, while MTG and the catalog use full tracks capped at 240 s; DEAM mixes 45 s excerpts and 2015 full songs. Sparse three-window sampling can miss intros, outros and changing moods. Genre categories overlap; rare genres and subjective mood/theme labels are difficult. The unsupervised fallback produces bounded scores without supervised probability calibration. The weak continuous zero-shot results show that pleasant/intense prompt similarity is not a reliable substitute for trained emotion regression. Corrupt or sub-second audio is counted in each dataset's embedding report; missing embeddings fail catalog tagging clearly.
 
-The commercial mood/theme fallback is poorly calibrated in this run: ECE 0.6306, macro PR-AUC 0.0785 and macro ROC-AUC 0.6555. Its scores support relative ranking; calibrated probability thresholds are unreliable.
+The unsupervised mood/theme zero-shot variant is poorly calibrated in this run: ECE 0.6306, macro PR-AUC 0.0785 and macro ROC-AUC 0.6555. Its scores support relative ranking; calibrated probability thresholds are unreliable.
 
 The optional M3c CNN and owner-catalog weak-label sanity check were not run; this milestone uses the prescribed CLAP heads and no Jamendo API key.
 
