@@ -150,8 +150,76 @@ UPDATE tracks SET
 WHERE title LIKE '%&%' OR artist LIKE '%&%' OR album LIKE '%&%';
 """
 
+
+def _replace_chain(column: str, pairs: tuple[tuple[str, str], ...]) -> str:
+    sql = column
+    for old, new in pairs:
+        sql = f"REPLACE({sql}, '{old}', '{new.replace(chr(39), chr(39) * 2)}')"
+    return sql
+
+
+# v3 missed the stored credit line (built from the escaped names at ingest) and named accents
+# such as "&eacute;". The credit line gets the full one-level decoding (&amp; last); the names,
+# already decoded by v3, get only the accents, so nothing is decoded twice. Frozen: never change.
+_V4_ACCENTS: tuple[tuple[str, str], ...] = tuple(
+    (f"&{name};", char)
+    for name, char in (
+        ("aacute", "á"),
+        ("agrave", "à"),
+        ("acirc", "â"),
+        ("auml", "ä"),
+        ("atilde", "ã"),
+        ("eacute", "é"),
+        ("egrave", "è"),
+        ("ecirc", "ê"),
+        ("euml", "ë"),
+        ("iacute", "í"),
+        ("igrave", "ì"),
+        ("icirc", "î"),
+        ("iuml", "ï"),
+        ("oacute", "ó"),
+        ("ograve", "ò"),
+        ("ocirc", "ô"),
+        ("ouml", "ö"),
+        ("otilde", "õ"),
+        ("uacute", "ú"),
+        ("ugrave", "ù"),
+        ("ucirc", "û"),
+        ("uuml", "ü"),
+        ("ccedil", "ç"),
+        ("ntilde", "ñ"),
+        ("szlig", "ß"),
+        ("Eacute", "É"),
+        ("Agrave", "À"),
+        ("Ccedil", "Ç"),
+        ("Ntilde", "Ñ"),
+        ("Ouml", "Ö"),
+        ("Uuml", "Ü"),
+        ("Auml", "Ä"),
+    )
+)
+_V4_FULL = (
+    *_V4_ACCENTS,
+    ("&quot;", '"'),
+    ("&#39;", "'"),
+    ("&#039;", "'"),
+    ("&apos;", "'"),
+    ("&lt;", "<"),
+    ("&gt;", ">"),
+    ("&amp;", "&"),
+)
+_V4_NAME_COLUMNS = ("title", "artist", "album")
+_V4 = (
+    "UPDATE tracks SET\n"
+    + "".join(f"    {c} = {_replace_chain(c, _V4_ACCENTS)},\n" for c in _V4_NAME_COLUMNS)
+    + f"    attribution_text = {_replace_chain('attribution_text', _V4_FULL)}\n"
+    + "WHERE "
+    + " OR ".join(f"{c} LIKE '%&%;%'" for c in (*_V4_NAME_COLUMNS, "attribution_text"))
+    + ";\n"
+)
+
 # Append only; never edit a released script. Schema version == len(applied scripts).
-MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3, _V4)
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

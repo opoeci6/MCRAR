@@ -1,4 +1,4 @@
-"""Migration v3: HTML entities in stored track names are decoded once."""
+"""Migrations v3 and v4: HTML entities in stored names and credit lines are decoded once."""
 
 from __future__ import annotations
 
@@ -58,3 +58,38 @@ def test_a_v2_database_gets_its_names_decoded(tmp_path: Path) -> None:
         stamps = conn.execute("SELECT DISTINCT created_at, updated_at FROM tracks").fetchall()
         assert [tuple(s) for s in stamps] == [("created", "updated")]
         assert conn.execute("SELECT COUNT(*) FROM tracks").fetchone()[0] == len(_ROWS)
+
+
+_V3_ROWS = [
+    ("1", "&eacute;gal", "CORDE", '"&eacute;gal" by CORDE &amp; Co (https://x.org/a)'),
+    ("2", "Salvaje1", "Jazyus & EdSeGaMe", '"Salvaje1" by Jazyus &amp; EdSeGaMe'),
+    ("3", "&lt;tag&gt;", "A", "one&#039;s &amp;lt;b&amp;gt;"),  # v3 already decoded the title
+    ("4", "Plain", "Artist", "Plain credit"),
+]
+
+
+def test_v4_decodes_credit_lines_and_named_accents_once(tmp_path: Path) -> None:
+    path = tmp_path / "v3" / "catalog.db"
+    conn = connect(path)
+    try:
+        scripts = "\n".join(MIGRATIONS[:3])
+        conn.executescript(f"BEGIN;\n{scripts}\nPRAGMA user_version = 3;\nCOMMIT;")
+        for source_id, title, artist, credit in _V3_ROWS:
+            conn.execute(
+                "INSERT INTO tracks (source, source_id, title, artist, attribution_text,"
+                " created_at, updated_at) VALUES ('jamendo', ?, ?, ?, ?, 'c', 'u')",
+                (source_id, title, artist, credit),
+            )
+    finally:
+        conn.close()
+
+    with open_path(path) as repo:
+        rows = repo._conn.execute(
+            "SELECT source_id, title, artist, attribution_text FROM tracks"
+        ).fetchall()
+    got = {r[0]: (r[1], r[2], r[3]) for r in rows}
+    assert got["1"] == ("égal", "CORDE", '"égal" by CORDE & Co (https://x.org/a)')
+    assert got["2"] == ("Salvaje1", "Jazyus & EdSeGaMe", '"Salvaje1" by Jazyus & EdSeGaMe')
+    # names are not decoded a second time; the credit line once, with &amp; last
+    assert got["3"] == ("&lt;tag&gt;", "A", "one's &lt;b&gt;")
+    assert got["4"] == ("Plain", "Artist", "Plain credit")
