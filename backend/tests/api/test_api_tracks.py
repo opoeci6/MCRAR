@@ -85,22 +85,21 @@ def test_detail_unknown_id_is_404_and_a_bad_id_is_422(tmp_path: Path) -> None:
         assert client.get("/api/tracks/abc").status_code == 422
 
 
-@pytest.mark.parametrize(
-    ("entry_commercial", "commercial_mode", "shown"),
-    [(False, True, False), (False, False, True), (True, True, True), (True, False, True)],
-)
-def test_detail_tags_follow_the_licence_mode(
-    tmp_path: Path, entry_commercial: bool, commercial_mode: bool, shown: bool
+@pytest.mark.parametrize("entry_commercial", [True, False])
+def test_detail_shows_the_tags_of_the_selected_version_whatever_its_licence(
+    tmp_path: Path, entry_commercial: bool
 ) -> None:
-    client = make_client(tmp_path, settings_overrides={"commercial_mode": commercial_mode})
+    client = make_client(tmp_path)
     registry = register_tagging(client.settings, commercial=entry_commercial)
     version = registry["label_sets"]["genre"]["entries"][0]["id"]
     with client:
         track = client.ids["Shadow Walk"]
         client.repo.set_tag_probs(track, "genre", "head", version, {"a": 0.7, "b": 0.2})
         tags = client.get(f"/api/tracks/{track}").json()["tags"]
-        expected = [("genre", "a", 0.7), ("genre", "b", 0.2)] if shown else []
-        assert [(t["label_set"], t["label"], t["prob"]) for t in tags] == expected
+        assert [(t["label_set"], t["label"], t["prob"]) for t in tags] == [
+            ("genre", "a", 0.7),
+            ("genre", "b", 0.2),
+        ]
 
 
 def test_with_no_registry_no_stored_tags_are_shown(tmp_path: Path) -> None:

@@ -330,8 +330,7 @@ def _section_recommendation(rec: Mapping[str, Any], info: Mapping) -> list[str]:
             f"**`{flagged['model']}` is best overall but non-commercial** "
             f"({_license(flagged['model'], info)}): "
             f"it beats `{rec['default']}` by {flagged['diff']:+.3f} "
-            f"(95% CI {_ci(flagged['ci'])}). Use it only for non-commercial work with "
-            "`MCRAR_COMMERCIAL_MODE=false`.",
+            f"(95% CI {_ci(flagged['ci'])}). Use it only for non-commercial work.",
         ]
     else:
         lines += [

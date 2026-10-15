@@ -89,8 +89,9 @@ default suite, ruff and the frontend build on every push and pull request.
 - Under `models/`, only `models/heads/` and `models/registry.json` are committed. Every head's
   training-data licence must be recorded in `registry.json`.
 - Licences matter in this project. Non-commercial models or data (for example MuQ-MuLan weights
-  or MTG-Jamendo labels) must be flagged `commercial_ok: false` and are refused while
-  `Settings.commercial_mode` is true (the default).
+  or MTG-Jamendo labels) must be flagged `commercial_ok: false`. Every model is usable (there is
+  no commercial mode since 2026-10-15); the flags record licences, and the README states that
+  the project as a whole is not for commercial use.
 
 ## 6. Git workflow
 

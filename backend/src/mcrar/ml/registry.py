@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from mcrar.ml.errors import CommercialModeError, MLDependencyError, ModelError, ModelLoadError
+from mcrar.ml.errors import MLDependencyError, ModelError, ModelLoadError
 
 if TYPE_CHECKING:
     from mcrar.config import Settings
@@ -167,20 +167,6 @@ def parse_model_keys(value: str | Iterable[str]) -> list[str]:
     for key in keys:
         get_spec(key)
     return keys
-
-
-def is_allowed(spec: ModelSpec, settings: Settings) -> bool:
-    return spec.commercial_ok or not settings.commercial_mode
-
-
-def check_allowed(spec: ModelSpec, settings: Settings) -> None:
-    """Refuse a non-commercial model while ``commercial_mode`` is on."""
-    if not is_allowed(spec, settings):
-        raise CommercialModeError(
-            f"model '{spec.key}' has a non-commercial licence ({spec.license}) and MCRAR is in "
-            "commercial mode. Set MCRAR_COMMERCIAL_MODE=false (or commercial_mode = false in "
-            "config/settings.toml) to use it."
-        )
 
 
 # -- Hugging Face cache ------------------------------------------------------------------

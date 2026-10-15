@@ -3,6 +3,11 @@
 > This is the original plan (approved 2026-10-11), lightly annotated with later results. What has
 > actually been built, the decisions taken along the way and the open items are tracked in
 > [`docs/STATUS.md`](STATUS.md).
+>
+> **2026-10-15: `commercial_mode` was removed.** Every model and tagging head is usable, and the
+> README will state that the project is not for commercial use because of model and data
+> licences. Mentions of commercial mode below are historical. The music licence checks (risk
+> badges, "safe for commercial game") are unaffected.
 
 ## Context
 
@@ -276,5 +281,5 @@ Every milestone needs:
 5. Shortlist 5 tracks, export the credits, and check the attribution text and license links. Download is offered only where allowed.
 6. Without an LLM key, everything works. With an API key, the parsed JSON appears in the debug panel and explanations show up.
 7. With Spotify keys, a separate section with links out appears. Without them, it is hidden and there are no errors.
-8. Toggle commercial mode: MuQ-MuLan and the NC heads are disabled, and search still works.
+8. ~~Toggle commercial mode~~ (removed 2026-10-15): switching the default embedder to MuQ-MuLan and back works, and search still works.
 9. Install the packaged Windows build on a clean machine and repeat step 4.

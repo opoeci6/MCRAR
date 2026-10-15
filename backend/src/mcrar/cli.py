@@ -627,27 +627,16 @@ def _load_embedder(
     return load_embedder(key, settings=settings, device=device, dtype=dtype, batch_size=batch_size)
 
 
-def _model_keys(value: str | None, settings: Settings) -> list[str]:
-    """Validate ``--models`` / ``--embed``: known keys, allowed under ``commercial_mode``.
+def _model_keys(value: str | None) -> list[str]:
+    """Validate ``--models`` / ``--embed``: known keys. Without a value: every model."""
+    from mcrar.ml import MODELS, ModelError, parse_model_keys
 
-    Without a value: every model allowed under the current mode.
-    """
-    from mcrar.ml import MODELS, ModelError, get_spec, parse_model_keys
-    from mcrar.ml.registry import check_allowed, is_allowed
-
+    if value is None:
+        return list(MODELS)
     try:
-        if value is None:
-            keys = [k for k, spec in MODELS.items() if is_allowed(spec, settings)]
-        else:
-            keys = parse_model_keys(value)
+        return parse_model_keys(value)
     except ModelError as exc:
         raise _fail(str(exc)) from None
-    for key in keys:
-        try:
-            check_allowed(get_spec(key), settings)
-        except ModelError as exc:
-            raise _fail(str(exc), 1) from None
-    return keys
 
 
 @contextmanager
@@ -699,7 +688,7 @@ def _ingest_embed_keys(embed: str | None, no_embed: bool, settings: Settings) ->
     if no_embed:
         return []
     if embed:
-        return _model_keys(embed, settings)
+        return _model_keys(embed)
     if not _torch_available():
         _line(
             "warning: torch is not installed, so tracks are analysed but not embedded "
@@ -707,7 +696,7 @@ def _ingest_embed_keys(embed: str | None, no_embed: bool, settings: Settings) ->
             err=True,
         )
         return []
-    return _model_keys(settings.default_embedder, settings)
+    return _model_keys(settings.default_embedder)
 
 
 def _tagging_stages(settings: Settings) -> list:
@@ -767,9 +756,7 @@ def embed(
     if source is not None and source not in SOURCES:
         raise _fail(f"--source must be one of: {', '.join(SOURCES)}")
     settings = _settings()
-    keys = _model_keys(models or settings.default_embedder, settings)
-    if not keys:
-        raise _fail("no models are allowed in commercial mode; check MCRAR_COMMERCIAL_MODE", 1)
+    keys = _model_keys(models or settings.default_embedder)
     with open_catalog(settings) as repo:
         model_ids = [MODELS[k].model_id for k in keys]
         todo = any(
@@ -816,12 +803,12 @@ def embed(
 
 @models_app.command("list")
 def models_list() -> None:
-    """List the embedding models: licence, whether allowed now, whether downloaded."""
+    """List the embedding models: licence and whether downloaded."""
     from mcrar.ml import MODELS
-    from mcrar.ml.registry import is_allowed, is_downloaded
+    from mcrar.ml.registry import is_downloaded
 
     settings = _settings()
-    rows = [("KEY", "MODEL ID", "LICENSE", "COMMERCIAL", "ALLOWED", "DOWNLOADED")]
+    rows = [("KEY", "MODEL ID", "LICENSE", "COMMERCIAL", "DOWNLOADED")]
     for spec in MODELS.values():
         downloaded = is_downloaded(spec, settings)
         rows.append(
@@ -830,24 +817,19 @@ def models_list() -> None:
                 spec.model_id,
                 spec.license,
                 _yes_no(spec.commercial_ok),
-                _yes_no(is_allowed(spec, settings)),
                 "unknown (ML extra not installed)" if downloaded is None else _yes_no(downloaded),
             )
         )
     widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
     for row in rows:
         _line("  ".join(cell.ljust(w) for cell, w in zip(row, widths, strict=True)).rstrip())
-    if settings.commercial_mode:
-        _line("\nCommercial mode is on. Set MCRAR_COMMERCIAL_MODE=false to allow all models.")
-    else:
-        _line("\nCommercial mode is off: all models are allowed.")
 
 
 @models_app.command("benchmark")
 def models_benchmark(
     models: Annotated[
         str | None,
-        typer.Option(help="Comma-separated models. Default: every model allowed now."),
+        typer.Option(help="Comma-separated models. Default: every model."),
     ] = None,
     seconds: Annotated[
         float, typer.Option(min=1.0, help="Length of each synthetic test track.")
@@ -870,7 +852,7 @@ def models_benchmark(
     from mcrar.ml.benchmark import benchmark_embedder
 
     settings = _settings()
-    keys = _model_keys(models, settings)
+    keys = _model_keys(models)
 
     def mb(value: float | None) -> str:
         return "n/a" if value is None else f"{value:.0f}"
@@ -963,10 +945,7 @@ BAKEOFF_RESAMPLES = 1000
 BAKEOFF_SEED = 0
 SDD_PROGRESS_EVERY = 50
 
-_MODELS_HELP = (
-    "Comma-separated models: clap, glap, muq-mulan. "
-    "Default: every model allowed by the current commercial mode."
-)
+_MODELS_HELP = "Comma-separated models: clap, glap, muq-mulan. Default: every model."
 _SDD_DIR_HELP = "Song Describer folder. Default: <data>/benchmarks/sdd."
 
 
@@ -987,13 +966,6 @@ def _bakeoff_errors() -> Iterator[None]:
         raise typer.Exit(EXIT_INTERRUPTED) from None
     except Exception as exc:
         raise _fail(f"bake-off failed ({type(exc).__name__}: {str(exc)[:200]})", 1) from None
-
-
-def _bakeoff_keys(models: str | None, settings: Settings) -> list[str]:
-    keys = _model_keys(models, settings)
-    if not keys:
-        raise _fail("no models are allowed in commercial mode; check MCRAR_COMMERCIAL_MODE", 1)
-    return keys
 
 
 def _print_rows(rows: list[tuple[str, ...]]) -> None:
@@ -1040,7 +1012,7 @@ def bakeoff_sdd_embed(
     from mcrar.ml.bakeoff import common, sdd
 
     settings = _settings()
-    keys = _bakeoff_keys(models, settings)
+    keys = _model_keys(models)
     root = sdd_dir or common.sdd_dir(settings)
 
     def progress(index: int, total: int, track_id: int, status: str, why: str | None) -> None:
@@ -1084,7 +1056,7 @@ def bakeoff_sdd_eval(
     from mcrar.ml.bakeoff import common, sdd
 
     settings = _settings()
-    keys = _bakeoff_keys(models, settings)
+    keys = _model_keys(models)
     root = sdd_dir or common.sdd_dir(settings)
     model_ids = [MODELS[k].model_id for k in keys]
     with _bakeoff_errors():
@@ -1180,7 +1152,7 @@ def bakeoff_tag_eval(
     from mcrar.ml.bakeoff import common, tags
 
     settings = _settings()
-    keys = _bakeoff_keys(models, settings)
+    keys = _model_keys(models)
     model_ids = [MODELS[k].model_id for k in keys]
     with _bakeoff_errors():
         with _open_repo() as repo:
@@ -1240,7 +1212,7 @@ def bakeoff_candidates(
     from mcrar.ml.bakeoff.queries import load_queries
 
     settings = _settings()
-    keys = _bakeoff_keys(models, settings)
+    keys = _model_keys(models)
     model_ids = [MODELS[k].model_id for k in keys]
     with _bakeoff_errors():
         texts = load_queries(queries)

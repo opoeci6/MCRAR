@@ -59,9 +59,12 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **Spotify is metadata and search only.** Since 2024–2026 its API gives no audio, no audio
   features and no previews for new apps, and Development Mode is limited to about 5 users. ML
   runs only on audio we can fetch: Jamendo, local folders and asset packs, and Freesound later.
-- **`commercial_mode = true` by default.** Anything trained on or calibrated with non-commercial
-  data (MuQ-MuLan weights, MTG-Jamendo and DEAM labels) is refused or skipped in that mode. The
-  owner keeps the commercial option open.
+- **No commercial mode (since 2026-10-15).** It used to default to on and refuse anything
+  trained on or calibrated with non-commercial data (MuQ-MuLan weights, MTG-Jamendo and DEAM
+  labels). The owner removed it: every model and head is usable, and the README will say the
+  project is not for commercial use (for example hosting it as a service) because of those
+  licences. `commercial_ok` stays in the registries as licence information. A leftover
+  `commercial_mode` line in `config/settings.toml` is ignored and dropped on the next save.
 - **Licence risk for game use** (`mcrar.licensing`):
   - green: CC0, PDM, CC BY, Pixabay
   - amber: CC BY-SA, Free Art License (share-alike may reach a game)
@@ -85,7 +88,7 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **`laion/larger_clap_music` is broken on Hugging Face:** `logit_scale` loads as 1.0 and every
   prompt gets the same embedding. A real-model regression test guards against this kind of
   collapse.
-- **MuQ-MuLan** stays available with `MCRAR_COMMERCIAL_MODE=false`.
+- **MuQ-MuLan** stays available as a non-default option (non-commercial weights).
 - **Pins:** torch is 2.11 (cu130) because torchaudio, which GLAP and MuQ need, stopped at 2.11.
   transformers is below 5 because muq breaks on 5.x.
 
@@ -170,13 +173,14 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - All heads read stored `clap@195c3a3` vectors. Runtime is numpy only, so `mcrar tag` needs no
   network, audio or torch. Artifacts are `.npz` files under `models/heads/`, listed in
   `models/registry.json` with content-derived ids and data licences.
-- **Selection** (the best test-split primary metric allowed in each mode):
+- **Selection** (the best test-split primary metric; until 2026-10-15 commercial mode fell back
+  to `moodtheme-zeroshot-unsupervised@15d3513` and had no valence/arousal):
 
-  | Label set | Commercial mode (default) | Non-commercial mode |
-  |---|---|---|
-  | genre (FMA) | `genre-logreg@2b67df0`, macro F1 0.51 | same |
-  | mood/theme (MTG) | `moodtheme-zeroshot-unsupervised@15d3513`, ROC-AUC 0.66, poorly calibrated | `moodtheme-mlp@b2ac67d`, PR-AUC 0.14 |
-  | valence, arousal (DEAM) | none | MLP, R² 0.67 / 0.69 |
+  | Label set | Selected head |
+  |---|---|
+  | genre (FMA) | `genre-logreg@2b67df0`, macro F1 0.51 |
+  | mood/theme (MTG) | `moodtheme-mlp@b2ac67d`, PR-AUC 0.14 (zero-shot: 0.08) |
+  | valence, arousal (DEAM) | MLP, R² 0.67 / 0.69 (shown in the track drawer, not used in ranking) |
 
 - The genre MLP did not beat logreg on macro F1 (0.508 vs 0.511), so the rule selects logreg.
 - On the owner's catalog, genre top-1 agrees with the uploaders' Jamendo genre tags on 66% of
@@ -198,9 +202,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   - Secrets are write-only over HTTP.
   - Hosting for others needs authentication first, and `ingest/local` and `analyze` turned off
     (`docs/api.md`).
-- **Licence gating.** Stored tags count only when their `model_version` is the registry entry
-  selected for the current mode. Without this, NC-head tags would have kept ranking after
-  switching back to commercial mode.
+- **Tag versions.** Stored tags count only when their `model_version` is the registry entry
+  currently selected, so tags from a replaced head stop ranking until `mcrar tag` re-tags.
 - **Never re-host audio.** Jamendo previews are 307 redirects to a fresh URL, which carries no
   client id. Local files are served from the catalog path, with Range support.
 - **Ingest jobs.**
@@ -278,10 +281,11 @@ M3b is merged and the real catalog is tagged. Still open:
 - **M3c** (optional CNN baseline) and the optional "m3b-embeddings" Release asset were not done.
 - **No weak-label evaluation on the owner's catalog.** The collaborator didn't run it; the 66%
   genre agreement in §3.7 is the only check on the owner's data.
-- **Tagging in non-commercial mode** (adds valence, arousal and the MTG mood head):
-  `MCRAR_COMMERCIAL_MODE=false mcrar tag --force`.
 
 ### 5.2 Follow-ups
+- **README (near the end of the project).** The README is still a TODO. It must state that the
+  project can't be used commercially, for example hosted as a paid service, because MuQ-MuLan's
+  weights and the MTG-Jamendo and DEAM labels behind the tagging heads are non-commercial.
 - **CLI search speed.** `mcrar search` with text still loads CLAP on every run (about 15 s). The
   API server keeps it loaded, so use `mcrar serve` for repeated searches.
 - **API polish:**

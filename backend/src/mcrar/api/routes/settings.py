@@ -1,12 +1,11 @@
 """The settings page: ``GET/PUT /api/settings`` and the secrets store under ``/api/secrets``.
 
-Settings: only the keys the page may edit (licence mode, default embedder, search knobs) are
-accepted, as a partial body. A change is checked (known embedder, no non-commercial embedder in
-commercial mode, no field that an ``MCRAR_*`` variable pins, because the variable would win
-anyway), merged into ``config/settings.toml`` with :func:`mcrar.config.save_settings_update`, and
-then the settings are rebuilt from disk and environment and handed to the running
-:class:`~mcrar.api.state.AppState`, so the change takes effect without a restart. One lock
-serialises read-merge-write-reload.
+Settings: only the keys the page may edit (default embedder, search knobs) are accepted, as a
+partial body. A change is checked (known embedder, no field that an ``MCRAR_*`` variable pins,
+because the variable would win anyway), merged into ``config/settings.toml`` with
+:func:`mcrar.config.save_settings_update`, and then the settings are rebuilt from disk and
+environment and handed to the running :class:`~mcrar.api.state.AppState`, so the change takes
+effect without a restart. One lock serialises read-merge-write-reload.
 
 Secrets: the list shows names and where each comes from, never a value, and there is no route that
 reads one. The value-carrying ``PUT`` reads and checks the body by hand: FastAPI's own 422 body
@@ -21,12 +20,11 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict, StrictBool
+from pydantic import BaseModel, ConfigDict
 
 from mcrar.api.state import AppState, StateDep
 from mcrar.config import Settings, env_overrides, get_settings, save_settings_update
 from mcrar.ml import MODELS, ModelError, get_spec
-from mcrar.ml.registry import is_allowed
 from mcrar.secrets import SecretError, SecretStore, validate_name
 
 router = APIRouter()
@@ -74,7 +72,6 @@ class SearchUpdate(_Body):
 
 
 class SettingsUpdate(_Body):
-    commercial_mode: StrictBool | None = None
     default_embedder: str | None = None
     search: SearchUpdate | None = None
 
@@ -97,7 +94,6 @@ def settings_view(settings: Settings) -> dict[str, Any]:
     search = settings.search
     return {
         "editable": {
-            "commercial_mode": settings.commercial_mode,
             "default_embedder": settings.default_embedder,
             "search": {
                 "pool_size": search.pool_size,
@@ -113,15 +109,14 @@ def settings_view(settings: Settings) -> dict[str, Any]:
                 "key": spec.key,
                 "model_id": spec.model_id,
                 "commercial_ok": spec.commercial_ok,
-                "allowed": is_allowed(spec, settings),
             }
             for spec in MODELS.values()
         ],
     }
 
 
-def _check_update(update: dict[str, Any], current: Settings) -> None:
-    """Refuse what the file cannot change or the licence mode forbids (raises HTTPException)."""
+def _check_update(update: dict[str, Any]) -> None:
+    """Refuse what the file cannot change (raises HTTPException)."""
     pinned = sorted(set(_flatten(update)) & set(env_overrides()))
     if pinned:
         raise HTTPException(
@@ -129,22 +124,11 @@ def _check_update(update: dict[str, Any], current: Settings) -> None:
             f"{', '.join(pinned)} is set by an MCRAR_* environment variable, which overrides "
             "the settings file; unset the variable to change it here",
         )
-    embedder = update.get("default_embedder", current.default_embedder)
-    commercial = update.get("commercial_mode", current.commercial_mode)
-    try:
-        spec = get_spec(embedder)
-    except ModelError as exc:
-        raise HTTPException(422, str(exc)) from None
-    if commercial and not spec.commercial_ok:
-        if "default_embedder" in update:
-            hint = "turn commercial mode off first, then select it"
-        else:
-            hint = "select a commercial embedder before turning commercial mode on"
-        raise HTTPException(
-            422,
-            f"'{spec.key}' has a non-commercial licence ({spec.license}) and cannot be used "
-            f"in commercial mode: {hint}",
-        )
+    if "default_embedder" in update:
+        try:
+            get_spec(update["default_embedder"])
+        except ModelError as exc:
+            raise HTTPException(422, str(exc)) from None
 
 
 def _reload(state: AppState) -> None:
@@ -166,7 +150,7 @@ def update_settings(body: SettingsUpdate, state: StateDep) -> dict[str, Any]:
     if not update:
         return settings_view(state.settings)
     with _settings_lock:
-        _check_update(update, state.settings)
+        _check_update(update)
         save_settings_update(state.settings.home, update)  # ValueError -> 422, file untouched
         _reload(state)
         return settings_view(state.settings)

@@ -143,8 +143,8 @@ class SearchService:
     default embedder, and a loaded embedder with another id is an error.
 
     ``stored_tags`` reads the tag rows of tracks. By default it only trusts the rows written by
-    the tagging model the current ``commercial_mode`` allows (:func:`allowed_tag_versions`), so a
-    track tagged by a non-commercial model is scored zero-shot instead while the mode is on.
+    the selected tagging model (:func:`allowed_tag_versions`), so a track tagged by another
+    version is scored zero-shot instead.
     Stored probabilities are standardised per label over the catalog
     (:class:`StandardisedTagScorer`) before they rank or explain, which puts them on the scale
     of the zero-shot scores.

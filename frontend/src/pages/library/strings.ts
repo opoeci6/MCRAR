@@ -113,7 +113,7 @@ export const libraryStrings = {
     embedAction: 'Re-embed missing tracks',
     tagTitle: 'Re-tag catalog',
     tagBody:
-      'Recomputes genre and mood tags for every track. Run it after changing the licence mode, because the allowed tagging models change with it.',
+      'Recomputes genre and mood tags for every track with the selected tagging models.',
     tagAction: 'Re-tag catalog',
   },
 

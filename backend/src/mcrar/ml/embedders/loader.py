@@ -1,4 +1,4 @@
-"""``load_embedder``: licence gate, pinned download, device and precision choice.
+"""``load_embedder``: pinned download, device and precision choice.
 
 Importing this module does not import torch; :func:`load_embedder` does, and turns a missing
 ``ml`` extra into a readable :class:`MLDependencyError`.
@@ -16,7 +16,7 @@ import numpy as np
 
 from mcrar.ml.embedders.base import Embedder
 from mcrar.ml.errors import EmbedderMemoryError, MLDependencyError, ModelError, ModelLoadError
-from mcrar.ml.registry import ModelSpec, check_allowed, ensure_downloaded, get_spec
+from mcrar.ml.registry import ModelSpec, ensure_downloaded, get_spec
 
 if TYPE_CHECKING:
     from mcrar.config import Settings
@@ -135,14 +135,12 @@ def load_embedder(
 ) -> Embedder:
     """Load the embedder ``key`` (``clap``, ``glap`` or ``muq-mulan``).
 
-    - Refuses a non-commercial model while ``settings.commercial_mode`` is True.
     - Downloads the pinned revision(s) on first use (always by commit hash).
     - ``device="auto"`` uses CUDA when available. ``dtype="auto"`` uses fp16 on CUDA only if
       fp16 and fp32 embeddings of the same probe audio and texts have a cosine of at least
       0.99; otherwise fp32. ``fp16_cosine`` and ``dtype_note`` on the result tell what happened.
     """
     spec = get_spec(key)
-    check_allowed(spec, settings)
     if dtype not in DTYPES:
         raise ModelError(f"unknown dtype '{dtype}'; choose from: {', '.join(DTYPES)}")
     torch = _torch()

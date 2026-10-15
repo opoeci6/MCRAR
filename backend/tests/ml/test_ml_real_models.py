@@ -29,7 +29,7 @@ def settings(tmp_path_factory: pytest.TempPathFactory) -> Settings:
     if not os.environ.get("HF_HOME"):
         pytest.skip("HF_HOME is not set: load the dev env (scripts/with-env.sh) first")
     home = tmp_path_factory.mktemp("home")
-    return get_settings(home=home, commercial_mode=False)
+    return get_settings(home=home)
 
 
 @pytest.fixture(scope="module")

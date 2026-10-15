@@ -13,7 +13,6 @@ const SECRET = 'jam-client-id-98765'
 function view(overrides: Partial<SettingsView['editable']> = {}, extra: Partial<SettingsView> = {}): SettingsView {
   return {
     editable: {
-      commercial_mode: true,
       default_embedder: 'clap',
       search: {
         pool_size: 200,
@@ -35,8 +34,8 @@ function view(overrides: Partial<SettingsView['editable']> = {}, extra: Partial<
     },
     overridden_by_env: [],
     embedders: [
-      { key: 'clap', model_id: 'laion/clap', commercial_ok: true, allowed: true },
-      { key: 'muq-mulan', model_id: 'OpenMuQ/MuQ-MuLan', commercial_ok: false, allowed: false },
+      { key: 'clap', model_id: 'laion/clap', commercial_ok: true },
+      { key: 'muq-mulan', model_id: 'OpenMuQ/MuQ-MuLan', commercial_ok: false },
     ],
     ...extra,
   }
@@ -58,74 +57,21 @@ function putBodies(mock: ReturnType<typeof stubApi>, path: string) {
     .map(([, init]) => JSON.parse(String(init?.body)))
 }
 
-describe('Settings: licence mode', () => {
-  it('turns commercial mode off only after a confirmation, then suggests re-tagging', async () => {
-    const user = userEvent.setup()
-    const api = stubApi(
-      routes({ 'PUT /api/settings': view({ commercial_mode: false }, { embedders: view().embedders.map((e) => ({ ...e, allowed: true })) }) }),
-    )
-    renderWithProviders(<SettingsPage />)
-    const toggle = await screen.findByRole('switch', { name: 'Commercial mode' })
-    expect(toggle).toHaveAttribute('aria-checked', 'true')
-    expect(screen.getByText(/recommended if you might sell your game/)).toBeInTheDocument()
-
-    await user.click(toggle)
-    expect(screen.getByText('Turn off commercial mode?')).toBeInTheDocument()
-    expect(putBodies(api, '/api/settings')).toHaveLength(0)
-
-    await user.click(screen.getByRole('button', { name: 'Turn off commercial mode' }))
-    await waitFor(() => expect(putBodies(api, '/api/settings')).toEqual([{ commercial_mode: false }]))
-    expect(await screen.findByRole('switch', { name: 'Commercial mode' })).toHaveAttribute('aria-checked', 'false')
-    const hint = await screen.findByText('Tags may be out of date')
-    expect(within(hint.closest('[role="status"]') as HTMLElement).getByRole('link')).toHaveAttribute('href', '#/library')
-  })
-
-  it('keeps commercial mode on when the confirmation is declined', async () => {
-    const user = userEvent.setup()
-    const api = stubApi(routes())
-    renderWithProviders(<SettingsPage />)
-    await user.click(await screen.findByRole('switch', { name: 'Commercial mode' }))
-    await user.click(screen.getByRole('button', { name: 'Keep it on' }))
-    expect(screen.queryByText('Turn off commercial mode?')).not.toBeInTheDocument()
-    expect(putBodies(api, '/api/settings')).toHaveLength(0)
-  })
-
-  it('turns commercial mode on at once and shows the backend refusal (422)', async () => {
-    const user = userEvent.setup()
-    const api = stubApi(
-      routes({
-        'GET /api/settings': view({ commercial_mode: false, default_embedder: 'muq-mulan' }),
-        'PUT /api/settings': jsonResponse(
-          { detail: "'muq-mulan' has a non-commercial licence and cannot be used in commercial mode" },
-          422,
-        ),
-      }),
-    )
-    renderWithProviders(<SettingsPage />)
-    await user.click(await screen.findByRole('switch', { name: 'Commercial mode' }))
-    expect(await screen.findByRole('alert')).toHaveTextContent('non-commercial licence')
-    expect(putBodies(api, '/api/settings')).toEqual([{ commercial_mode: true }])
-    expect(screen.getByRole('switch', { name: 'Commercial mode' })).toHaveAttribute('aria-checked', 'false')
-  })
-})
-
 describe('Settings: model', () => {
-  it('disables a research-only embedder in commercial mode and says why', async () => {
+  it('offers a research-only embedder like any other and labels its licence', async () => {
     stubApi(routes())
     renderWithProviders(<SettingsPage />)
     const select = await screen.findByLabelText('Default embedder')
     const muq = within(select).getByRole('option', { name: /muq-mulan/ })
-    expect(muq).toBeDisabled()
+    expect(muq).toBeEnabled()
     expect(muq).toHaveTextContent('research only')
-    expect(muq).toHaveTextContent('not available in commercial mode')
-    expect(within(select).getByRole('option', { name: /^clap/ })).toBeEnabled()
+    expect(within(select).getByRole('option', { name: /^clap/ })).toHaveTextContent('commercial use OK')
     expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled()
   })
 
   it('saves the chosen embedder', async () => {
     const user = userEvent.setup()
-    const open = view({ commercial_mode: false })
-    open.embedders = open.embedders.map((e) => ({ ...e, allowed: true }))
+    const open = view()
     const api = stubApi(
       routes({
         'GET /api/settings': open,
@@ -144,13 +90,13 @@ describe('Settings: environment overrides', () => {
   it('shows a pinned field as read-only with the variable name', async () => {
     stubApi(
       routes({
-        'GET /api/settings': view({}, { overridden_by_env: ['commercial_mode', 'search.pool_size'] }),
+        'GET /api/settings': view({}, { overridden_by_env: ['default_embedder', 'search.pool_size'] }),
       }),
     )
     renderWithProviders(<SettingsPage />)
-    const toggle = await screen.findByRole('switch', { name: 'Commercial mode' })
-    expect(toggle).toBeDisabled()
-    expect(screen.getByText(/environment variable MCRAR_COMMERCIAL_MODE/)).toBeInTheDocument()
+    expect(await screen.findByLabelText('Default embedder')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled()
+    expect(screen.getByText(/environment variable MCRAR_DEFAULT_EMBEDDER/)).toBeInTheDocument()
     expect(screen.getByLabelText('Pool size')).toBeDisabled()
     expect(screen.getByText(/environment variable MCRAR_SEARCH__POOL_SIZE/)).toBeInTheDocument()
     expect(screen.getByLabelText('Max results per artist')).toBeEnabled()

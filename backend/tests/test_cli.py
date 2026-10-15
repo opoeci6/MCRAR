@@ -32,7 +32,7 @@ def test_config_show_has_no_secrets(isolated_env: Path) -> None:
     result = runner.invoke(app, ["config", "show"])
     assert result.exit_code == 0
     data = json.loads(result.output)
-    assert data["commercial_mode"] is True
+    assert data["default_embedder"] == "clap"
     assert data["secrets_backend"] == "file"
     assert VALUE not in result.output
     assert "token" not in result.output

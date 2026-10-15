@@ -246,11 +246,8 @@ def evaluate_entries(
 def selected_entries(settings: Settings) -> dict:
     registry = read_registry(settings)
     selections = {
-        mode: {
-            name: (entry["id"] if (entry := select_entry(spec, commercial)) else None)
-            for name, spec in registry["label_sets"].items()
-        }
-        for mode, commercial in (("commercial", True), ("non-commercial", False))
+        name: (entry["id"] if (entry := select_entry(spec)) else None)
+        for name, spec in registry["label_sets"].items()
     }
     registry["selected"] = selections
     write_registry(settings, registry)

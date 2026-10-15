@@ -44,13 +44,12 @@ def evaluate(label_sets: Annotated[list[str] | None, typer.Argument()] = None) -
 
 @app.command("select")
 def select() -> None:
-    """Record and print the highest test primary metric permitted in each mode."""
+    """Record and print the entry with the highest test primary metric for each label set."""
     from mcrar.ml.tagging.service import selected_entries
 
     with cli_errors():
-        for mode, entries in selected_entries(get_settings()).items():
-            for name, identity in entries.items():
-                typer.echo(f"{mode}: {name}: {identity or 'no entry'}")
+        for name, identity in selected_entries(get_settings()).items():
+            typer.echo(f"{name}: {identity or 'no entry'}")
 
 
 def tag(
@@ -72,7 +71,7 @@ def tag(
                 raise ValueError(f"unknown label sets: {', '.join(sorted(unknown))}")
             stages = [s for s in stages if s.tagger.label_set in wanted]
         if not stages:
-            typer.echo("No tagging entries are allowed for the selected label sets and mode.")
+            typer.echo("No tagging entries are available for the selected label sets.")
             return
 
         def progress(event) -> None:

@@ -284,7 +284,6 @@ export interface SearchWeights {
 }
 
 export interface EditableSettings {
-  commercial_mode: boolean
   default_embedder: string
   search: {
     pool_size: number
@@ -298,21 +297,18 @@ export interface EmbedderInfo {
   key: string
   model_id: string
   commercial_ok: boolean
-  /** Whether the current licence mode lets it be used. */
-  allowed: boolean
 }
 
 export interface SettingsView {
   editable: EditableSettings
   read_only: Record<string, string | number>
-  /** Dotted names (`commercial_mode`, `search.pool_size`) pinned by an MCRAR_* variable. */
+  /** Dotted names (`default_embedder`, `search.pool_size`) pinned by an MCRAR_* variable. */
   overridden_by_env: string[]
   embedders: EmbedderInfo[]
 }
 
 /** A partial update: send only what changed. */
 export interface SettingsUpdate {
-  commercial_mode?: boolean
   default_embedder?: string
   search?: {
     pool_size?: number

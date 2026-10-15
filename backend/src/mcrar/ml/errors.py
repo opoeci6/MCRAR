@@ -7,10 +7,6 @@ class ModelError(RuntimeError):
     """Base class for model registry, download and loading errors."""
 
 
-class CommercialModeError(ModelError):
-    """A non-commercial model was requested while ``commercial_mode`` is on."""
-
-
 class MLDependencyError(ModelError):
     """The optional ``ml`` extra (torch, transformers, ...) is not installed."""
 

@@ -65,11 +65,11 @@ def squash(z: np.ndarray) -> np.ndarray:
 
 
 def allowed_tag_versions(settings: Settings) -> dict[str, str | None]:
-    """Per label set, the model version whose stored tags may be used in the current mode.
+    """Per label set, the model version whose stored tags may be used.
 
-    That is the tagging registry's selected entry for ``settings.commercial_mode``; ``None`` when
-    the mode permits no entry for the set. Without a usable registry the mapping is empty, so no
-    stored tag is trusted (rows may come from a non-commercial model, e.g. after the mode changed).
+    That is the tagging registry's selected entry; ``None`` when the set has no entry. Without a
+    usable registry the mapping is empty, so no stored tag is trusted (rows written by a model
+    that is no longer the selected one are ignored too).
     """
     from mcrar.ml.tagging.registry import read_registry, select_entry
 
@@ -79,7 +79,7 @@ def allowed_tag_versions(settings: Settings) -> dict[str, str | None]:
         return {}
     allowed: dict[str, str | None] = {}
     for name, spec in registry["label_sets"].items():
-        entry = select_entry(spec, settings.commercial_mode)
+        entry = select_entry(spec)
         allowed[name] = entry["id"] if entry else None
     return allowed
 

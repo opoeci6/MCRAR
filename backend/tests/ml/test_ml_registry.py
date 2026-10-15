@@ -1,4 +1,4 @@
-"""The model registry, the commercial-mode gate and the lazy-import guarantee."""
+"""The model registry, model loading without a licence gate and the lazy-import guarantee."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ import sys
 import pytest
 
 from mcrar.config import get_settings
-from mcrar.ml import MODELS, CommercialModeError, ModelError, get_spec, parse_model_keys
-from mcrar.ml.registry import check_allowed, is_allowed
+from mcrar.ml import MODELS, MLDependencyError, ModelError, get_spec, parse_model_keys
 
 
 def test_registry_has_the_three_models() -> None:
@@ -75,40 +74,16 @@ def test_parse_model_keys_rejects_empty_and_unknown(value: str) -> None:
         parse_model_keys(value)
 
 
-def test_commercial_mode_refuses_non_commercial_models() -> None:
-    settings = get_settings(commercial_mode=True)
-    assert is_allowed(get_spec("clap"), settings)
-    assert not is_allowed(get_spec("muq-mulan"), settings)
-    check_allowed(get_spec("glap"), settings)
-    with pytest.raises(CommercialModeError) as err:
-        check_allowed(get_spec("muq-mulan"), settings)
-    message = str(err.value)
-    assert "MCRAR_COMMERCIAL_MODE=false" in message
-    assert "commercial_mode = false" in message
-    assert "CC-BY-NC-4.0" in message
-
-
-def test_commercial_mode_off_allows_everything() -> None:
-    settings = get_settings(commercial_mode=False)
-    for spec in MODELS.values():
-        check_allowed(spec, settings)
-
-
-def test_commercial_mode_is_on_by_default() -> None:
-    assert get_settings().commercial_mode is True
-
-
-def test_load_embedder_checks_the_licence_before_touching_torch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_muq_mulan_loads_without_any_setting(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-commercial model is not refused: the load goes on to the (here missing) torch."""
     from mcrar.ml.embedders import load_embedder, loader
 
-    def boom() -> None:
-        raise AssertionError("torch must not be imported for a refused model")
+    def no_torch() -> None:
+        raise MLDependencyError("torch is not installed")
 
-    monkeypatch.setattr(loader, "_torch", boom)
-    with pytest.raises(CommercialModeError, match="MCRAR_COMMERCIAL_MODE=false"):
-        load_embedder("muq-mulan", settings=get_settings(commercial_mode=True))
+    monkeypatch.setattr(loader, "_torch", no_torch)
+    with pytest.raises(MLDependencyError, match="torch is not installed"):
+        load_embedder("muq-mulan", settings=get_settings())
 
 
 def test_load_embedder_rejects_unknown_key() -> None:

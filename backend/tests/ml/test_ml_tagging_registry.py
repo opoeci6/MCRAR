@@ -1,4 +1,4 @@
-"""Registry validation, artifact hashes, and commercial selection protect runtime consumers."""
+"""Registry validation, artifact hashes, and entry selection protect runtime consumers."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from mcrar.ml.tagging import load_taggers, select_entry
 from mcrar.ml.tagging.registry import read_registry, validate_registry
 
 
-def test_selection_test_split_licence_gate_and_no_entry() -> None:
+def test_selection_best_overall_test_split_and_no_entry() -> None:
     safe = {
         "id": "safe",
         "commercial_ok": True,
@@ -24,9 +24,12 @@ def test_selection_test_split_licence_gate_and_no_entry() -> None:
         "metrics": {"split": "test", "primary": "macro_f1", "macro_f1": 0.9},
     }
     spec = {"kind": "single_label", "entries": [safe, nc]}
-    assert select_entry(spec)["id"] == "safe"
-    assert select_entry(spec, False)["id"] == "nc"
-    assert select_entry({**spec, "entries": [nc]}) is None
+    assert select_entry(spec)["id"] == "nc"  # best overall wins, whatever the licence
+    assert select_entry({**spec, "entries": [safe]})["id"] == "safe"
+    tied = {**nc, "id": "zz", "metrics": {**nc["metrics"]}}
+    assert select_entry({**spec, "entries": [nc, tied]})["id"] == "zz"  # ties: larger id
+    nan = {**nc, "metrics": {**nc["metrics"], "macro_f1": float("nan")}}
+    assert select_entry({**spec, "entries": [nan, safe]})["id"] == "safe"
     assert select_entry({**spec, "entries": []}) is None
     assert (
         select_entry(

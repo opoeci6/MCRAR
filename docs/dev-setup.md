@@ -44,8 +44,8 @@ models). Without an NVIDIA GPU everything still runs on CPU, only slower.
 
 - `uv run mcrar models list` shows each model, its licence and whether it is downloaded.
 - `uv run pytest -q -m models` runs the tests that load the real models.
-- MuQ-MuLan's weights are non-commercial (CC-BY-NC-4.0). It is refused unless
-  `MCRAR_COMMERCIAL_MODE=false` (or `commercial_mode = false` in `config/settings.toml`).
+- MuQ-MuLan's weights are non-commercial (CC-BY-NC-4.0); `mcrar models list` shows each
+  model's licence.
 - The default suite and the CLI work without the extra (`uv sync` alone); model tests then skip.
 - Known exception to "nothing outside the repo": torch compiles a few small kernels (about
   250 KB) into the system temp folder.

@@ -8,7 +8,6 @@ import { Notice } from '../../ui/Notice'
 import { PageHeader } from '../../ui/PageHeader'
 import { Spinner } from '../../ui/Spinner'
 import { AboutSection } from './AboutSection'
-import { ModeSection } from './ModeSection'
 import { ModelSection } from './ModelSection'
 import { SecretsSection } from './SecretsSection'
 import { settingsStrings as t } from './strings'
@@ -40,7 +39,6 @@ export default function SettingsPage() {
           <Spinner />
         ) : (
           <>
-            <ModeSection view={view} onUpdated={setSaved} />
             <ModelSection view={view} onUpdated={setSaved} />
             <TuningSection view={view} onUpdated={setSaved} />
           </>

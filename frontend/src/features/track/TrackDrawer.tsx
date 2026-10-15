@@ -25,6 +25,9 @@ export interface TrackDrawerProps {
 /** How many tags of a label set are shown before "Show all". */
 const TAGS_SHOWN = 8
 
+/** The one label of a regression set (valence, arousal): a value in 0 to 1, not a tag name. */
+const REGRESSION_LABEL = 'value'
+
 /**
  * The side panel with everything about one track: licence and credit line, audio features, and
  * its tags grouped by label set. Loads `GET /api/tracks/{id}` when opened.
@@ -243,7 +246,9 @@ function TagGroup({ set, items }: { set: string; items: TrackTag[] }) {
       <ul className={styles.tagList}>
         {shown.map((tag) => (
           <li key={tag.label} className={styles.tag}>
-            {t.tags.chipLabel(labelText(tag.label), Math.round(tag.prob * 100))}
+            {tag.label === REGRESSION_LABEL
+              ? t.tags.valueChip(Math.round(tag.prob * 100))
+              : t.tags.chipLabel(labelText(tag.label), Math.round(tag.prob * 100))}
           </li>
         ))}
       </ul>

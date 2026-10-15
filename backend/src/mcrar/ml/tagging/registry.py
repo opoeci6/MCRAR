@@ -1,4 +1,4 @@
-"""Validate content-addressed artifacts and select the best permitted test-split entry."""
+"""Validate content-addressed artifacts and select the best test-split entry."""
 
 from __future__ import annotations
 
@@ -19,13 +19,13 @@ def entry_id(label_set: str, variant: str, path: Path) -> str:
     return f"{label_set}-{variant}@{digest(path)[:7]}"
 
 
-def select_entry(label_set: dict, commercial_mode: bool = True) -> dict | None:
+def select_entry(label_set: dict) -> dict | None:
+    """The entry with the best finite test-split primary metric (ties: the larger id)."""
     metric = PRIMARY[label_set["kind"]]
     candidates = [
         e
         for e in label_set["entries"]
-        if (e["commercial_ok"] or not commercial_mode)
-        and e["metrics"].get("split") == "test"
+        if e["metrics"].get("split") == "test"
         and e["metrics"].get("primary") == metric
         and isinstance(e["metrics"].get(metric), (int, float))
         and math.isfinite(e["metrics"][metric])
@@ -133,7 +133,7 @@ def load_taggers(settings: Settings) -> list[Tagger]:
     registry = read_registry(settings)
     result = []
     for spec in registry["label_sets"].values():
-        entry = select_entry(spec, settings.commercial_mode)
+        entry = select_entry(spec)
         if entry is not None:
             result.append(load_tagger(settings.models_dir / entry["file"], entry["id"]))
     return result

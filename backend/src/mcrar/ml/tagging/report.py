@@ -54,9 +54,9 @@ def metric_tables(registry: dict) -> str:
 def write_model_card(settings: Settings) -> None:
     registry = read_registry(settings)
     mood = registry["label_sets"].get("moodtheme", {"kind": "multi_label", "entries": []})
-    fallback = select_entry(mood, True)
+    fallback = next((e for e in mood["entries"] if e["variant"] == "zeroshot-unsupervised"), None)
     fallback_note = (
-        "The commercial mood/theme fallback is poorly calibrated in this run: "
+        "The unsupervised mood/theme zero-shot variant is poorly calibrated in this run: "
         f"ECE {_number(fallback['metrics']['ece'])}, macro PR-AUC "
         f"{_number(fallback['metrics']['macro_pr_auc'])} and macro ROC-AUC "
         f"{_number(fallback['metrics']['macro_roc_auc'])}. Its scores support relative "
@@ -228,21 +228,18 @@ def write_model_card(settings: Settings) -> None:
             "",
             "## Selection and licences",
             "",
-            "Selection is the highest finite test primary metric among permitted entries; "
+            "Selection is the highest finite test primary metric among all entries; "
             "ties use the entry id for deterministic ordering. Evaluation labels alone "
-            "do not fit the unlabelled commercial fallback. All parameters fitted to "
+            "do not fit the unsupervised zero-shot variant. All parameters fitted to "
             "MTG/DEAM labels, including calibration, are non-commercial.",
             "",
-            "| Label set | Commercial mode | Non-commercial mode |",
-            "|---|---|---|",
+            "| Label set | Selected entry |",
+            "|---|---|",
         ]
     )
     for name, spec in registry["label_sets"].items():
-        safe, all_entries = select_entry(spec, True), select_entry(spec, False)
-        lines.append(
-            f"| {name} | {safe['id'] if safe else 'no entry'} | "
-            f"{all_entries['id'] if all_entries else 'no entry'} |"
-        )
+        chosen = select_entry(spec)
+        lines.append(f"| {name} | {chosen['id'] if chosen else 'no entry'} |")
     lines.extend(
         [
             "",

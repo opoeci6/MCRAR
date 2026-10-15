@@ -7,7 +7,7 @@ cache of fresh Jamendo stream URLs and the :class:`~mcrar.api.jobs.JobManager` t
 jobs. Routes get it through :func:`get_state`.
 
 ``reload_settings`` swaps the settings at run time (the settings page): it tells the pool and
-rebuilds the search service when the licence mode, the default embedder or the search settings
+rebuilds the search service when the default embedder or the search settings
 changed, because those decide which models and stored tags may be used and how results rank.
 """
 
@@ -146,12 +146,7 @@ class AppState:
             self.settings = new_settings
             self.pool.update_settings(new_settings)
             # The search service reads its pool size and weights from settings.search too.
-            if (
-                new_settings.commercial_mode,
-                new_settings.default_embedder,
-                new_settings.search,
-            ) != (
-                old.commercial_mode,
+            if (new_settings.default_embedder, new_settings.search) != (
                 old.default_embedder,
                 old.search,
             ):
