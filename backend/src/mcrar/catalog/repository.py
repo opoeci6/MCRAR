@@ -534,6 +534,35 @@ class CatalogRepository:
                 out.setdefault(int(row["track_id"]), []).append(TagProb(*tuple(row)))
         return out
 
+    def tag_probs_signature(self, head: str) -> tuple[int, int | None, float]:
+        """``(row count, latest rowid, sum of probabilities)`` of a head's rows: changes whenever
+        rows are added, replaced or deleted, so callers can tell cached statistics are stale."""
+        row = self._query(
+            "SELECT COUNT(*), MAX(rowid), TOTAL(prob) FROM tag_probs WHERE head = ?", (head,)
+        )[0]
+        return int(row[0]), None if row[1] is None else int(row[1]), float(row[2])
+
+    def tag_prob_moments(
+        self, head: str, model_version: str | None = None
+    ) -> tuple[int, dict[str, tuple[float, float]]]:
+        """``(tracks, {label: (sum of prob, sum of prob squared)})`` over a head's rows.
+
+        ``tracks`` counts the distinct tracks with rows; ``model_version`` limits both to the rows
+        of that version (``None``: every row). Labels without rows are absent.
+        """
+        where, params = "head = ?", (head,)
+        if model_version is not None:
+            where, params = where + " AND model_version = ?", (head, model_version)
+        tracks = self._query(
+            f"SELECT COUNT(DISTINCT track_id) FROM tag_probs WHERE {where}", params
+        )
+        rows = self._query(
+            "SELECT label, SUM(prob), SUM(prob * prob) FROM tag_probs "
+            f"WHERE {where} GROUP BY label",
+            params,
+        )
+        return int(tracks[0][0]), {str(r[0]): (float(r[1]), float(r[2])) for r in rows}
+
     # -- embeddings ------------------------------------------------------------------------
 
     def embedding_stats(self, model_id: str) -> tuple[int, str | None]:

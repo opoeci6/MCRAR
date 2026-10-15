@@ -168,6 +168,48 @@ def test_get_tag_probs_many(repo: CatalogRepository, ids: dict[str, int]) -> Non
     assert repo.get_tag_probs_many([]) == {}
 
 
+def test_tag_prob_moments_count_tracks_and_sum_per_label(
+    repo: CatalogRepository, ids: dict[str, int]
+) -> None:
+    a, b, c = ids["Smooth Cafe"], ids["Garage Band"], ids["Lullaby"]
+    repo.set_tag_probs(a, "genre", "head", "g@1", {"jazz": 0.5, "rock": 0.25})
+    repo.set_tag_probs(b, "genre", "head", "g@1", {"jazz": 0.5})
+    repo.set_tag_probs(c, "genre", "head", "g@2", {"rock": 1.0})
+    repo.set_tag_probs(a, "moodtheme", "head", "m@1", {"calm": 0.75})
+    assert repo.tag_prob_moments("genre", "g@1") == (
+        2,
+        {"jazz": (1.0, 0.5), "rock": (0.25, 0.0625)},
+    )
+    assert repo.tag_prob_moments("genre", "g@2") == (1, {"rock": (1.0, 1.0)})
+    assert repo.tag_prob_moments("genre", "g@3") == (0, {})  # no such version
+    everything = repo.tag_prob_moments("genre")  # None: every row, whatever the version
+    assert everything == (3, {"jazz": (1.0, 0.5), "rock": (1.25, 1.0625)})
+    assert repo.tag_prob_moments("moodtheme") == (1, {"calm": (0.75, 0.5625)})
+    assert repo.tag_prob_moments("tempo") == (0, {})
+
+
+def test_tag_probs_signature_changes_with_the_rows_of_the_head(
+    repo: CatalogRepository, ids: dict[str, int]
+) -> None:
+    a, b = ids["Smooth Cafe"], ids["Garage Band"]
+    empty = repo.tag_probs_signature("genre")
+    assert empty == (0, None, 0.0)
+    repo.set_tag_probs(a, "genre", "head", "g@1", {"jazz": 0.5})
+    added = repo.tag_probs_signature("genre")
+    assert added != empty and added[0] == 1
+    repo.set_tag_probs(a, "genre", "head", "g@1", {"jazz": 0.75})  # replaced, same count
+    replaced = repo.tag_probs_signature("genre")
+    assert replaced != added and replaced[0] == 1
+    repo.set_tag_probs(b, "moodtheme", "head", "m@1", {"calm": 0.75})  # another head
+    assert repo.tag_probs_signature("genre") == replaced
+    repo.set_tag_probs(b, "genre", "head", "g@1", {"rock": 0.25})  # another track's rows
+    assert repo.tag_probs_signature("genre")[0] == 2
+    repo.delete_track(b)
+    assert repo.tag_probs_signature("genre") == replaced
+    repo.delete_track(a)  # cascades to its tag rows
+    assert repo.tag_probs_signature("genre") == (0, None, 0.0)
+
+
 def test_embedding_stats_changes_when_embeddings_change(repo: CatalogRepository) -> None:
     assert repo.embedding_stats(MODEL_ID) == (0, None)
     ids = build_catalog(repo)

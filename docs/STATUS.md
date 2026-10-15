@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-14.
+Last updated: 2026-10-15.
 
 ## 1. Milestones
 
@@ -20,7 +20,7 @@ Last updated: 2026-10-14.
 | M5 API | Done (2026-10-14) | `dev` | `mcrar serve`; routes, security model and limits in `docs/api.md`; see §3.8 |
 | M6–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`: 1,267 passed, 30 skipped (default); 1,264 passed without the `ml` extra
+Test suite on `dev`: 1,290 passed, 30 skipped (default); 1,287 passed without the `ml` extra
 (CI); 29 real-model tests with `-m models`.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
@@ -123,12 +123,36 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   and the source filter are never relaxed.
 - **Unknown values pass filters.** Tracks with an unknown vocal flag or duration pass, because
   local asset packs never have a vocal flag.
-- **Zero-shot tag scores** are standardised over the whole catalog, then passed through a
-  sigmoid. Stored `tag_probs` from M3b win when present.
+- **Tag scores are standardised per label** (2026-10-15).
+  - Zero-shot cosines and stored M3b `tag_probs` alike become a z-score over the catalog, passed
+    through `sigmoid(1.7 z)`. For stored tags, the z-score is over the tracks tagged by the
+    allowed model, with a missing label counting as 0. Stored rows win when present.
+  - Why: raw probabilities had very different scales per label set. The commercial zero-shot
+    mood head gives 0.6–0.97 for nearly everything, calibrated MTG mood probabilities are low
+    by base rate, and the genre head is peaky. So one set dominated the tag term, and stored and
+    zero-shot scores did not mix.
+  - The stored statistics are cached against a cheap signature of the head's rows (count, max
+    rowid, sum of probabilities). Computing them for the mood head takes about 0.35 s on the
+    real catalog.
+- **Filter-only genre/mood search needs no torch** when every track in the pool has stored tags
+  from the allowed model. The text model (zero-shot) is loaded only for an embedded pool track
+  without usable stored tags; without the `ml` extra that is a 503.
 - **Ingest** embeds with `default_embedder` by default (`--no-embed` to skip) and appends M3b
   tagging stages through one guarded import.
-- **Result quality:** on the 15 rated searches the top-2 mean rating is 1.35, against CLAP
-  alone 1.40 (no loss).
+- **Result quality** on the owner's 15 rated searches. Method: run each query text through the
+  search over the whole catalog, take the top 2, and average the owner's ratings of the hits
+  that were rated. Unrated hits are left out and counted.
+
+  | Ranking | Top-2 mean | Rated / unrated hits |
+  |---|---|---|
+  | M4: zero-shot tags only, before M3b tagged the catalog | 1.35 | 23 / 7 |
+  | Stored raw probabilities (M3b tags, until 2026-10-15) | 1.22 | 23 / 7 |
+  | Stored, standardised per label (current) | 1.25 | 24 / 6 |
+
+  - For comparison, CLAP alone scored 1.40 on its own top 2 in the bake-off.
+  - The sample is small: each step is one or two tracks changing.
+  - Reranking only each query's rated candidates gives 1.40 for every variant, because the text
+    match decides the top 2 there.
 
 ### 3.6 CI and tests
 - CI runs on Windows without the `ml` extra. The tests force Typer's plain output
@@ -216,13 +240,8 @@ M3b is merged and the real catalog is tagged. Still open:
   `MCRAR_COMMERCIAL_MODE=false mcrar tag --force`.
 
 ### 5.2 Follow-ups
-- **M4: normalise mood scores per label in the tag term.** Calibrated mood probabilities are
-  low in absolute terms (multi-label base rates), so a mood counts far less than a genre, and the
-  commercial zero-shot mood scores are uncalibrated.
 - **CLI search speed.** `mcrar search` with text still loads CLAP on every run (about 15 s). The
   API server keeps it loaded, so use `mcrar serve` for repeated searches.
-- **Filter-only genre or mood search needs torch.** Zero-shot scores need the text model, even
-  when every track has stored tags. It could fall back to stored tags only.
 - **API polish:**
   - The 50 MB analyze limit is checked after Starlette has spooled the upload.
   - Duplicate project names return 422, not 409.

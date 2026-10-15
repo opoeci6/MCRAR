@@ -112,6 +112,15 @@ def service_for(repo: CatalogRepository, settings: Settings) -> SearchService:
     return SearchService(repo, settings, embedder_loader=lambda: embedder)
 
 
+def tag_two(repo: CatalogRepository, ids: dict[str, int], version: str | None) -> None:
+    """One track with a high "a", one with none: standardised, the first scores sigmoid(1.7)."""
+    repo.set_tag_probs(ids["Shadow Walk"], "genre", "head", version, {"a": 0.987, "b": 0, "c": 0})
+    repo.set_tag_probs(ids["Quiet Vents"], "genre", "head", version, {"a": 0, "b": 0, "c": 0})
+
+
+STANDARDISED = 1.0 / (1.0 + np.exp(-1.7))  # z = +1 against the two tagged tracks
+
+
 def genre_score(service: SearchService, track_id: int) -> float:
     request = SearchRequest("", SearchFilters(genres=("a",), vocal="instrumental"), limit=50)
     item = next(i for i in service.search(request).items if i.track_id == track_id)
@@ -124,13 +133,13 @@ def test_a_non_commercial_tag_is_ignored_in_commercial_mode_and_used_otherwise(
     track = ids["Shadow Walk"]
     settings = settings_with_registry(True, entry_commercial=False)
     version = allowed_tag_versions(get_settings(commercial_mode=False))["genre"]
-    repo.set_tag_probs(track, "genre", "head", version, {"a": 0.987, "b": 0.0, "c": 0.0})
+    tag_two(repo, ids, version)
 
     commercial = service_for(repo, settings)
-    assert genre_score(commercial, track) != pytest.approx(0.987)  # zero-shot instead
+    assert genre_score(commercial, track) != pytest.approx(STANDARDISED)  # zero-shot instead
 
     non_commercial = service_for(repo, get_settings(commercial_mode=False))
-    assert genre_score(non_commercial, track) == pytest.approx(0.987)
+    assert genre_score(non_commercial, track) == pytest.approx(STANDARDISED)
 
 
 def test_a_commercial_tag_is_used_in_both_modes(
@@ -139,15 +148,15 @@ def test_a_commercial_tag_is_used_in_both_modes(
     track = ids["Shadow Walk"]
     settings = settings_with_registry(True, entry_commercial=True)
     version = allowed_tag_versions(settings)["genre"]
-    repo.set_tag_probs(track, "genre", "head", version, {"a": 0.987, "b": 0.0, "c": 0.0})
-    assert genre_score(service_for(repo, settings), track) == pytest.approx(0.987)
+    tag_two(repo, ids, version)
+    assert genre_score(service_for(repo, settings), track) == pytest.approx(STANDARDISED)
     assert genre_score(
         service_for(repo, get_settings(commercial_mode=False)), track
-    ) == pytest.approx(0.987)
+    ) == pytest.approx(STANDARDISED)
 
 
 def test_rows_of_an_older_version_are_ignored(repo: CatalogRepository, ids: dict[str, int]) -> None:
     track = ids["Shadow Walk"]
     settings = settings_with_registry(True, entry_commercial=True)
-    repo.set_tag_probs(track, "genre", "head", "genre-logreg@0000000", {"a": 0.987, "b": 0, "c": 0})
-    assert genre_score(service_for(repo, settings), track) != pytest.approx(0.987)
+    tag_two(repo, ids, "genre-logreg@0000000")
+    assert genre_score(service_for(repo, settings), track) != pytest.approx(STANDARDISED)

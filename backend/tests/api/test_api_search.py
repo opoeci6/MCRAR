@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from api_support import make_client
+from api_support import ApiClient, make_client, register_tagging
 
 
 def test_text_search_returns_ranked_items_with_a_breakdown(tmp_path: Path) -> None:
@@ -69,6 +69,61 @@ def test_filter_only_search_works_without_torch(tmp_path: Path) -> None:
         response = client.post("/api/search", json=body)
         assert response.status_code == 200 and response.json()["items"]
         assert client.loader.keys == []
+
+
+TORCH_MISSING = {"detail": "text search needs the ml extra (torch is not installed)"}
+
+
+def client_with_genre_model(tmp_path: Path) -> tuple[ApiClient, str]:
+    """A no-torch client whose registry allows one genre model (labels a, b, c); returns the
+    client (not entered yet) and that model's version."""
+    client = make_client(tmp_path, torch=False)
+    registry = register_tagging(client.settings, commercial=True)
+    return client, registry["label_sets"]["genre"]["entries"][0]["id"]
+
+
+def tag_genres(client: ApiClient, version: str, *, skip: tuple[str, ...] = ()) -> None:
+    for n, (title, track_id) in enumerate(client.ids.items()):
+        if title not in skip:
+            probs = {"a": 0.1 + 0.04 * n, "b": 0.5, "c": 0.2}
+            client.repo.set_tag_probs(track_id, "genre", "head", version, probs)
+
+
+def test_filter_only_genre_search_works_without_torch_when_tracks_are_tagged(
+    tmp_path: Path,
+) -> None:
+    client, version = client_with_genre_model(tmp_path)
+    tag_genres(client, version, skip=("Unembedded Tune",))  # it has no embedding: no zero-shot
+    with client:
+        response = client.post("/api/search", json={"filters": {"genres": ["a"]}, "limit": 50})
+        assert response.status_code == 200
+        items = response.json()["items"]
+        assert items and client.loader.keys == []
+        raw = {item["title"]: item["breakdown"]["tags"]["raw"] for item in items}
+        assert raw.pop("Unembedded Tune") == 0.0  # untagged and not embedded: nothing to score by
+        scores = list(raw.values())  # in ranking order: standardised, so in (0, 1)
+        assert scores == sorted(scores, reverse=True) and 0.0 < scores[-1] < scores[0] < 1.0
+
+
+def test_filter_only_genre_search_needs_torch_for_an_untagged_embedded_track(
+    tmp_path: Path,
+) -> None:
+    client, version = client_with_genre_model(tmp_path)
+    tag_genres(client, version, skip=("Shadow Walk",))
+    with client:
+        response = client.post("/api/search", json={"filters": {"genres": ["a"]}})
+        assert response.status_code == 503 and response.json() == TORCH_MISSING
+        assert client.loader.keys == []
+
+
+def test_filter_only_genre_search_ignores_tags_of_a_model_that_is_not_allowed(
+    tmp_path: Path,
+) -> None:
+    client, _ = client_with_genre_model(tmp_path)
+    tag_genres(client, "genre-logreg@0000000")  # an older version than the registry's
+    with client:
+        response = client.post("/api/search", json={"filters": {"genres": ["a"]}})
+        assert response.status_code == 503 and response.json() == TORCH_MISSING
 
 
 def test_text_search_without_torch_is_503(tmp_path: Path) -> None:
