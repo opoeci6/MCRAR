@@ -5,22 +5,32 @@ validation as the CLI's options (:func:`mcrar.recommend.request.build_filters`).
 the embedding model on first use and answers 503 when the ``ml`` extra is missing; a search with
 filters only never loads it. Each item carries the owner's ``rating`` (0-2, or null) for this
 query (:mod:`mcrar.recommend.ratings`).
+
+``POST /api/search/rerank`` runs the same search for the top ``llm.rerank_top_n`` results and asks
+the LLM to reorder them (:mod:`mcrar.recommend.llm_rerank`). It answers 503 while the LLM is not
+usable and 502 (with a safe message) when the LLM call fails. When the LLM is enabled but not
+usable (no key), a normal search reports no ``llm`` block: ``GET /api/llm`` says why.
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Any, Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from mcrar.api.state import StateDep
-from mcrar.recommend import SearchError, SearchFilters, SearchRequest
+from mcrar.api.state import AppState, StateDep
+from mcrar.llm.base import LLMError
+from mcrar.llm.client import token_budget
+from mcrar.recommend import SearchError, SearchFilters, SearchRequest, SearchResult
+from mcrar.recommend.llm_rerank import MAX_TOKENS, rerank
 from mcrar.recommend.ratings import query_key
 from mcrar.recommend.request import build_filters
 from mcrar.recommend.vocab import Vocabulary
 
 router = APIRouter()
+NO_LLM_MESSAGE = "No LLM is configured. Set one up in Settings."
 
 
 class FiltersBody(BaseModel):
@@ -71,10 +81,56 @@ def search(body: SearchBody, state: StateDep) -> dict[str, Any]:
     request = SearchRequest(
         text=body.text, filters=filters, limit=body.limit, offset=body.offset, explain=body.explain
     )
-    result = state.search.search(request).to_dict()
+    found = state.search.search(request)
+    if found.llm is not None and not state.llm.status().ready:
+        found = replace(found, llm=None)  # enabled, but no key or model: nothing was asked
+    return with_ratings(state, found, body.text, filters)
+
+
+def with_ratings(
+    state: AppState, result: SearchResult, text: str | None, filters: SearchFilters
+) -> dict[str, Any]:
+    """The result as a dict with each item's ``rating`` for this query (shared with rerank)."""
+    data = result.to_dict()
     ratings = state.repo.ratings_for(
-        query_key(body.text, filters), (item["track_id"] for item in result["items"])
+        query_key(text, filters), (item["track_id"] for item in data["items"])
     )
-    for item in result["items"]:
+    for item in data["items"]:
         item["rating"] = ratings.get(item["track_id"])
-    return result
+    return data
+
+
+@router.post("/api/search/rerank")
+def search_rerank(body: SearchBody, state: StateDep) -> dict[str, Any]:
+    """Search for the top results of ``text`` and let the LLM reorder them."""
+    filters = resolve_filters(body.filters, state.search.vocab)
+    if not (body.text or "").strip():
+        raise SearchError("give a search text to rerank")
+    if not state.llm.status().ready:
+        raise HTTPException(503, NO_LLM_MESSAGE)
+    cfg = state.settings.llm
+    request = SearchRequest(
+        text=body.text, filters=filters, limit=cfg.rerank_top_n, offset=0, explain=True
+    )
+    found = state.search.search(request)
+    if not found.items:
+        return with_ratings(state, found, body.text, filters)
+    tracks = state.repo.get_tracks([item.track_id for item in found.items])
+    budget = token_budget(state.llm.resolve().preset, MAX_TOKENS)
+    try:
+        provider = state.llm.provider()
+        try:
+            items, info = rerank(
+                provider,
+                text=body.text or "",
+                parsed=found.parsed,
+                items=found.items,
+                timeout_s=cfg.rerank_timeout_s,
+                tracks=tracks,
+                max_tokens=budget,
+            )
+        finally:
+            provider.close()
+    except LLMError as exc:
+        raise HTTPException(502, str(exc)) from None
+    return with_ratings(state, replace(found, items=items, rerank=info), body.text, filters)

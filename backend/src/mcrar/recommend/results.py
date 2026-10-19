@@ -7,7 +7,7 @@ Everything is plain data; ``to_dict()`` gives a JSON-serialisable structure (the
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from mcrar.recommend.query import ParsedQuery
 
@@ -42,6 +42,8 @@ class SearchItem:
     score: float
     breakdown: dict[str, dict[str, float | None]]
     explanation: str | None
+    llm_rank: int | None = None  # position after an LLM re-ranking (1 = best)
+    llm_explanation: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -61,11 +63,35 @@ class MatchQuality:
 
 
 @dataclass(frozen=True)
+class LLMUse:
+    """What the LLM did for one search: ``used`` is False when it failed and the rule parser
+    answered instead (``error`` then says why, in safe words); ``cached`` when its reply for this
+    query was reused."""
+
+    used: bool
+    model: str
+    cached: bool = False
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class RerankInfo:
+    """The LLM's verdict on a re-ranked result list (see :mod:`mcrar.recommend.llm_rerank`)."""
+
+    model: str
+    verdict: Literal["good", "partial", "poor"]
+    summary: str
+    search_terms: list[str]
+    elapsed_ms: float
+
+
+@dataclass(frozen=True)
 class SearchResult:
     """``total_candidates`` is the number of ranked candidates (after the per-artist cap) that
     ``offset`` and ``limit`` page through. ``parsed`` is the query as understood, before any
     relaxation; ``relaxed`` says what was relaxed to find results, in order. ``notes`` carries
-    messages for the user (missing embeddings, an empty result and why)."""
+    messages for the user (missing embeddings, an empty result and why). ``llm`` and ``rerank``
+    are None unless the LLM took part."""
 
     items: list[SearchItem]
     total_candidates: int
@@ -76,6 +102,8 @@ class SearchResult:
     elapsed_ms: float
     notes: list[str] = field(default_factory=list)
     match: MatchQuality = field(default_factory=MatchQuality)
+    llm: LLMUse | None = None
+    rerank: RerankInfo | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

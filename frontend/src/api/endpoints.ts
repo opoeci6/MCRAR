@@ -13,6 +13,9 @@ import type {
   JamendoIngestRequest,
   Job,
   JobDetail,
+  LlmStatus,
+  LlmTestRequest,
+  LlmTestResult,
   LocalIngestRequest,
   Project,
   ProjectDetail,
@@ -52,9 +55,25 @@ export const getStats = (o?: CallOptions) => request<Stats>('GET', '/api/stats',
 export const search = (body: SearchRequest, o?: CallOptions) =>
   request<SearchResponse>('POST', '/api/search', { ...o, body })
 
+/**
+ * Asks the LLM to reorder the top results of this search (same body as "search"; limit and
+ * offset are ignored). 503 when no LLM is configured, 502 when the LLM call fails.
+ */
+export const rerankSearch = (body: SearchRequest, o?: CallOptions) =>
+  request<SearchResponse>('POST', '/api/search/rerank', { ...o, body })
+
 /** Starts a job that imports Jamendo candidates for a search. Re-run the search when it is done. */
 export const importForSearch = (body: SearchImportRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/search/import', { ...o, body })
+
+// -- llm ------------------------------------------------------------------------------------
+
+/** Whether the optional LLM can be used right now, and why not. */
+export const getLlmStatus = (o?: CallOptions) => request<LlmStatus>('GET', '/api/llm', o)
+
+/** Tries the LLM with the given values (or the saved ones). A failure is a 200 with ok: false. */
+export const testLlm = (body?: LlmTestRequest, o?: CallOptions) =>
+  request<LlmTestResult>('POST', '/api/llm/test', { ...o, body: body ?? {} })
 
 // -- tracks --------------------------------------------------------------------------------
 

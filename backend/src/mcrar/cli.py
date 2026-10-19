@@ -1,4 +1,4 @@
-"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search."""
+"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search, llm."""
 
 from __future__ import annotations
 
@@ -1351,6 +1351,64 @@ def bakeoff_report(
     _line(f"Wrote {target}")
 
 
+# -- the optional LLM ------------------------------------------------------------------------------
+
+llm_app = typer.Typer(help="The optional LLM that understands searches.", no_args_is_help=True)
+app.add_typer(llm_app, name="llm")
+LLM_REASONS = {
+    "disabled": "disabled (turn it on in Settings, or set llm.enabled = true)",
+    "missing_model": "no model is set (llm.model)",
+    "missing_key": "no API key is stored",
+}
+
+
+def _llm_client(settings: Settings):  # noqa: ANN202 - lazy import; tests replace this
+    from mcrar.llm.client import LLMClient
+
+    try:
+        secrets: SecretStore | None = SecretStore(settings)
+    except SecretError:
+        secrets = None
+    return LLMClient(settings, secrets)
+
+
+@llm_app.command("status")
+def llm_status(
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+) -> None:
+    """Show which LLM is configured and whether it is ready (the key is never printed)."""
+    client = _llm_client(_settings())
+    status = client.status()
+    if as_json:
+        typer.echo(json.dumps(status.to_dict(), indent=2))
+        return
+    _line(f"Provider: {status.label} ({status.preset})")
+    _line(f"Model: {status.model or '(none)'}")
+    if status.ready:
+        _line("Status: ready")
+        return
+    reason = LLM_REASONS[status.reason or "disabled"]
+    if status.reason == "missing_key":
+        reason += f"; set it with: mcrar secrets set {client.resolve().preset.key_secret}"
+    _line(f"Status: not ready, {reason}")
+
+
+@llm_app.command("test")
+def llm_test() -> None:
+    """Send a tiny request to the configured LLM (works while it is disabled)."""
+    result = _llm_client(_settings()).test()
+    if not result["ok"]:
+        raise _fail(result["error"], 1)
+    _line(f"OK: {result['model']} replied in {result['elapsed_ms']:.0f} ms")
+
+
+def _llm_parser(settings: Settings):  # noqa: ANN202 - lazy import
+    """The LLM query parser over the saved preset (it needs a key, not ``llm.enabled``)."""
+    from mcrar.recommend.llm_parse import LLMParser
+
+    return LLMParser(_llm_client(settings), settings.llm.parse_timeout_s)
+
+
 # -- search ----------------------------------------------------------------------------------------
 
 SEARCH_TITLE_WIDTH = 44
@@ -1403,6 +1461,12 @@ def _print_search_result(result, *, explain: bool, offset: int) -> None:  # noqa
         _line(note)
     for note in result.notes:
         _line(note)
+    if result.llm is not None:
+        if result.llm.used:
+            cached = " (cached)" if result.llm.cached else ""
+            _line(f"LLM: {result.llm.model} read the query{cached}")
+        else:
+            _line(f"LLM: not used ({result.llm.error})")
     _line(
         f"\n{len(result.items)} shown of {result.total_candidates} candidates "
         f"({result.elapsed_ms:.0f} ms, {result.model_id})"
@@ -1438,6 +1502,12 @@ def search(
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
     no_explain: Annotated[
         bool, typer.Option("--no-explain", help="Skip the explanation lines.")
+    ] = False,
+    use_llm: Annotated[
+        bool,
+        typer.Option(
+            "--llm", help="Let the LLM read the query (needs its API key), even if it is disabled."
+        ),
     ] = False,
 ) -> None:
     """Search the catalog by text and filters; every result shows why it ranked where it did."""
@@ -1482,14 +1552,22 @@ def search(
         with (
             _open_repo() as repo,
             closing(
-                SearchService(repo, settings, embedder_loader=load_embedder, vocab=vocab)
+                SearchService(
+                    repo,
+                    settings,
+                    embedder_loader=load_embedder,
+                    vocab=vocab,
+                    parser=_llm_parser(settings) if use_llm or settings.llm.enabled else None,
+                )
             ) as service,
         ):
             result = service.search(request)
     except (SearchError, ModelError) as exc:
         raise _fail(str(exc), 1) from None
     except Exception as exc:  # never show a traceback
-        raise _fail(f"search failed ({type(exc).__name__}: {str(exc)[:200]})", 1) from None
+        from mcrar.api.jobs import redact
+
+        raise _fail(f"search failed ({type(exc).__name__}: {redact(str(exc))[:200]})", 1) from None
     if as_json:
         typer.echo(json.dumps(result.to_dict(), indent=2))
         return
@@ -1594,10 +1672,15 @@ def _eval_row(label: str, mean: float | None, rated: int, unrated: int) -> tuple
 def ratings_eval(
     k: Annotated[int, typer.Option("--k", min=1, help="Hits per query to look at.")] = 2,
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+    use_llm: Annotated[
+        bool,
+        typer.Option("--llm", help="Parse the queries with the LLM instead of the rules."),
+    ] = False,
 ) -> None:
     """Run every rated query through the current search and average your ratings of the top k.
 
-    Hits you did not rate are left out and counted. The overall mean pools all rated hits.
+    Hits you did not rate are left out and counted. The overall mean pools all rated hits. With
+    `--llm` the LLM reads the queries (rules are the default), so two runs compare the parsers.
     """
     from contextlib import closing
 
@@ -1620,13 +1703,21 @@ def ratings_eval(
             return _load_embedder(settings.default_embedder, settings)
 
         report: list[dict] = []
+        llm_queries = fell_back = 0
+        parser = _llm_parser(settings) if use_llm else None
         try:
-            with closing(SearchService(repo, settings, embedder_loader=load_embedder)) as service:
+            with closing(
+                SearchService(repo, settings, embedder_loader=load_embedder, parser=parser)
+            ) as service:
                 for key, text, filters_json, _ in queries:
                     request = SearchRequest(
                         text=text, filters=filters_from_json(filters_json), limit=k, explain=False
                     )
-                    items = service.search(request).items
+                    found = service.search(request)
+                    items = found.items
+                    if found.llm is not None:
+                        llm_queries += 1
+                        fell_back += not found.llm.used
                     given = repo.ratings_for(key, (i.track_id for i in items))
                     scores = [given[i.track_id] for i in items if i.track_id in given]
                     report.append(
@@ -1648,16 +1739,24 @@ def ratings_eval(
         except ValueError as exc:
             raise _fail(f"a stored query cannot be run ({exc})", 1) from None
         except Exception as exc:  # never show a traceback
-            raise _fail(f"eval failed ({type(exc).__name__}: {str(exc)[:200]})", 1) from None
+            from mcrar.api.jobs import redact
+
+            raise _fail(
+                f"eval failed ({type(exc).__name__}: {redact(str(exc))[:200]})", 1
+            ) from None
     pooled = [h["rating"] for q in report for h in q["hits"] if h["rating"] is not None]
     overall = {
         "mean": _mean(pooled),
         "rated": len(pooled),
         "unrated": sum(q["unrated"] for q in report),
     }
+    llm_info = {"parser": "llm", "llm_queries": llm_queries, "llm_fell_back": fell_back}
     if as_json:
-        typer.echo(json.dumps({"k": k, "queries": report, "overall": overall}, indent=2))
+        data = {"k": k, "queries": report, "overall": overall, **(llm_info if use_llm else {})}
+        typer.echo(json.dumps(data, indent=2))
         return
+    if use_llm:
+        _line(f"Parser: LLM; {fell_back} of {llm_queries} text queries fell back to the rules")
     rows = [("Query", f"Top-{k} mean", "Rated", "Unrated")]
     for q in report:
         label = q["query_text"] or q["query_key"].removeprefix("filters:")

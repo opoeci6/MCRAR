@@ -102,6 +102,10 @@ export interface SearchItem {
   explanation: string | null
   /** The owner's rating of this track for this query, or `null` when not rated. */
   rating: RatingValue | null
+  /** Position (1..N) the LLM gave this track in a rerank; absent or null in a normal search. */
+  llm_rank?: number | null
+  /** The LLM's reason for this track (a rerank only). */
+  llm_explanation?: string | null
 }
 
 /** The query as the backend understood it (before any relaxation). */
@@ -125,7 +129,13 @@ export interface ParsedQuery {
     mood_hints: string[]
   }
   notes: string[]
+  /** Who read the query. Absent from an older backend: read it as "rules". */
+  source?: ParseSource
+  /** Jamendo search terms the LLM produced (empty for rules). */
+  search_terms?: string[]
 }
+
+export type ParseSource = 'rules' | 'llm'
 
 /** How well the best result matched a text search. */
 export interface MatchQuality {
@@ -133,6 +143,26 @@ export interface MatchQuality {
   top_cosine: number | null
   /** The best match is weak, so importing more tracks may help. Only ever true with text. */
   weak: boolean
+}
+
+/** What the LLM did while reading a query. "used" is false when it fell back to the rules. */
+export interface LlmUse {
+  used: boolean
+  model: string
+  cached: boolean
+  /** A short, safe reason when "used" is false. */
+  error: string | null
+}
+
+export type RerankVerdict = 'good' | 'partial' | 'poor'
+
+/** The LLM's verdict on a reranked result list. */
+export interface RerankInfo {
+  model: string
+  verdict: RerankVerdict
+  summary: string
+  search_terms: string[]
+  elapsed_ms: number
 }
 
 export interface SearchResponse {
@@ -149,6 +179,10 @@ export interface SearchResponse {
   notes: string[]
   /** Absent from an older backend: read it as `{ top_cosine: null, weak: false }`. */
   match?: MatchQuality
+  /** Null when the LLM is off or not ready, or the search has no text. Absent from an older backend. */
+  llm?: LlmUse | null
+  /** Only set by POST /api/search/rerank. */
+  rerank?: RerankInfo | null
 }
 
 // -- tracks --------------------------------------------------------------------------------
@@ -293,8 +327,35 @@ export interface SearchWeights {
   energy: number
 }
 
+export type LlmKind = 'openai' | 'anthropic'
+
+export interface LlmSettings {
+  enabled: boolean
+  preset: string
+  /** Empty means the preset's default model. */
+  model: string
+  /** Empty means the preset's default address. */
+  base_url: string
+  parse_timeout_s: number
+  rerank_timeout_s: number
+  rerank_top_n: number
+}
+
+export interface LlmPreset {
+  id: string
+  label: string
+  kind: LlmKind
+  base_url: string
+  default_model: string
+  /** The secret name of this preset's API key. */
+  key_secret: string
+  key_required: boolean
+  docs_url: string
+}
+
 export interface EditableSettings {
   default_embedder: string
+  llm: LlmSettings
   search: {
     pool_size: number
     max_per_artist: number
@@ -315,11 +376,13 @@ export interface SettingsView {
   /** Dotted names (`default_embedder`, `search.pool_size`) pinned by an MCRAR_* variable. */
   overridden_by_env: string[]
   embedders: EmbedderInfo[]
+  llm_presets: LlmPreset[]
 }
 
 /** A partial update: send only what changed. */
 export interface SettingsUpdate {
   default_embedder?: string
+  llm?: Partial<LlmSettings>
   search?: {
     pool_size?: number
     max_per_artist?: number
@@ -327,6 +390,33 @@ export interface SettingsUpdate {
     weights?: Partial<SearchWeights>
   }
 }
+
+export type LlmNotReadyReason = 'disabled' | 'missing_key' | 'missing_model'
+
+/** GET /api/llm: whether the LLM can be used right now. */
+export interface LlmStatus {
+  enabled: boolean
+  ready: boolean
+  preset: string
+  label: string
+  kind: LlmKind
+  /** The model actually used (the preset's default when the setting is empty). */
+  model: string
+  reason: LlmNotReadyReason | null
+  /** How many results a rerank reorders. Absent from an older backend. */
+  rerank_top_n?: number
+}
+
+/** The body of POST /api/llm/test: values to try instead of the saved ones. */
+export interface LlmTestRequest {
+  preset?: string
+  model?: string
+  base_url?: string
+}
+
+export type LlmTestResult =
+  | { ok: true; model: string; elapsed_ms: number }
+  | { ok: false; error: string }
 
 export interface SecretItem {
   name: string

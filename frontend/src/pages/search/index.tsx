@@ -1,10 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { ApiError } from '../../api/client'
-import { deleteRating, getVocab, putRating, search } from '../../api/endpoints'
-import type { RatingValue, SearchFilters, SearchItem, SearchResponse } from '../../api/types'
+import { deleteRating, getLlmStatus, getVocab, putRating, rerankSearch, search } from '../../api/endpoints'
+import type {
+  LlmUse,
+  ParsedQuery,
+  RatingValue,
+  RerankInfo,
+  SearchFilters,
+  SearchItem,
+  SearchResponse,
+} from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { usePersistentState } from '../../app/usePersistentState'
+import { hrefFor } from '../../app/route'
 import { useToast } from '../../app/toastContext'
 import { InlineJobProgress } from '../../features/jobs/InlineJobProgress'
 import { StartError } from '../../features/jobs/StartError'
@@ -20,6 +29,7 @@ import { TextInput } from '../../ui/TextInput'
 import { activeFilterCount, DEFAULT_FILTERS, filterProblem, toApiFilters } from './filters'
 import type { FilterState } from './filters'
 import { FiltersPanel } from './FiltersPanel'
+import { QueryReading } from './QueryReading'
 import { ResultRow } from './ResultRow'
 import { searchStrings as s } from './strings'
 import { useJamendoImport } from './useJamendoImport'
@@ -47,6 +57,14 @@ interface ResultSet {
   elapsedMs: number
   /** The best match was weak, so Jamendo may have more. Absent in results saved by an older version. */
   weak?: boolean
+  /** How the first page's query was read. Absent in results saved by an older version. */
+  parsed?: ParsedQuery
+  /** What the LLM did with the query; null when it was off. Kept from the first page. */
+  llm?: LlmUse | null
+  /** Set while the items are the LLM's reranking of the top results. */
+  rerank?: RerankInfo | null
+  /** The items from before the rerank, for Undo. */
+  preRerank?: SearchItem[]
   /** Tracks imported from Jamendo for this search, marked "New". */
   newTrackIds?: number[]
   /** How many tracks the last import for this search added; unset until one has finished. */
@@ -58,18 +76,26 @@ type Imported = Pick<ResultSet, 'newTrackIds' | 'imported'>
 
 type Problem = { kind: 'unavailable' | 'invalid' | 'failed'; message: string }
 
+/** Why a rerank did not happen: no LLM (503), the LLM call failed (502), or anything else. */
+type RerankProblem = { kind: 'unconfigured' | 'llm' | 'failed'; message: string }
+
+/** The first page's query reading (and any rerank) carries over to the pages loaded after it. */
+type Kept = Pick<ResultSet, 'parsed' | 'llm' | 'rerank' | 'preRerank'>
+
 function toResultSet(
   runId: number,
   request: SubmittedQuery,
   response: SearchResponse,
   previous: SearchItem[],
   imported?: Imported,
+  kept?: Kept,
 ): ResultSet {
   const known = new Set(previous.map((item) => item.track_id))
+  const added = response.items.filter((item) => !known.has(item.track_id))
   return {
     runId,
     request,
-    items: [...previous, ...response.items.filter((item) => !known.has(item.track_id))],
+    items: [...previous, ...added],
     total: response.total_candidates,
     relaxed: response.relaxed,
     notes: response.notes,
@@ -77,8 +103,33 @@ function toResultSet(
     model: response.model_id,
     elapsedMs: response.elapsed_ms,
     weak: Boolean(request.text) && Boolean(response.match?.weak),
+    parsed: kept ? kept.parsed : response.parsed,
+    llm: kept ? kept.llm : (response.llm ?? null),
+    rerank: kept?.rerank,
+    // Pages loaded after a rerank also belong to the list that Undo restores.
+    preRerank: kept?.preRerank ? [...kept.preRerank, ...added] : undefined,
     ...imported,
   }
+}
+
+/** What a reranked list looks like: the LLM's order first, then the other shown items as before. */
+function applyRerank(current: ResultSet, response: SearchResponse): ResultSet {
+  const ranked = new Set(response.items.map((item) => item.track_id))
+  return {
+    ...current,
+    items: [...response.items, ...current.items.filter((item) => !ranked.has(item.track_id))],
+    rerank: response.rerank ?? null,
+    // A second rerank still undoes back to the list the search found.
+    preRerank: current.preRerank ?? current.items,
+  }
+}
+
+function rerankProblemFor(error: unknown): RerankProblem {
+  if (error instanceof ApiError) {
+    if (error.status === 503) return { kind: 'unconfigured', message: error.detail }
+    if (error.status === 502) return { kind: 'llm', message: error.detail }
+  }
+  return { kind: 'failed', message: errorMessage(error) }
 }
 
 function problemFor(error: unknown): Problem | null {
@@ -107,8 +158,24 @@ export default function SearchPage() {
   const [runBase] = useState(() => Date.now())
   const runCount = useRef(0)
   const vocab = useAsync((signal) => getVocab({ signal }), [])
+  // Whether the LLM can be used. A failed call leaves it "not ready" without a message.
+  const llmStatus = useAsync((signal) => getLlmStatus({ signal }), [])
+  const [reranking, setReranking] = useState(false)
+  const [rerankProblem, setRerankProblem] = useState<RerankProblem | null>(null)
+  const rerankController = useRef<AbortController | null>(null)
 
-  useEffect(() => () => controller.current?.abort(), [])
+  useEffect(
+    () => () => {
+      controller.current?.abort()
+      rerankController.current?.abort()
+    },
+    [],
+  )
+
+  const resultsRef = useRef(results)
+  useEffect(() => {
+    resultsRef.current = results
+  })
 
   const run = useCallback(
     async (request: SubmittedQuery, previous: SearchItem[], runId: number, imported?: Imported, refresh = false) => {
@@ -116,6 +183,13 @@ export default function SearchPage() {
       const own = new AbortController()
       controller.current = own
       const more = previous.length > 0
+      // A new search drops a rerank that is still running; loading more pages does not.
+      if (!more) {
+        rerankController.current?.abort()
+        setReranking(false)
+        setRerankProblem(null)
+      }
+      const kept = more ? resultsRef.current : null
       setBusy(more ? 'more' : 'search')
       setProblem(null)
       try {
@@ -130,7 +204,7 @@ export default function SearchPage() {
           { signal: own.signal },
         )
         if (own.signal.aborted) return
-        setResults(toResultSet(runId, request, response, previous, imported))
+        setResults(toResultSet(runId, request, response, previous, imported, kept ?? undefined))
       } catch (caught) {
         if (own.signal.aborted) return
         if (more) {
@@ -149,10 +223,35 @@ export default function SearchPage() {
     [setResults, toast],
   )
 
-  const resultsRef = useRef(results)
-  useEffect(() => {
-    resultsRef.current = results
-  })
+  const rerank = async () => {
+    if (!results?.request.text) return
+    const { runId, request } = results
+    rerankController.current?.abort()
+    const own = new AbortController()
+    rerankController.current = own
+    setReranking(true)
+    setRerankProblem(null)
+    try {
+      const response = await rerankSearch(
+        { text: request.text, filters: request.filters, limit: PAGE_SIZE, offset: 0, explain: true },
+        { signal: own.signal },
+      )
+      if (own.signal.aborted) return
+      setResults((current) => (current && current.runId === runId ? applyRerank(current, response) : current))
+    } catch (caught) {
+      if (own.signal.aborted) return
+      setRerankProblem(rerankProblemFor(caught))
+    } finally {
+      if (rerankController.current === own) setReranking(false)
+    }
+  }
+
+  const undoRerank = () =>
+    setResults((current) =>
+      current?.preRerank
+        ? { ...current, items: current.preRerank, rerank: null, preRerank: undefined }
+        : current,
+    )
 
   // The import is for the search on screen. When it ends the same search runs again, so the
   // new tracks are ranked with the catalog.
@@ -205,6 +304,9 @@ export default function SearchPage() {
           ? {
               ...current,
               items: current.items.map((it) =>
+                it.track_id === item.track_id ? { ...it, rating: value } : it,
+              ),
+              preRerank: current.preRerank?.map((it) =>
                 it.track_id === item.track_id ? { ...it, rating: value } : it,
               ),
             }
@@ -310,6 +412,12 @@ export default function SearchPage() {
               canImport={!jamendo.active}
               importPending={jamendo.pending}
               onImport={jamendo.start}
+              rerankReady={llmStatus.data?.ready === true}
+              rerankCount={llmStatus.data?.rerank_top_n}
+              reranking={reranking}
+              rerankProblem={rerankProblem}
+              onRerank={() => void rerank()}
+              onUndoRerank={undoRerank}
               loadingMore={busy === 'more'}
               onLoadMore={() => void run(results.request, results.items, results.runId)}
               onOpen={setDrawerId}
@@ -333,6 +441,14 @@ interface ResultsViewProps {
   canImport: boolean
   importPending: boolean
   onImport: () => void
+  /** The LLM is configured and ready, so a rerank may be offered (a text search only). */
+  rerankReady: boolean
+  /** How many results a rerank reorders, when the backend says. */
+  rerankCount?: number
+  reranking: boolean
+  rerankProblem: RerankProblem | null
+  onRerank: () => void
+  onUndoRerank: () => void
   onLoadMore: () => void
   onOpen: (trackId: number) => void
   onRate: (item: SearchItem, rating: RatingValue | null) => void
@@ -345,16 +461,25 @@ function ResultsView({
   canImport,
   importPending,
   onImport,
+  rerankReady,
+  rerankCount,
+  reranking,
+  rerankProblem,
+  onRerank,
+  onUndoRerank,
   onLoadMore,
   onOpen,
   onRate,
 }: ResultsViewProps) {
   const { items, total, relaxed, notes, unembedded, model, elapsedMs, weak, newTrackIds, imported } = results
+  const { parsed, llm, rerank } = results
   const hasText = Boolean(results.request.text)
   const fresh = new Set(newTrackIds)
   const importButtonText = importPending ? s.jamendo.starting : s.jamendo.action
   // Weak results: the notice carries the one import button, so the quiet one below is hidden.
-  const suggestImport = hasText && Boolean(weak) && canImport && imported == null
+  // The LLM calling the list poor counts as weak, even when the similarity score was not.
+  const suggestImport =
+    hasText && (Boolean(weak) || rerank?.verdict === 'poor') && canImport && imported == null
   const hasMore = items.length < total
   const summary = [
     s.results.summary(items.length, total),
@@ -363,8 +488,48 @@ function ResultsView({
   ].filter(Boolean)
   return (
     <div className={loading ? styles.stale : undefined}>
-      <p className={styles.summary}>{summary.join(' · ')}</p>
+      <div className={styles.summaryRow}>
+        <p className={styles.summary}>{summary.join(' · ')}</p>
+        {rerankReady && hasText && items.length > 0 ? (
+          <Button
+            size="sm"
+            disabled={reranking}
+            icon={reranking ? <Spinner size={14} label="" /> : undefined}
+            onClick={onRerank}
+          >
+            {reranking ? s.rerank.pending : s.rerank.action(rerankCount)}
+          </Button>
+        ) : null}
+      </div>
       <div className={styles.notices}>
+        {rerank ? (
+          <Notice
+            action={
+              <Button size="sm" onClick={onUndoRerank}>
+                {s.rerank.undo}
+              </Button>
+            }
+          >
+            {s.rerank.done(rerank.model, rerank.summary)}
+          </Notice>
+        ) : null}
+        {rerankProblem?.kind === 'unconfigured' ? (
+          <Notice
+            kind="warning"
+            title={s.rerank.notConfiguredTitle}
+            action={<a href={hrefFor('settings')}>{s.rerank.openSettings}</a>}
+          />
+        ) : null}
+        {rerankProblem?.kind === 'llm' ? (
+          <Notice kind="warning" title={s.rerank.failedTitle}>
+            {rerankProblem.message}
+          </Notice>
+        ) : null}
+        {rerankProblem?.kind === 'failed' ? (
+          <Notice kind="error" title={s.rerank.failed}>
+            {rerankProblem.message}
+          </Notice>
+        ) : null}
         {suggestImport ? (
           <Notice
             kind="warning"
@@ -388,6 +553,7 @@ function ResultsView({
         ))}
         {unembedded > 0 ? <Notice>{s.results.unembedded(unembedded)}</Notice> : null}
       </div>
+      {parsed ? <QueryReading parsed={parsed} llm={llm} /> : null}
       {items.length === 0 ? (
         <EmptyState title={s.results.empty} description={s.results.emptyHint} />
       ) : (

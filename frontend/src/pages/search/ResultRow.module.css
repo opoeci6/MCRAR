@@ -101,6 +101,17 @@
   color: var(--color-text-muted);
 }
 
+.llmExplanation {
+  padding-left: var(--space-2);
+  border-left: 2px solid var(--color-accent);
+  font-size: var(--text-sm);
+}
+
+.llmLabel {
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

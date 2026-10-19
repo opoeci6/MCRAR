@@ -7,8 +7,10 @@ cache of fresh Jamendo stream URLs and the :class:`~mcrar.api.jobs.JobManager` t
 jobs. Routes get it through :func:`get_state`.
 
 ``reload_settings`` swaps the settings at run time (the settings page): it tells the pool and
-rebuilds the search service when the default embedder or the search settings
-changed, because those decide which models and stored tags may be used and how results rank.
+rebuilds the search service when the default embedder, the search settings or the LLM settings
+changed, because those decide which models and stored tags may be used, how results rank and
+whether the LLM parses queries. The :class:`~mcrar.llm.client.LLMClient` reads the API key from
+the secret store on every call, so a key saved on the settings page needs no reload.
 """
 
 from __future__ import annotations
@@ -25,8 +27,11 @@ from fastapi import Depends, Request
 from mcrar.api.jobs import JobManager
 from mcrar.api.models import ModelPool, ModelUnavailableError, torch_installed
 from mcrar.catalog import CatalogRepository, open_catalog
+from mcrar.llm.client import LLMClient, ProviderFactory
 from mcrar.recommend import SearchService, StoredTagScorer
+from mcrar.recommend.llm_parse import LLMParser
 from mcrar.recommend.tags import allowed_tag_versions
+from mcrar.secrets import SecretError, SecretStore
 
 if TYPE_CHECKING:
     from mcrar.config import Settings
@@ -48,6 +53,7 @@ class ApiDeps:
     embedder_loader: Callable[[str, Settings], Any] | None = None
     jamendo_factory: Callable[[Settings], Any] | None = None
     torch_available: Callable[[], bool] | None = None
+    llm_provider_factory: ProviderFactory | None = None  # (preset, model, base_url, key)
     repo: CatalogRepository | None = None  # not closed by the app when given
     extra_hosts: tuple[str, ...] = ()
 
@@ -114,7 +120,9 @@ class AppState:
         self.torch_available: Callable[[], bool] = deps.torch_available or torch_installed
         self.jobs = JobManager()
         self._lock = threading.Lock()
+        self._llm_factory = deps.llm_provider_factory
         try:
+            self.llm = self._build_llm(settings)
             self.stored_tags, self.search = self._build_search(settings)
         except BaseException:
             self.pool.close()
@@ -124,13 +132,22 @@ class AppState:
 
     # -- search service ----------------------------------------------------------------------
 
+    def _build_llm(self, settings: Settings) -> LLMClient:
+        try:
+            secrets: SecretStore | None = SecretStore(settings)
+        except SecretError:  # e.g. the keyring backend without its package: no key can be read
+            secrets = None
+        return LLMClient(settings, secrets, provider_factory=self._llm_factory)
+
     def _build_search(self, settings: Settings) -> tuple[StoredTagScorer, SearchService]:
         stored = StoredTagScorer(self.repo, allowed_tag_versions(settings))
+        parser = LLMParser(self.llm, settings.llm.parse_timeout_s) if settings.llm.enabled else None
         service = SearchService(
             self.repo,
             settings,
             embedder_loader=self.pool.loader(settings.default_embedder),
             stored_tags=stored,
+            parser=parser,
         )
         return stored, service
 
@@ -146,11 +163,13 @@ class AppState:
             self.settings = new_settings
             self.pool.update_settings(new_settings)
             # The search service reads its pool size and weights from settings.search too.
-            if (new_settings.default_embedder, new_settings.search) != (
+            if (new_settings.default_embedder, new_settings.search, new_settings.llm) != (
                 old.default_embedder,
                 old.search,
+                old.llm,
             ):
                 old_search = self.search
+                self.llm = self._build_llm(new_settings)
                 self.stored_tags, self.search = self._build_search(new_settings)
                 old_search.close()
 

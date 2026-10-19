@@ -26,10 +26,11 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 |---|---|
 | Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
 | Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, by default 0.40 for CLAP and MuQ-MuLan, none for GLAP); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
+| LLM (M7, optional; see `docs/llm.md`) | `GET /llm` → `{enabled, ready, preset, label, kind, model, reason, rerank_top_n}`, where `reason` is `disabled`, `missing_model`, `missing_key` or null. `POST /llm/test` `{preset?, model?, base_url?}` → always 200 with `{ok: true, model, elapsed_ms}` or `{ok: false, error}`; it tests unsaved values too. `POST /search/rerank` takes the `/search` body (text required) → the same response shape, with the top `llm.rerank_top_n` results in the LLM's order, each item's `llm_rank` and `llm_explanation`, and `rerank: {model, verdict: good\|partial\|poor, summary, search_terms, elapsed_ms}`. It answers 503 when no LLM is ready and 502 when the LLM call fails. Every `/search` response also has `parsed.source` (`rules`/`llm`), `parsed.search_terms` and `llm: {used, model, cached, error} \| null` |
 | Ratings | `PUT /ratings` `{text?, filters?, track_id, rating: 0\|1\|2}`; `DELETE /ratings` (same body without `rating`); `GET /ratings?limit&offset`. A rating is keyed by the lowercased query text, or by canonical filters for a filter-only search. |
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
 | Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=` |
-| Settings | `GET/PUT /settings` (editable: `default_embedder`, `search.*`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |
+| Settings | `GET/PUT /settings` (editable: `default_embedder`, `search.*`, `llm.*`; the view also lists `llm_presets`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |
 | Ingest | `POST /ingest/jamendo`, `POST /ingest/local`, `POST /ingest/reprocess` (`embed` or `tag`) → 202 with a job; `GET /jobs`; `GET /jobs/{id}`; `POST /jobs/{id}/cancel`; `GET /jobs/{id}/events` (Server-Sent Events) |
 | Analyze | `POST /analyze` (multipart upload, ≤ 50 MB) → BPM, key, loudness and energy. Nothing is stored. Reference-song similarity is M10. |
 
@@ -40,8 +41,8 @@ Errors are JSON `{"detail": "..."}`:
 | 422 | Bad input |
 | 404 | Unknown id |
 | 409 | Conflict: a job is already running, a field is pinned by an environment variable, or the secret backend is read-only |
-| 503 | Missing prerequisite: no `ml` extra for text search (or for a genre/mood filter when a matching track has no usable stored tags), or no Jamendo client id |
-| 502 | Jamendo failed |
+| 503 | Missing prerequisite: no `ml` extra for text search (or for a genre/mood filter when a matching track has no usable stored tags), no Jamendo client id, or no ready LLM for a rerank |
+| 502 | Jamendo failed, or the LLM call of a rerank failed |
 
 ## Behaviour worth knowing
 

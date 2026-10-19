@@ -21,8 +21,8 @@ def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> Non
     with make_client(tmp_path) as client:
         body = client.get("/api/settings").json()
         settings = client.app.state.mcrar.settings
-    assert set(body) == {"editable", "read_only", "overridden_by_env", "embedders"}
-    assert set(body["editable"]) == {"default_embedder", "search"}
+    assert set(body) == {"editable", "read_only", "overridden_by_env", "embedders", "llm_presets"}
+    assert set(body["editable"]) == {"default_embedder", "search", "llm"}
     assert body["editable"]["default_embedder"] == "clap"
     assert set(body["editable"]["search"]) == {
         "pool_size",

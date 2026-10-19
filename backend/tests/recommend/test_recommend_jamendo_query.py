@@ -106,3 +106,20 @@ def test_only_green_asks_for_commercial_licences(risk: str) -> None:
 def test_filters_without_a_jamendo_equivalent_are_ignored() -> None:
     filters = SearchFilters(bpm_min=100, bpm_max=120, genres=("rock",), sources=("local",))
     assert jamendo_queries("calm", filters) == jamendo_queries("calm", SearchFilters())
+
+
+def test_extra_terms_are_their_own_searches_first_and_keep_the_filters() -> None:
+    filters = SearchFilters(vocal="vocal", max_risk="green")
+    queries = jamendo_queries("j-pop dance", filters, ["anime", "  J  Rock ", "jpop dance", ""])
+    common = {"vocalinstrumental": "vocal", "commercial_only": True}
+    assert queries == [
+        JamendoQuery(search="anime", order="relevance", **common),
+        JamendoQuery(search="J Rock", order="relevance", **common),
+        JamendoQuery(search="jpop dance", order="relevance", **common),  # not repeated
+        JamendoQuery(search="j-pop dance", order="relevance", **common),
+        JamendoQuery(fuzzytags=["jpop", "dance"], **common),
+    ]
+
+
+def test_without_extra_terms_nothing_changes() -> None:
+    assert jamendo_queries("calm", SearchFilters(), ()) == jamendo_queries("calm", SearchFilters())

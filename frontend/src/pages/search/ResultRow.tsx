@@ -102,6 +102,11 @@ export function ResultRow({ item, isNew = false, onOpen, onRate }: ResultRowProp
           </ul>
         ) : null}
 
+        {item.llm_explanation ? (
+          <p className={styles.llmExplanation}>
+            <span className={styles.llmLabel}>{r.llmPrefix}</span> {item.llm_explanation}
+          </p>
+        ) : null}
         {item.explanation ? <p className={styles.explanation}>{item.explanation}</p> : null}
 
         <div className={styles.actions}>
