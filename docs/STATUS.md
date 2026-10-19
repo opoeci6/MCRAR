@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-15.
+Last updated: 2026-10-19.
 
 ## 1. Milestones
 
@@ -19,11 +19,14 @@ Last updated: 2026-10-15.
 | M4 Search and ranking | Done | `dev` | `mcrar search`; ingest embeds by default |
 | M5 API | Done (2026-10-14) | `dev` | `mcrar serve`; routes, security model and limits in `docs/api.md`; see §3.8 |
 | M6 UI | Done (2026-10-15) | `dev` | React UI served by `mcrar serve` at `/`; result ratings; see §3.9 |
-| M7–M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
+| M8–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`: 1,337 passed, 30 skipped (default); 1,334 passed without the `ml` extra
-(CI); 29 real-model tests with `-m models`. Frontend: 190 vitest tests, plus oxlint and the
-build (CI runs all three).
+Test suite on `dev`, counted after M7:
+- Backend, default env: 1,599 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 1,596 passed, 31 skipped.
+- 29 real-model tests run with `-m models`.
+- Frontend: 254 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -75,7 +78,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   the licence filter, and when the UI limit and a phrase in the text disagree, the stricter one
   wins.
 - **The LLM is optional and API-first** (the user's own key; local models are too heavy for a
-  regular PC). It is milestone M7.
+  regular PC). It was built in M7 (§3.11). OpenAI-compatible services come first, then
+  Anthropic.
 
 ### 3.2 Embedding model (M3a, 2026-10-11)
 - **CLAP won:** `laion/larger_clap_music_and_speech` at revision `195c3a3`, model id
@@ -311,6 +315,53 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
       tracks, and the search re-ran.
     - The licence card links opened, and the server log had no client id.
 
+### 3.11 Optional LLM (M7, 2026-10-19)
+Details are in `docs/llm.md`.
+- **Owner's choices:**
+  - OpenAI-compatible services come first: OpenAI, DeepSeek, SiliconFlow, Z.AI, OpenRouter,
+    Gemini and Groq through their OpenAI endpoints, plus "Other" for Ollama, LM Studio and
+    regional endpoints. Anthropic comes second.
+  - The parse runs automatically; the rerank runs on click.
+  - Default models: `gpt-6-luna` (cheap and more capable than `gpt-5-nano`), `glm-5.3-flash`
+    (cheaper than `glm-5.2`) and `claude-haiku-5-5`.
+- **Providers.**
+  - The OpenAI-compatible provider uses plain httpx. Anthropic uses the official `anthropic`
+    SDK (1.15, which brings in `httpx2`).
+  - Each preset has its own key secret, `llm_api_key_<preset>`, read on every call, so a saved
+    key works without a restart.
+  - JSON mode steps down (`json_schema` → `json_object` → none) when a service rejects it.
+  - Model-specific flags are sent only with the preset's default model. Examples: DeepSeek's
+    `thinking: disabled`, and `reasoning_effort: none` for `gpt-6-luna`, which has no "minimal".
+    GLM-5.3 can't turn thinking off.
+- **The parse never overrides the rules.**
+  - UI filters, rule constraints, the licence and the sources stay as they are.
+  - The LLM adds an English `semantic_text`, so other languages work, plus genre and mood
+    hints, energy and tempo preferences, vocal and duration filters only where none were set,
+    and Jamendo `search_terms` (used first by "Search Jamendo for more").
+  - Results are cached per query and filters. A failure falls back to the rules with a note
+    and is remembered for 60 s.
+- **The rerank** reorders only the results that already passed the filters. It adds an
+  explanation per track and a verdict; "poor" suggests a Jamendo import. Titles and tags are
+  sent as data, never licence data, URLs or ids.
+- **Search terms in the "j-pop" case.** For "j-pop" the LLM gives `jpop`, `japanese pop`,
+  `anime pop`. The rerank's verdicts were honest: "partial" for "j-pop", because the catalog has
+  no real J-pop.
+- **End-to-end check** on a catalog copy with the owner's OpenAI key and `gpt-6-luna`:
+  - **Speed:** the connection test took 2.1 s. A first parse adds about 3 s to a search, and a
+    cached one about 0.1 s. A rerank of 20 takes about 5 s.
+  - **A Japanese query** (日本のアニメのオープニング曲) was read as "Energetic Japanese anime
+    opening theme ...", with search terms `anime`, `jpop`, `jrock`.
+  - **"tense stealth level, no vocals"** kept the rule-parsed instrumental filter. The LLM added
+    Dark, Soundscape and Game moods.
+  - **In the UI:** the rerank showed an explanation per track, and Undo restored the order.
+  - **Key check:** no key-like string appeared in the server log, in `/api/settings`,
+    `/api/secrets`, `/api/llm`, or in the page.
+- **Ratings eval: undecided.**
+  - `mcrar ratings eval` (top-2 mean) gave 1.32 for rules (22 rated hits, 8 unrated).
+  - With `--llm` it gave 1.40, but on only 5 rated hits, with 25 unrated.
+  - The LLM's English rewrite changes the CLAP results so much that most hits were never rated,
+    so the two can't be compared yet. See §5.2.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -321,7 +372,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
 | Model weights | `.cache/huggingface/` | about 14 GB; includes three extra CLAP checkpoints downloaded while diagnosing the broken one (`larger_clap_music`, `larger_clap_general`, `clap-htsat-unfused`), which can be deleted |
-| Secrets | `.secrets/secrets.toml` | `jamendo_client_id` (the client secret is not needed) |
+| Secrets | `.secrets/secrets.toml` | `jamendo_client_id` (the client secret is not needed); `llm_api_key_openai` (since 2026-10-19) |
+| LLM settings | `config/settings.toml` `[llm]` | enabled with the OpenAI preset (default model `gpt-6-luna`) since 2026-10-19 |
 | Listening-test page | https://claude.ai/artifact/NPEKNfqBEZZBDeHx8ZD2J4 | private; ratings stored in its database |
 
 ## 5. Open items
@@ -336,6 +388,20 @@ M3b is merged and the real catalog is tagged. Still open:
 - **README (near the end of the project).** The README is still a TODO. It must state that the
   project can't be used commercially, for example hosted as a paid service, because MuQ-MuLan's
   weights and the MTG-Jamendo and DEAM labels behind the tagging heads are non-commercial.
+- **LLM follow-ups (M7):**
+  - **Rules vs LLM on ratings.** To compare them, rate the unrated top hits of the 15 rated
+    queries with the LLM on, in the UI, under the same query text. Then run
+    `mcrar ratings eval` with and without `--llm` again (§3.11).
+  - **Open question.** Should an English query keep its own text for CLAP and use the LLM only
+    for hints? The rewrite may help or hurt; the ratings will tell.
+  - **Search speed.** A first parse adds about 3 s to a search with `gpt-6-luna`. The cache is
+    in memory and is lost on restart.
+  - **Rerank keywords.** The rerank's `search_terms` are returned but not yet used by "Search
+    Jamendo for more"; the import uses the parse's.
+  - **OpenRouter default.** OpenRouter still defaults to `openai/gpt-5-nano`; switch it to
+    `gpt-6-luna` if the owner wants the same model there.
+  - **Unchecked providers.** JSON mode for SiliconFlow, Z.AI and Gemini is from the docs and
+    hasn't been checked with a real key; the step-down covers a wrong guess.
 - **Per-query import polish:**
   - With GLAP as the default embedder the weak notice never shows; the button still works.
   - A search limited to local sources still offers the Jamendo import.
@@ -373,9 +439,13 @@ M3b is merged and the real catalog is tagged. Still open:
     without analysis or embedding; "Re-embed missing tracks" completes them.
 
 ### 5.3 Next milestone (waiting for the owner's go)
-M7 (LLM query parsing and rerank, API key first), M8 (Spotify metadata section), M9 (game-scene
-tags, with a hand-labelled set that can use the new rating UI) and M10 (reference song) can follow
-in any order; M11 (desktop packaging) comes last.
+These can follow in any order:
+- M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
+  from M7.
+- M9: game-scene tags, with a hand-labelled set that can use the rating UI.
+- M10: reference song.
+
+M11 (desktop packaging) comes last.
 
 ## 6. GitHub history
 

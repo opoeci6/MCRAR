@@ -1,8 +1,8 @@
 """The settings page: ``GET/PUT /api/settings`` and the secrets store under ``/api/secrets``.
 
-Settings: only the keys the page may edit (default embedder, search knobs) are accepted, as a
-partial body. A change is checked (known embedder, no field that an ``MCRAR_*`` variable pins,
-because the variable would win anyway), merged into ``config/settings.toml`` with
+Settings: only the keys the page may edit (default embedder, search knobs, the LLM section) are
+accepted, as a partial body. A change is checked (known embedder, no field that an ``MCRAR_*``
+variable pins, because the variable would win anyway), merged into ``config/settings.toml`` with
 :func:`mcrar.config.save_settings_update`, and then the settings are rebuilt from disk and
 environment and handed to the running :class:`~mcrar.api.state.AppState`, so the change takes
 effect without a restart. One lock serialises read-merge-write-reload.
@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict
 
 from mcrar.api.state import AppState, StateDep
 from mcrar.config import Settings, env_overrides, get_settings, save_settings_update
+from mcrar.llm.presets import PRESETS
 from mcrar.ml import MODELS, ModelError, get_spec
 from mcrar.secrets import SecretError, SecretStore, validate_name
 
@@ -47,6 +48,10 @@ KNOWN_SECRETS = (
         "name": "jamendo_client_id",
         "description": "Jamendo API client id: needed to search, add and stream Jamendo tracks.",
     },
+    *(
+        {"name": preset.key_secret, "description": f"API key for {preset.label} (LLM)"}
+        for preset in PRESETS
+    ),
 )
 
 
@@ -72,9 +77,20 @@ class SearchUpdate(_Body):
     weights: WeightsUpdate | None = None
 
 
+class LLMUpdate(_Body):
+    enabled: bool | None = None
+    preset: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    parse_timeout_s: float | None = None
+    rerank_timeout_s: float | None = None
+    rerank_top_n: int | None = None
+
+
 class SettingsUpdate(_Body):
     default_embedder: str | None = None
     search: SearchUpdate | None = None
+    llm: LLMUpdate | None = None
 
 
 def _flatten(value: dict[str, Any], prefix: str = "") -> list[str]:
@@ -93,6 +109,7 @@ def _plain(value: Any) -> int | str:
 
 def settings_view(settings: Settings) -> dict[str, Any]:
     search = settings.search
+    llm = settings.llm
     return {
         "editable": {
             "default_embedder": settings.default_embedder,
@@ -103,6 +120,7 @@ def settings_view(settings: Settings) -> dict[str, Any]:
                 "weak_cosine": search.weak_cosine,
                 "weights": search.weights.model_dump(),
             },
+            "llm": llm.model_dump(),
         },
         "read_only": {name: _plain(getattr(settings, name)) for name in READ_ONLY_FIELDS},
         "overridden_by_env": env_overrides(),
@@ -113,6 +131,19 @@ def settings_view(settings: Settings) -> dict[str, Any]:
                 "commercial_ok": spec.commercial_ok,
             }
             for spec in MODELS.values()
+        ],
+        "llm_presets": [
+            {
+                "id": preset.id,
+                "label": preset.label,
+                "kind": preset.kind,
+                "base_url": preset.base_url,
+                "default_model": preset.default_model,
+                "key_secret": preset.key_secret,
+                "key_required": preset.key_required,
+                "docs_url": preset.docs_url,
+            }
+            for preset in PRESETS
         ],
     }
 

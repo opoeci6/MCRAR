@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 from api_support import ApiClient, make_client
 
+from mcrar.llm.presets import PRESET_IDS
+
 SECRET = "s3cr3t-VALUE-0123456789"
 
 
@@ -22,8 +24,13 @@ def test_list_is_empty_with_the_known_names(tmp_path: Path) -> None:
         body = client.get("/api/secrets").json()
     assert body["backend"] == "file"
     assert body["items"] == []
-    assert [k["name"] for k in body["known"]] == ["jamendo_client_id"]
-    assert body["known"][0]["description"]
+    assert [k["name"] for k in body["known"]] == [
+        "jamendo_client_id",
+        *(f"llm_api_key_{p}" for p in PRESET_IDS),
+    ]
+    assert all(k["description"] for k in body["known"])
+    by_name = {k["name"]: k["description"] for k in body["known"]}
+    assert by_name["llm_api_key_deepseek"] == "API key for DeepSeek (LLM)"
 
 
 def test_set_list_delete_round_trip_never_returns_the_value(tmp_path: Path) -> None:

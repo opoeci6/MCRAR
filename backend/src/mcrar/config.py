@@ -23,13 +23,22 @@ from pathlib import Path
 from typing import Any, Literal
 
 import tomli_w
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+from mcrar.llm.presets import PRESET_IDS
 
 HOME_ENV_VAR = "MCRAR_HOME"
 SETTINGS_FILE = Path("config") / "settings.toml"
@@ -113,6 +122,41 @@ class SearchSettings(BaseModel):
     weights: SearchWeights = SearchWeights()
 
 
+class LLMSettings(BaseModel):
+    """The optional LLM (``[llm]`` in settings.toml, ``MCRAR_LLM__*`` in the env). The API key is
+    a secret (``llm_api_key_<preset>``), never a setting. An empty ``model`` or ``base_url`` means
+    the preset's default (see :mod:`mcrar.llm.presets`)."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    enabled: bool = False
+    preset: str = "openai"
+    model: str = Field("", max_length=200)
+    base_url: str = Field("", max_length=500)
+    parse_timeout_s: float = Field(10, ge=1, le=120)  # understanding the query before a search
+    rerank_timeout_s: float = Field(45, ge=1, le=120)  # re-ordering the top results
+    rerank_top_n: int = Field(20, ge=5, le=50)  # results sent to the LLM to be re-ordered
+
+    @field_validator("preset")
+    @classmethod
+    def _known_preset(cls, value: str) -> str:
+        if value not in PRESET_IDS:
+            raise ValueError(f"unknown preset '{value}'; choose from: {', '.join(PRESET_IDS)}")
+        return value
+
+    @field_validator("model", "base_url")
+    @classmethod
+    def _stripped(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("base_url")
+    @classmethod
+    def _http_url(cls, value: str) -> str:
+        if value and not value.startswith(("http://", "https://")):
+            raise ValueError("must be empty or start with http:// or https://")
+        return value
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MCRAR_", env_nested_delimiter="__", extra="forbid"
@@ -131,6 +175,7 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
     search: SearchSettings = SearchSettings()
+    llm: LLMSettings = LLMSettings()
 
     @classmethod
     def settings_customise_sources(
@@ -162,7 +207,7 @@ def get_settings(**overrides: Any) -> Settings:
 
 # -- editing the settings file (the settings page) ----------------------------------------------
 
-EDITABLE_KEYS = frozenset({"default_embedder", "search"})
+EDITABLE_KEYS = frozenset({"default_embedder", "search", "llm"})
 _ENV_PREFIX = "MCRAR_"
 
 
@@ -173,6 +218,7 @@ class _EditableSettings(BaseModel):
 
     default_embedder: str = Field("clap", min_length=1)
     search: SearchSettings = SearchSettings()
+    llm: LLMSettings = LLMSettings()
 
 
 def settings_file(home: Path) -> Path:
@@ -202,9 +248,10 @@ def save_settings_update(home: Path, update: Mapping[str, Any]) -> None:
     """Merge ``update`` into ``<home>/config/settings.toml`` and write it atomically.
 
     ``update`` holds only editable keys (``default_embedder``, ``search`` with its nested
-    ``weights``); nested tables are merged key by key and every other key already in the file is
-    kept, except a legacy key (:data:`_LEGACY_KEYS`), which is dropped. Raises ``ValueError``
-    (file untouched) for a key that is not editable or a value that does not validate.
+    ``weights``, ``llm``); nested tables are merged key by key and every other key already in the
+    file is kept, except a legacy key (:data:`_LEGACY_KEYS`), which is dropped. Raises
+    ``ValueError`` (file untouched) for a key that is not editable or a value that does not
+    validate.
     """
     unknown = sorted(set(update) - EDITABLE_KEYS)
     if unknown:

@@ -448,3 +448,72 @@ class FakeJamendoClient:
 
     def close(self) -> None:
         self.closed = True
+
+
+# -- the optional LLM (M7) -------------------------------------------------------------------------
+
+
+class FakeProvider:
+    """A ``LLMProvider`` that returns a canned reply (a dict, an exception to raise, or a function
+    of the call) and records every call. No network."""
+
+    def __init__(self, reply: Any = None, *, model: str = "fake-model") -> None:
+        self.reply = reply if reply is not None else {}
+        self.model = model
+        self.label = "Fake"
+        self.calls: list[dict[str, Any]] = []
+        self.closed = 0
+
+    def complete_json(
+        self,
+        messages: Any,
+        schema: dict[str, Any],
+        *,
+        name: str,
+        max_tokens: int,
+        timeout_s: float,
+    ) -> dict[str, Any]:
+        call = {
+            "messages": messages,
+            "schema": schema,
+            "name": name,
+            "max_tokens": max_tokens,
+            "timeout_s": timeout_s,
+        }
+        self.calls.append(call)
+        reply = self.reply(call) if callable(self.reply) else self.reply
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    def close(self) -> None:
+        self.closed += 1
+
+
+def parse_reply(**fields: Any) -> dict[str, Any]:
+    """A complete reply of the query-parsing prompt: nothing found, except what is given."""
+    reply: dict[str, Any] = {
+        "semantic_text": "",
+        "genres": [],
+        "moods": [],
+        "energy": None,
+        "bpm_target": None,
+        "vocal": None,
+        "duration_min_s": None,
+        "duration_max_s": None,
+        "search_terms": [],
+    }
+    reply.update(fields)
+    return reply
+
+
+def llm_settings(**llm: Any) -> Settings:
+    """Settings with the LLM enabled on the key-less ``custom`` preset (so no secret is needed)."""
+    options = {"enabled": True, "preset": "custom", "model": "fake-model", **llm}
+    return get_settings(search={"max_per_artist": 50}, llm=options)
+
+
+def fake_llm_client(provider: FakeProvider, **llm: Any) -> Any:
+    from mcrar.llm.client import LLMClient
+
+    return LLMClient(llm_settings(**llm), None, provider_factory=lambda *args: provider)

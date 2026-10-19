@@ -9,13 +9,15 @@ is no usable lyrics-language filter, so none is sent.
 found (:func:`mcrar.ingest.pipeline.ingest_jamendo_queries`): the normalised text, the original
 text (when it differs), then the content words as ``fuzzytags``. The hard filters that Jamendo
 can apply (vocal/instrumental, duration, a commercial licence) go on every query; the rest of the
-search filters (BPM, genre, mood) only exist in the catalog.
+search filters (BPM, genre, mood) only exist in the catalog. Keywords from the LLM parser come
+first, one query each.
 """
 
 from __future__ import annotations
 
 import math
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from mcrar.ingest.pipeline import JamendoQuery
@@ -73,8 +75,14 @@ def content_words(normalised: str) -> list[str]:
     return list(words)[:MAX_FUZZYTAGS]
 
 
-def jamendo_queries(semantic_text: str, filters: SearchFilters) -> list[JamendoQuery]:
-    """The Jamendo searches for ``semantic_text`` under ``filters``, most specific first."""
+def jamendo_queries(
+    semantic_text: str, filters: SearchFilters, extra_terms: Sequence[str] = ()
+) -> list[JamendoQuery]:
+    """The Jamendo searches for ``semantic_text`` under ``filters``, most specific first.
+
+    ``extra_terms`` (keywords the LLM parser suggests) each become their own ``search=`` query
+    ahead of the others; one that repeats another query's search is left out.
+    """
     original = " ".join(semantic_text.split())
     if not original:
         return []
@@ -98,4 +106,11 @@ def jamendo_queries(semantic_text: str, filters: SearchFilters) -> list[JamendoQ
     words = content_words(normalised)
     if words:
         queries.append(JamendoQuery(fuzzytags=words, **common))
-    return queries
+    seen = {q.search for q in queries if q.search}
+    terms: list[JamendoQuery] = []
+    for term in extra_terms:
+        term = " ".join(term.split())
+        if term and term not in seen:
+            seen.add(term)
+            terms.append(JamendoQuery(search=term, order=ORDER, **common))
+    return terms + queries

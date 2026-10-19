@@ -56,12 +56,16 @@ class SearchRequest:
 class ParsedQuery:
     """``semantic_text`` is the text left after the hard-constraint phrases were removed
     (None when nothing descriptive remains). ``filters`` merges the UI filters (which win) with
-    the parsed ones. ``notes`` says in words what the parser understood."""
+    the parsed ones. ``notes`` says in words what the parser understood. ``source`` says which
+    parser produced it; ``search_terms`` are Jamendo keywords the LLM parser suggests (never
+    used for ranking, only to import tracks)."""
 
     semantic_text: str | None
     filters: SearchFilters
     preferences: Preferences
     notes: list[str] = field(default_factory=list)
+    source: Literal["rules", "llm"] = "rules"
+    search_terms: tuple[str, ...] = ()
 
     def requested_labels(self) -> list[tuple[str, str]]:
         """``(label set, label)`` pairs the tag term scores: UI labels first, then the hints."""

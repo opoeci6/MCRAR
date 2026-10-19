@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import sys
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -104,11 +104,13 @@ def make_client(
     torch: bool = True,
     settings_overrides: dict[str, Any] | None = None,
     warm: bool | None = None,
+    llm_factory: Callable[..., Any] | None = None,
 ) -> ApiClient:
     """Use as ``with make_client(tmp_path) as client:`` so the app's lifespan runs.
 
     ``jamendo`` is the fake client; an exception instance makes the factory raise it (the way a
     missing client id does). ``torch=False`` makes the pool report that the ml extra is missing.
+    ``llm_factory`` replaces the LLM provider factory ``(preset, model, base_url, key)``.
     """
     options: dict[str, Any] = {"data_dir": tmp_path / "api-data", "search": {"max_per_artist": 50}}
     options.update(settings_overrides or {})
@@ -127,6 +129,7 @@ def make_client(
         embedder_loader=loader,
         jamendo_factory=jamendo_factory,
         torch_available=lambda: torch,
+        llm_provider_factory=llm_factory,
         repo=repo,
         extra_hosts=(TEST_HOST,),
     )

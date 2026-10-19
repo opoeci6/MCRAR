@@ -33,3 +33,17 @@ semantic = 0.6
 tags = 0.2
 bpm = 0.1
 energy = 0.1
+
+# The optional LLM: understands a search better than the rules and can re-order the top results.
+# Off by default. The API key is a secret, not a setting: `mcrar secrets set llm_api_key_<preset>`
+# (or the settings page). Presets: openai, deepseek, siliconflow, zai, openrouter, gemini, groq,
+# anthropic, custom (any OpenAI-compatible server, for example Ollama). Environment:
+# MCRAR_LLM__ENABLED=true, MCRAR_LLM__MODEL=..., ...
+[llm]
+enabled = false
+preset = "openai"
+model = ""             # empty: the preset's default model (the "custom" preset needs one)
+base_url = ""          # empty: the preset's default URL (http:// or https://)
+parse_timeout_s = 10   # waiting for the LLM to read a query before falling back to the rules
+rerank_timeout_s = 45  # waiting for the LLM to re-order results
+rerank_top_n = 20      # results sent to the LLM to be re-ordered (5-50)

@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
-import type { SettingsView } from '../../api/types'
+import type { LlmPreset, SettingsView } from '../../api/types'
 import { BackendStatusContext } from '../../app/backendStatus'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
@@ -9,11 +9,56 @@ import { renderWithProviders } from '../../test/render'
 import SettingsPage from './index'
 
 const SECRET = 'jam-client-id-98765'
+const LLM_SECRET = 'sk-llm-key-4455667788'
+
+const PRESETS: LlmPreset[] = [
+  {
+    id: 'deepseek',
+    label: 'DeepSeek',
+    kind: 'openai',
+    base_url: 'https://api.deepseek.com',
+    default_model: 'deepseek-chat',
+    key_secret: 'llm_api_key_deepseek',
+    key_required: true,
+    docs_url: 'https://platform.deepseek.com/api_keys',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    kind: 'openai',
+    base_url: 'https://api.openai.com/v1',
+    default_model: 'gpt-4o-mini',
+    key_secret: 'llm_api_key_openai',
+    key_required: true,
+    docs_url: 'https://platform.openai.com/api-keys',
+  },
+  {
+    id: 'custom',
+    label: 'Custom (OpenAI-compatible)',
+    kind: 'openai',
+    base_url: '',
+    default_model: '',
+    key_secret: 'llm_api_key_custom',
+    key_required: false,
+    docs_url: '',
+  },
+]
+
+const LLM_SETTINGS = {
+  enabled: false,
+  preset: 'deepseek',
+  model: '',
+  base_url: '',
+  parse_timeout_s: 10,
+  rerank_timeout_s: 30,
+  rerank_top_n: 20,
+}
 
 function view(overrides: Partial<SettingsView['editable']> = {}, extra: Partial<SettingsView> = {}): SettingsView {
   return {
     editable: {
       default_embedder: 'clap',
+      llm: LLM_SETTINGS,
       search: {
         pool_size: 200,
         max_per_artist: 2,
@@ -37,6 +82,7 @@ function view(overrides: Partial<SettingsView['editable']> = {}, extra: Partial<
       { key: 'clap', model_id: 'laion/clap', commercial_ok: true },
       { key: 'muq-mulan', model_id: 'OpenMuQ/MuQ-MuLan', commercial_ok: false },
     ],
+    llm_presets: PRESETS,
     ...extra,
   }
 }
@@ -181,6 +227,12 @@ describe('Settings: search tuning', () => {
   })
 })
 
+/** The "API keys" section once it has loaded its status. */
+async function jamendoKeys() {
+  const region = await screen.findByRole('region', { name: 'API keys' })
+  return within(region)
+}
+
 describe('Settings: API keys', () => {
   it('saves the key, clears the input and never shows the value', async () => {
     const user = userEvent.setup()
@@ -198,19 +250,20 @@ describe('Settings: API keys', () => {
       },
     })
     renderWithProviders(<SettingsPage />)
-    expect(await screen.findByText('Not set')).toBeInTheDocument()
+    const keys = await jamendoKeys()
+    expect(await keys.findByText('Not set')).toBeInTheDocument()
 
-    const input = screen.getByLabelText('Client id')
+    const input = keys.getByLabelText('Client id')
     expect(input).toHaveAttribute('type', 'password')
     expect(input).toHaveAttribute('autocomplete', 'off')
     await user.type(input, SECRET)
-    await user.click(screen.getByRole('button', { name: 'Save key' }))
+    await user.click(keys.getByRole('button', { name: 'Save key' }))
 
-    expect(await screen.findByText('Set (stored in file)')).toBeInTheDocument()
+    expect(await keys.findByText('Set (stored in file)')).toBeInTheDocument()
     expect(putBodies(api, '/api/secrets/jamendo_client_id')).toEqual([{ value: SECRET }])
     expect(input).toHaveValue('')
     expect(document.body.textContent).not.toContain(SECRET)
-    expect(screen.getByRole('button', { name: 'Remove key' })).toBeEnabled()
+    expect(keys.getByRole('button', { name: 'Remove key' })).toBeEnabled()
     // The toast says it was saved, without the value.
     expect(screen.getByText('Jamendo client id saved.')).toBeInTheDocument()
   })
@@ -222,8 +275,9 @@ describe('Settings: API keys', () => {
       'PUT /api/secrets/jamendo_client_id': jsonResponse({ detail: 'value must be 1 to 4096 characters' }, 422),
     })
     renderWithProviders(<SettingsPage />)
-    await user.type(await screen.findByLabelText('Client id'), SECRET)
-    await user.click(screen.getByRole('button', { name: 'Save key' }))
+    const keys = await jamendoKeys()
+    await user.type(keys.getByLabelText('Client id'), SECRET)
+    await user.click(keys.getByRole('button', { name: 'Save key' }))
     expect(await screen.findByRole('alert')).toHaveTextContent('value must be 1 to 4096 characters')
     expect(screen.getByRole('alert').textContent).not.toContain(SECRET)
     expect(document.body.textContent).not.toContain(SECRET)
@@ -245,12 +299,13 @@ describe('Settings: API keys', () => {
       },
     })
     renderWithProviders(<SettingsPage />)
-    expect(await screen.findByText('Set (stored in file)')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Remove key' }))
+    const keys = await jamendoKeys()
+    expect(await keys.findByText('Set (stored in file)')).toBeInTheDocument()
+    await user.click(keys.getByRole('button', { name: 'Remove key' }))
     expect(screen.getByText('Remove the Jamendo client id?')).toBeInTheDocument()
     expect(api.mock.calls.some(([, init]) => init?.method === 'DELETE')).toBe(false)
     await user.click(screen.getByRole('button', { name: 'Remove it' }))
-    expect(await screen.findByText('Not set')).toBeInTheDocument()
+    expect(await keys.findByText('Not set')).toBeInTheDocument()
     expect(api.mock.calls.some(([u, init]) => String(u) === '/api/secrets/jamendo_client_id' && init?.method === 'DELETE')).toBe(true)
   })
 
@@ -260,8 +315,216 @@ describe('Settings: API keys', () => {
       'GET /api/secrets': { backend: 'file', items: [{ name: 'jamendo_client_id', source: 'env' }], known: [] },
     })
     renderWithProviders(<SettingsPage />)
-    expect(await screen.findByText('Set (environment variable)')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Remove key' })).toBeDisabled()
+    const keys = await jamendoKeys()
+    expect(await keys.findByText('Set (environment variable)')).toBeInTheDocument()
+    expect(keys.getByRole('button', { name: 'Remove key' })).toBeDisabled()
+  })
+})
+
+const llmRegion = async () => within(await screen.findByRole('region', { name: 'LLM' }))
+
+describe('Settings: LLM', () => {
+  it('lists the presets in order, with the default model as the placeholder', async () => {
+    stubApi(routes())
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    const options = within(llm.getByLabelText('Provider')).getAllByRole('option')
+    expect(options.map((option) => option.textContent)).toEqual([
+      'DeepSeek',
+      'OpenAI',
+      'Custom (OpenAI-compatible)',
+    ])
+    expect(llm.getByRole('switch', { name: 'Use an LLM' })).toHaveAttribute('aria-checked', 'false')
+    expect(llm.getByLabelText('Model')).toHaveAttribute('placeholder', 'deepseek-chat')
+    expect(llm.getByLabelText('Model')).toHaveValue('')
+    expect(llm.getByText(/never audio/)).toBeInTheDocument()
+    expect(llm.getByRole('button', { name: 'Save LLM settings' })).toBeDisabled()
+  })
+
+  it('saves the draft as one llm update', async () => {
+    const user = userEvent.setup()
+    const api = stubApi(routes({ 'PUT /api/settings': view() }))
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    await user.click(llm.getByRole('switch', { name: 'Use an LLM' }))
+    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await user.type(llm.getByLabelText('Model'), 'gpt-4o')
+    await user.click(llm.getByText('Advanced'))
+    const topN = llm.getByLabelText('Rerank top N')
+    await user.clear(topN)
+    await user.type(topN, '30')
+    await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+    await waitFor(() =>
+      expect(putBodies(api, '/api/settings')).toEqual([
+        { llm: { enabled: true, preset: 'openai', model: 'gpt-4o', base_url: '', rerank_top_n: 30 } },
+      ]),
+    )
+  })
+
+  it('refuses a rerank count outside 5 to 50 and a base URL that is not http(s)', async () => {
+    const user = userEvent.setup()
+    const api = stubApi(routes({ 'PUT /api/settings': view() }))
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    await user.click(llm.getByText('Advanced'))
+    const topN = llm.getByLabelText('Rerank top N')
+    await user.clear(topN)
+    await user.type(topN, '4')
+    await user.type(llm.getByLabelText('Base URL'), 'ftp://example.org')
+    await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+    expect(llm.getByText('Enter a whole number from 5 to 50.')).toBeInTheDocument()
+    expect(llm.getByText('Enter an address starting with http:// or https://.')).toBeInTheDocument()
+    expect(putBodies(api, '/api/settings')).toHaveLength(0)
+  })
+
+  it('shows a pinned field as read-only and leaves it out of the update', async () => {
+    const user = userEvent.setup()
+    const api = stubApi(
+      routes({
+        'GET /api/settings': view({}, { overridden_by_env: ['llm.model', 'llm.enabled'] }),
+        'PUT /api/settings': view(),
+      }),
+    )
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    expect(llm.getByRole('switch', { name: 'Use an LLM' })).toBeDisabled()
+    expect(llm.getByLabelText('Model')).toBeDisabled()
+    expect(llm.getByText(/environment variable MCRAR_LLM__MODEL/)).toBeInTheDocument()
+    expect(llm.getByText(/environment variable MCRAR_LLM__ENABLED/)).toBeInTheDocument()
+    expect(llm.getByLabelText('Provider')).toBeEnabled()
+
+    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+    await waitFor(() => expect(putBodies(api, '/api/settings')).toHaveLength(1))
+    expect(putBodies(api, '/api/settings')[0]).toEqual({
+      llm: { preset: 'openai', base_url: '', rerank_top_n: 20 },
+    })
+  })
+
+  it('keeps a typed model on a provider switch but drops the old default', async () => {
+    const user = userEvent.setup()
+    stubApi(routes())
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    const model = llm.getByLabelText('Model')
+    await user.type(model, 'deepseek-chat')
+    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    expect(model).toHaveValue('')
+    expect(model).toHaveAttribute('placeholder', 'gpt-4o-mini')
+
+    await user.type(model, 'my-finetune')
+    await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+    expect(model).toHaveValue('my-finetune')
+  })
+
+  it('says a model is required for a provider without a default', async () => {
+    const user = userEvent.setup()
+    stubApi(routes())
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    await user.selectOptions(llm.getByLabelText('Provider'), 'custom')
+    expect(llm.getByText(/a model name is required/)).toBeInTheDocument()
+    expect(llm.getByText(/Optional for local servers/)).toBeInTheDocument()
+  })
+
+  it('sets and removes the key of the selected provider without showing it', async () => {
+    const user = userEvent.setup()
+    let stored = false
+    const api = stubApi({
+      ...routes(),
+      'GET /api/secrets': () => ({
+        backend: 'file',
+        items: stored ? [{ name: 'llm_api_key_deepseek', source: 'file' }] : [],
+        known: [],
+      }),
+      'PUT /api/secrets/llm_api_key_deepseek': () => {
+        stored = true
+        return new Response(null, { status: 204 })
+      },
+      'DELETE /api/secrets/llm_api_key_deepseek': () => {
+        stored = false
+        return new Response(null, { status: 204 })
+      },
+    })
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    expect(await llm.findByText('Not set')).toBeInTheDocument()
+    expect(llm.getByRole('link', { name: /Get a key/ })).toHaveAttribute(
+      'href',
+      'https://platform.deepseek.com/api_keys',
+    )
+    const input = llm.getByLabelText('API key')
+    expect(input).toHaveAttribute('type', 'password')
+    await user.type(input, LLM_SECRET)
+    await user.click(llm.getByRole('button', { name: 'Save key' }))
+
+    expect(await llm.findByText('Set (stored in file)')).toBeInTheDocument()
+    expect(putBodies(api, '/api/secrets/llm_api_key_deepseek')).toEqual([{ value: LLM_SECRET }])
+    expect(input).toHaveValue('')
+    expect(document.body.textContent).not.toContain(LLM_SECRET)
+    expect(screen.getByText('DeepSeek API key saved.')).toBeInTheDocument()
+
+    await user.click(llm.getByRole('button', { name: 'Remove key' }))
+    expect(screen.getByText('Remove the DeepSeek API key?')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Remove it' }))
+    expect(await llm.findByText('Not set')).toBeInTheDocument()
+    expect(
+      api.mock.calls.some(
+        ([u, init]) => String(u) === '/api/secrets/llm_api_key_deepseek' && init?.method === 'DELETE',
+      ),
+    ).toBe(true)
+  })
+
+  it('switches the key field to the secret of the chosen provider', async () => {
+    const user = userEvent.setup()
+    const api = stubApi({
+      ...routes(),
+      'PUT /api/secrets/llm_api_key_openai': new Response(null, { status: 204 }),
+    })
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    expect(llm.getByRole('heading', { name: 'DeepSeek API key' })).toBeInTheDocument()
+    await user.type(llm.getByLabelText('API key'), 'half-typed')
+    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    expect(llm.getByRole('heading', { name: 'OpenAI API key' })).toBeInTheDocument()
+    expect(llm.queryByRole('heading', { name: 'DeepSeek API key' })).not.toBeInTheDocument()
+    // The half-typed key stayed with the other provider's field.
+    expect(llm.getByLabelText('API key')).toHaveValue('')
+    await user.type(llm.getByLabelText('API key'), LLM_SECRET)
+    await user.click(llm.getByRole('button', { name: 'Save key' }))
+    await waitFor(() => expect(putBodies(api, '/api/secrets/llm_api_key_openai')).toEqual([{ value: LLM_SECRET }]))
+    expect(document.body.textContent).not.toContain(LLM_SECRET)
+  })
+
+  it('tests the draft values before they are saved, and shows the result', async () => {
+    const user = userEvent.setup()
+    let reply: unknown = { ok: true, model: 'gpt-4o', elapsed_ms: 800 }
+    const api = stubApi(routes({ 'POST /api/llm/test': () => reply }))
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await user.type(llm.getByLabelText('Model'), 'gpt-4o')
+    await user.click(llm.getByRole('button', { name: 'Test connection' }))
+    expect(await llm.findByText('Works: gpt-4o replied in 0.8 s')).toBeInTheDocument()
+    expect(putBodies(api, '/api/settings')).toHaveLength(0)
+    const sent = api.mock.calls
+      .filter(([input]) => String(input) === '/api/llm/test')
+      .map(([, init]) => JSON.parse(String(init?.body)))
+    expect(sent).toEqual([{ preset: 'openai', model: 'gpt-4o', base_url: '' }])
+
+    reply = { ok: false, error: 'Authentication failed (HTTP 401). Check the API key.' }
+    await user.click(llm.getByRole('button', { name: 'Test connection' }))
+    expect(await llm.findByText('Authentication failed (HTTP 401). Check the API key.')).toBeInTheDocument()
+    expect(llm.queryByText(/^Works:/)).not.toBeInTheDocument()
+  })
+
+  it('shows a test that could not run', async () => {
+    const user = userEvent.setup()
+    stubApi(routes({ 'POST /api/llm/test': jsonResponse({ detail: 'unknown preset' }, 422) }))
+    renderWithProviders(<SettingsPage />)
+    const llm = await llmRegion()
+    await user.click(llm.getByRole('button', { name: 'Test connection' }))
+    expect(await llm.findByText('unknown preset')).toBeInTheDocument()
   })
 })
 

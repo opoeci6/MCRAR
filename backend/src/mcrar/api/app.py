@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response
 
 from mcrar import __version__
 from mcrar.api.routes import analyze, ingest, meta, projects, ratings, search, tracks
+from mcrar.api.routes import llm as llm_routes
 from mcrar.api.routes import settings as settings_routes
 from mcrar.api.security import install_security
 from mcrar.api.state import ApiDeps, AppState
@@ -74,7 +75,17 @@ def create_app(
 
     app = FastAPI(title="MCRAR", version=__version__, lifespan=lifespan)
     install_security(app, settings, deps.extra_hosts)
-    for module in (meta, search, ratings, tracks, projects, settings_routes, ingest, analyze):
+    for module in (
+        meta,
+        search,
+        llm_routes,
+        ratings,
+        tracks,
+        projects,
+        settings_routes,
+        ingest,
+        analyze,
+    ):
         app.include_router(module.router)
     if (frontend_dist(settings) / "index.html").is_file():
         _mount_frontend(app, frontend_dist(settings))

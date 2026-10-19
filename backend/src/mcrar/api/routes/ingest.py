@@ -189,7 +189,7 @@ def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, An
         raise ValueError(IMPORT_NEEDS_TEXT_MESSAGE)
     if not state.torch_available():  # new tracks cannot be ranked without embeddings
         raise HTTPException(status_code=503, detail=NO_TORCH_MESSAGE)
-    queries = jamendo_queries(parsed.semantic_text, parsed.filters)
+    queries = jamendo_queries(parsed.semantic_text, parsed.filters, parsed.search_terms)
     client = _open_jamendo(state)
 
     def run(sink: ProgressSink) -> IngestReport:

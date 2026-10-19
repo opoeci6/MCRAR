@@ -9,6 +9,10 @@
 > licences. Mentions of commercial mode below are historical. The music licence checks (risk
 > badges, "safe for commercial game") are unaffected.
 
+> **2026-10-19: M7 is done** (`docs/llm.md`, STATUS §3.11). The LLM parses each text search and
+> reranks the top 20 on request. OpenAI-compatible services come first, then Anthropic. Spotify
+> query generation moved to M8, because there was no Spotify code yet.
+
 ## Context
 
 This is a greenfield repo: only `README.md`, `LICENSE`, `.gitignore` and `.claude/` exist. The user wants a music recommender that:

@@ -1,7 +1,8 @@
 """``SearchService``: parse, filter, retrieve, rank, explain; relax the filters when nothing fits.
 
 Flow of one search
-1. Parse the request (rules by default) into hard filters, soft preferences and the text to embed.
+1. Parse the request (rules by default, or the LLM parser of M7 on top of them) into hard
+   filters, soft preferences and the text to embed.
 2. ``filter_track_ids`` applies the hard filters in SQL.
 3. With text: embed it and take the ``pool_size`` nearest filtered tracks from the in-memory
    index. Without text: take the filtered tracks themselves (only the ``pool_size`` safest-licensed,
@@ -34,7 +35,7 @@ from mcrar.recommend.explain import explain
 from mcrar.recommend.parser import QueryParser, RuleParser
 from mcrar.recommend.query import ParsedQuery, SearchFilters, SearchRequest
 from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
-from mcrar.recommend.results import MatchQuality, SearchItem, SearchResult, TagScore
+from mcrar.recommend.results import LLMUse, MatchQuality, SearchItem, SearchResult, TagScore
 from mcrar.recommend.tags import (
     CompositeTagScorer,
     StandardisedTagScorer,
@@ -256,7 +257,7 @@ class SearchService:
         started = time.perf_counter()
         if request.limit < 1 or request.offset < 0:
             raise SearchError("limit must be at least 1 and offset must not be negative")
-        parsed = self._parser.parse(request, self.vocab)
+        parsed, llm_use = self._parse(request)
         self._check_labels(parsed)
         min_results = self._settings.search.min_results
 
@@ -292,11 +293,20 @@ class SearchService:
             elapsed_ms=(time.perf_counter() - started) * 1000.0,
             notes=notes,
             match=self._match(attempt, outcome),
+            llm=llm_use,
         )
 
+    def _parse(self, request: SearchRequest) -> tuple[ParsedQuery, LLMUse | None]:
+        """Parse with the parser's ``parse_with_info`` when it has one (the LLM parser: what it
+        did comes back with the result, so concurrent searches share no state)."""
+        with_info = getattr(self._parser, "parse_with_info", None)
+        if with_info is not None:
+            return with_info(request, self.vocab)
+        return self._parser.parse(request, self.vocab), None
+
     def parse(self, request: SearchRequest) -> ParsedQuery:
-        """The request as the search understands it (no retrieval, no model)."""
-        return self._parser.parse(request, self.vocab)
+        """The request as the search understands it (no retrieval, no search model)."""
+        return self._parse(request)[0]
 
     def weak_cosine(self) -> float | None:
         """The weak-match threshold: ``search.weak_cosine``, else the default of the embedder

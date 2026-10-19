@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { cleanup, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPersistentState } from '../../app/usePersistentState'
@@ -57,8 +57,24 @@ function response(items: unknown[], overrides: Record<string, unknown> = {}) {
   }
 }
 
+const LLM_NOT_READY = {
+  enabled: false,
+  ready: false,
+  preset: 'deepseek',
+  label: 'DeepSeek',
+  kind: 'openai',
+  model: 'deepseek-chat',
+  reason: 'disabled',
+}
+const LLM_READY = { ...LLM_NOT_READY, enabled: true, ready: true, reason: null, rerank_top_n: 20 }
+
 function setup(routes: Routes) {
-  return stubApi({ 'GET /api/vocab': VOCAB, 'GET /api/tracks/1': { id: 1 }, ...routes })
+  return stubApi({
+    'GET /api/vocab': VOCAB,
+    'GET /api/tracks/1': { id: 1 },
+    'GET /api/llm': LLM_NOT_READY,
+    ...routes,
+  })
 }
 
 /** The JSON bodies sent to a route, in order. */
@@ -810,5 +826,373 @@ describe('Search page: Jamendo import', () => {
     renderWithProviders(<SearchPage />)
     expect(await screen.findByRole('button', action)).toBeInTheDocument()
     expect(screen.queryByRole('region', progressRegion)).not.toBeInTheDocument()
+  })
+})
+
+describe('Search page: how the search was read', () => {
+  const read = () => screen.getByText(/^How your search was read/)
+  const LLM_USED = { used: true, model: 'deepseek-chat', cached: false, error: null }
+
+  it('says the rules read the query and shows the parsed query', async () => {
+    setup({
+      'POST /api/search': response([item(1)], {
+        parsed: { source: 'rules', search_terms: [], notes: ['Read "no vocals" as instrumental'], semantic_text: 'calm' },
+        notes: ['Read "no vocals" as instrumental'],
+      }),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('calm, no vocals')
+    await screen.findByText('Track 1')
+    expect(read()).toHaveTextContent('Read by rules')
+    expect(read()).not.toHaveTextContent('LLM')
+    const details = read().closest('details')!
+    expect(details).not.toHaveAttribute('open')
+    await userEvent.click(read())
+    expect(details).toHaveAttribute('open')
+    // The note is listed here and, as before, shown as a notice.
+    expect(within(details).getByRole('listitem')).toHaveTextContent('Read "no vocals" as instrumental')
+    expect(details.querySelector('pre')).toHaveTextContent('"semantic_text": "calm"')
+    expect(details.querySelector('pre')).toHaveTextContent('"source": "rules"')
+    expect(screen.getAllByText('Read "no vocals" as instrumental')).toHaveLength(2)
+  })
+
+  it('says the LLM read the query, with the model and the cached marker', async () => {
+    const mock = setup({
+      'POST /api/search': response([item(1)], {
+        parsed: { source: 'llm', search_terms: ['stealth', 'ambient drone'], notes: [], semantic_text: 'tense' },
+        llm: { ...LLM_USED, cached: true },
+      }),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('tense stealth')
+    await screen.findByText('Track 1')
+    expect(read()).toHaveTextContent('Read by LLM (deepseek-chat) · cached')
+    await userEvent.click(read())
+    expect(screen.getByText('Jamendo search terms: stealth, ambient drone')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')[0]).toEqual({
+      text: 'tense stealth',
+      filters: {},
+      limit: 20,
+      offset: 0,
+      explain: true,
+    })
+  })
+
+  it('leaves out the cached marker for a fresh LLM reading', async () => {
+    setup({
+      'POST /api/search': response([item(1)], { parsed: { source: 'llm' }, llm: LLM_USED }),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    await screen.findByText('Track 1')
+    expect(read()).toHaveTextContent('Read by LLM (deepseek-chat)')
+    expect(read()).not.toHaveTextContent('cached')
+  })
+
+  it('explains a fallback to the rules inside the details', async () => {
+    setup({
+      'POST /api/search': response([item(1)], {
+        parsed: { source: 'rules', notes: ['The LLM did not answer in time.'] },
+        llm: { used: false, model: 'deepseek-chat', cached: false, error: 'Timed out after 10 s.' },
+      }),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    await screen.findByText('Track 1')
+    expect(read()).toHaveTextContent('Read by rules')
+    expect(
+      screen.getByText('The LLM could not read this search, so rules were used: Timed out after 10 s.'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps the first page reading when more results are loaded', async () => {
+    setup({
+      'POST /api/search': (_url: URL, init?: RequestInit) => {
+        const first = JSON.parse(String(init?.body)).offset === 0
+        return first
+          ? response([item(1)], { total_candidates: 2, parsed: { source: 'llm' }, llm: LLM_USED })
+          : response([item(2)], { total_candidates: 2, parsed: { source: 'rules' }, llm: null })
+      },
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    await screen.findByText('Track 1')
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByText('Track 2')
+    expect(read()).toHaveTextContent('Read by LLM (deepseek-chat)')
+  })
+})
+
+describe('Search page: rerank with the LLM', () => {
+  const VERDICT = {
+    model: 'deepseek-chat',
+    verdict: 'good',
+    summary: 'The first two fit the brief.',
+    search_terms: [],
+    elapsed_ms: 900,
+  }
+  const rerankButton = () => screen.queryByRole('button', { name: /Rerank top/ })
+  const order = () => screen.getAllByRole('article').map((row) => row.getAttribute('aria-label'))
+  /** The LLM puts track 3 first, then 1, and leaves track 2 out. */
+  const reranked = (overrides: Record<string, unknown> = {}) =>
+    response(
+      [
+        item(3, { llm_rank: 1, llm_explanation: 'Closest to the brief.' }),
+        item(1, { llm_rank: 2, llm_explanation: null }),
+      ],
+      { rerank: VERDICT, ...overrides },
+    )
+  const found = () => response([item(1), item(2), item(3)], { match: { top_cosine: 0.5, weak: false } })
+
+  it('offers nothing while the LLM is not ready', async () => {
+    setup({ 'POST /api/search': found() })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    expect(rerankButton()).not.toBeInTheDocument()
+  })
+
+  it('offers nothing when the status cannot be read', async () => {
+    setup({ 'POST /api/search': found(), 'GET /api/llm': jsonResponse({ detail: 'boom' }, 500) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    expect(rerankButton()).not.toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('offers nothing for a search without text', async () => {
+    setup({ 'POST /api/search': found(), 'GET /api/llm': LLM_READY })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await userEvent.click(searchButton())
+    await screen.findByText('Track 1')
+    expect(rerankButton()).not.toBeInTheDocument()
+  })
+
+  it('names the number of results to rerank, or says "results" without it', async () => {
+    setup({ 'POST /api/search': found(), 'GET /api/llm': LLM_READY })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    expect(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' })).toBeInTheDocument()
+    cleanup()
+    clearPersistentState()
+
+    const { rerank_top_n: _omitted, ...older } = LLM_READY
+    setup({ 'POST /api/search': found(), 'GET /api/llm': older })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    expect(await screen.findByRole('button', { name: 'Rerank top results with LLM' })).toBeInTheDocument()
+  })
+
+  it('offers nothing when there are no results', async () => {
+    setup({ 'POST /api/search': response([]), 'GET /api/llm': LLM_READY })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('No tracks match')
+    expect(rerankButton()).not.toBeInTheDocument()
+  })
+
+  it('sends the same body, reorders, explains and can be undone', async () => {
+    const mock = setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': reranked(),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 3')
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3'])
+    expect(screen.queryByText(/^LLM:/)).not.toBeInTheDocument()
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    expect(await screen.findByText('Reranked by deepseek-chat: The first two fit the brief.')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search/rerank')).toEqual(bodies(mock, 'POST /api/search'))
+    // The LLM's order first, then the shown track it left out.
+    expect(order()).toEqual(['Track 3', 'Track 1', 'Track 2'])
+    const first = screen.getByRole('article', { name: 'Track 3' })
+    expect(within(first).getByText('LLM:')).toBeInTheDocument()
+    expect(first).toHaveTextContent('Closest to the brief.')
+    // The template explanation stays.
+    expect(first).toHaveTextContent('Because track 3 fits')
+    expect(screen.getAllByText('LLM:')).toHaveLength(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3'])
+    expect(screen.queryByText(/^Reranked by/)).not.toBeInTheDocument()
+    expect(screen.queryByText('LLM:')).not.toBeInTheDocument()
+  })
+
+  it('keeps pages loaded after a rerank when it is undone', async () => {
+    setup({
+      'POST /api/search': (_url: URL, init?: RequestInit) =>
+        JSON.parse(String(init?.body)).offset === 0
+          ? response([item(1), item(2), item(3)], { total_candidates: 4 })
+          : response([item(4)], { total_candidates: 4 }),
+      'POST /api/search/rerank': reranked(),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    await screen.findByText(/^Reranked by/)
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByText('Track 4')
+    expect(order()).toEqual(['Track 3', 'Track 1', 'Track 2', 'Track 4'])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Undo' }))
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3', 'Track 4'])
+  })
+
+  it('shows progress and blocks a second click while it runs', async () => {
+    let release!: (value: unknown) => void
+    const pending = new Promise((resolve) => {
+      release = resolve
+    })
+    const mock = setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': () => pending,
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    const busy = await screen.findByRole('button', { name: 'Reranking' })
+    expect(busy).toBeDisabled()
+    await userEvent.click(busy)
+    release(reranked())
+    expect(await screen.findByText(/^Reranked by/)).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search/rerank')).toHaveLength(1)
+    expect(screen.getByRole('button', { name: 'Rerank top 20 with LLM' })).toBeEnabled()
+  })
+
+  it('suggests the Jamendo import when the LLM calls the list poor', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': reranked({ rerank: { ...VERDICT, verdict: 'poor', summary: 'Nothing fits.' } }),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 3')
+    // A fine match: only the quiet import button, no notice.
+    expect(screen.queryByText(/Few close matches/)).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    expect(await screen.findByText(/Few close matches in your library/)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Search Jamendo for more' })).toHaveLength(1)
+  })
+
+  it('does not suggest the import for a good verdict', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': reranked(),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    await screen.findByText(/^Reranked by/)
+    expect(screen.queryByText(/Few close matches/)).not.toBeInTheDocument()
+  })
+
+  it('links to Settings when no LLM is configured (503)', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': jsonResponse({ detail: 'No LLM is configured. Set one up in Settings.' }, 503),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    const notice = (await screen.findByText('No LLM is configured')).closest('[role="status"]')!
+    expect(within(notice as HTMLElement).getByRole('link', { name: 'Open Settings' })).toHaveAttribute(
+      'href',
+      '#/settings',
+    )
+    // The list stays as it was.
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3'])
+  })
+
+  it('shows the server text when the LLM call fails (502)', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': jsonResponse({ detail: 'Timed out after 30 s.' }, 502),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    expect(await screen.findByText('Timed out after 30 s.')).toBeInTheDocument()
+    expect(screen.queryByText(/^Reranked by/)).not.toBeInTheDocument()
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3'])
+    // It can be tried again.
+    expect(screen.getByRole('button', { name: 'Rerank top 20 with LLM' })).toBeEnabled()
+  })
+
+  it('shows any other failure as an error', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': jsonResponse({}, 500),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't rerank")
+    expect(screen.getByRole('alert')).toHaveTextContent('The request failed (HTTP 500)')
+  })
+
+  it('clears the rerank when a new search runs', async () => {
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': reranked(),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    await screen.findByText(/^Reranked by/)
+    await userEvent.click(searchButton())
+    await waitFor(() => expect(screen.queryByText(/^Reranked by/)).not.toBeInTheDocument())
+    expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3'])
+    expect(screen.queryByText('LLM:')).not.toBeInTheDocument()
+  })
+
+  it('drops a rerank that is still running when a new search runs', async () => {
+    let release!: (value: unknown) => void
+    const pending = new Promise((resolve) => {
+      release = resolve
+    })
+    setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': () => pending,
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    await screen.findByRole('button', { name: 'Reranking' })
+    await userEvent.click(searchButton())
+    expect(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' })).toBeEnabled()
+    release(reranked())
+    await waitFor(() => expect(order()).toEqual(['Track 1', 'Track 2', 'Track 3']))
+    expect(screen.queryByText(/^Reranked by/)).not.toBeInTheDocument()
+  })
+
+  it('keeps ratings working on reranked items', async () => {
+    const mock = setup({
+      'POST /api/search': found(),
+      'POST /api/search/rerank': reranked(),
+      'GET /api/llm': LLM_READY,
+      'PUT /api/ratings': { text: 'cozy town', filters: {}, track_id: 3, rating: 2 },
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await userEvent.click(await screen.findByRole('button', { name: 'Rerank top 20 with LLM' }))
+    await screen.findByText(/^Reranked by/)
+    const first = screen.getByRole('article', { name: 'Track 3' })
+    await userEvent.click(within(first).getByRole('button', { name: /good fit/i }))
+    await waitFor(() => expect(bodies(mock, 'PUT /api/ratings')).toHaveLength(1))
+    expect(bodies(mock, 'PUT /api/ratings')[0]).toMatchObject({ text: 'cozy town', track_id: 3, rating: 2 })
   })
 })
