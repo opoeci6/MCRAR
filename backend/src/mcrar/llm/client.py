@@ -14,7 +14,12 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
-from mcrar.llm.base import LLMError, LLMNotConfigured, LLMProvider
+from mcrar.llm.base import (
+    NOT_SUPPORTED_TEXT,
+    LLMError,
+    LLMNotConfigured,
+    LLMProvider,
+)
 from mcrar.llm.presets import Preset, get_preset
 from mcrar.secrets import SecretError
 
@@ -172,6 +177,35 @@ class LLMClient:
             "ok": True,
             "model": provider.model,
             "elapsed_ms": round((time.perf_counter() - started) * 1000.0),
+        }
+
+    def list_models(
+        self, *, preset: str | None = None, base_url: str | None = None
+    ) -> dict[str, Any]:
+        """The models the provider offers: ``{"ok": true, "preset", "models": [{"id", "label"}],
+        "default_model"}`` or ``{"ok": false, "error"}`` (safe text). Needs the key but no model
+        (the settings page asks before one is chosen), and works while the LLM is disabled."""
+        resolved = self.resolve(preset=preset, base_url=base_url)
+        chosen = resolved.preset
+        key = self._key(chosen)
+        if chosen.key_required and key is None:
+            return {"ok": False, "error": f"No API key is set for {chosen.label}."}
+        # The factory wants a model; the list call never sends one.
+        provider = self._factory(chosen, resolved.model or "unset", resolved.base_url, key)
+        try:
+            lister = getattr(provider, "list_models", None)
+            if lister is None:
+                return {"ok": False, "error": NOT_SUPPORTED_TEXT}
+            models = lister(timeout_s=self._settings.llm.parse_timeout_s)
+        except LLMError as exc:
+            return {"ok": False, "error": str(exc)}
+        finally:
+            provider.close()
+        return {
+            "ok": True,
+            "preset": chosen.id,
+            "models": [{"id": m.id, "label": m.label} for m in models],
+            "default_model": chosen.default_model,
         }
 
 

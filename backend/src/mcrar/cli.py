@@ -1402,6 +1402,30 @@ def llm_test() -> None:
     _line(f"OK: {result['model']} replied in {result['elapsed_ms']:.0f} ms")
 
 
+@llm_app.command("models")
+def llm_models(
+    preset: Annotated[
+        str | None, typer.Option("--preset", help="Provider preset (default: the saved one).")
+    ] = None,
+    base_url: Annotated[
+        str | None, typer.Option("--base-url", help="Base URL (default: the preset's).")
+    ] = None,
+) -> None:
+    """List the models the provider offers, one per line (works while the LLM is disabled)."""
+    if preset is not None:
+        from mcrar.llm.presets import PRESET_IDS
+
+        if preset not in PRESET_IDS:
+            raise _fail(f"unknown preset '{preset}'; choose from: {', '.join(PRESET_IDS)}")
+    if base_url and not base_url.strip().startswith(("http://", "https://")):
+        raise _fail("--base-url must start with http:// or https://")
+    result = _llm_client(_settings()).list_models(preset=preset, base_url=base_url)
+    if not result["ok"]:
+        raise _fail(result["error"], 1)
+    for model in result["models"]:
+        _line(f"{model['id']} ({model['label']})" if model["label"] else model["id"])
+
+
 def _llm_parser(settings: Settings):  # noqa: ANN202 - lazy import
     """The LLM query parser over the saved preset (it needs a key, not ``llm.enabled``)."""
     from mcrar.recommend.llm_parse import LLMParser

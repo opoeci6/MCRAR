@@ -14,7 +14,15 @@ import pytest
 from api_support import ApiClient, IngestJamendo, make_client, wait_done
 from recommend_support import FakeProvider, parse_reply
 
-from mcrar.llm.base import LLMAuthError, LLMInvalidReply, LLMRateLimited, LLMTimeout
+from mcrar.llm.base import (
+    NOT_SUPPORTED_TEXT,
+    LLMAuthError,
+    LLMInvalidReply,
+    LLMNotSupported,
+    LLMRateLimited,
+    LLMTimeout,
+    ModelInfo,
+)
 from mcrar.llm.presets import get_preset
 
 KEY = "sk-FAKE-KEY-0123456789"
@@ -138,6 +146,68 @@ def test_the_test_route_overrides_the_saved_values(tmp_path: Path) -> None:
 def test_the_test_route_rejects_an_invalid_body(tmp_path: Path, body: dict[str, Any]) -> None:
     with client_for(tmp_path) as client:
         assert client.post("/api/llm/test", json=body).status_code == 422
+
+
+# -- POST /api/llm/models ----------------------------------------------------------------------
+
+
+def test_the_models_route_lists_models(tmp_path: Path) -> None:
+    factory = Factory()
+    factory.provider.models = [ModelInfo("gpt-a", "GPT A"), ModelInfo("gpt-b")]
+    with client_for(tmp_path, factory) as client:  # disabled: listing still works
+        client.put("/api/secrets/llm_api_key_openai", json={"value": KEY})
+        response = client.post("/api/llm/models")
+        assert response.status_code == 200
+        assert response.json() == {
+            "ok": True,
+            "preset": "openai",
+            "models": [{"id": "gpt-a", "label": "GPT A"}, {"id": "gpt-b", "label": None}],
+            "default_model": "gpt-6-luna",
+        }
+        assert KEY not in response.text
+        assert factory.built == [("openai", "gpt-6-luna", "https://api.openai.com/v1", KEY)]
+        assert factory.provider.model_calls == [10] and factory.provider.closed == 1
+
+
+def test_the_models_route_overrides_the_saved_values(tmp_path: Path) -> None:
+    factory = Factory()
+    factory.provider.models = [ModelInfo("llama3")]
+    with client_for(tmp_path, factory, preset="deepseek") as client:
+        body = client.post(
+            "/api/llm/models", json={"preset": "custom", "base_url": "http://x.test/v1"}
+        ).json()
+        assert body["ok"] is True and body["default_model"] == ""
+        assert factory.built == [("custom", "unset", "http://x.test/v1", None)]
+
+
+def test_the_models_route_reports_failures_as_ok_false(tmp_path: Path) -> None:
+    factory = Factory()
+    with client_for(tmp_path, factory) as client:
+        body = client.post("/api/llm/models", json={}).json()
+        assert body == {"ok": False, "error": "No API key is set for OpenAI."}
+        client.put("/api/secrets/llm_api_key_openai", json={"value": KEY})
+        message = "Authentication failed (HTTP 401). Check the API key."
+        factory.provider.models = LLMAuthError(message)
+        response = client.post("/api/llm/models")
+        assert response.status_code == 200
+        assert response.json() == {"ok": False, "error": message}
+        factory.provider.models = LLMNotSupported(NOT_SUPPORTED_TEXT)
+        assert client.post("/api/llm/models").json()["error"] == NOT_SUPPORTED_TEXT
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"preset": "nope"},
+        {"base_url": "ftp://x.test"},
+        {"base_url": "localhost:11434"},
+        {"model": "m"},
+        {"enabled": True},
+    ],
+)
+def test_the_models_route_rejects_an_invalid_body(tmp_path: Path, body: dict[str, Any]) -> None:
+    with client_for(tmp_path) as client:
+        assert client.post("/api/llm/models", json=body).status_code == 422
 
 
 # -- search -----------------------------------------------------------------------------------

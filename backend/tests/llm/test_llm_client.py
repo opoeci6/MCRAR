@@ -16,11 +16,14 @@ from mcrar.config import (
     save_settings_update,
 )
 from mcrar.llm.base import (
+    NOT_SUPPORTED_TEXT,
     LLMAuthError,
     LLMInvalidReply,
     LLMNotConfigured,
+    LLMNotSupported,
     LLMProvider,
     LLMTimeout,
+    ModelInfo,
 )
 from mcrar.llm.client import LLMClient, token_budget
 from mcrar.llm.presets import Preset, get_preset
@@ -208,6 +211,106 @@ def test_the_key_never_appears_in_results_or_logs(
     for result in (client.test(), client.status().to_dict()):
         assert KEY not in repr(result)
     assert KEY not in caplog.text and KEY not in repr(client)
+
+
+# -- list_models -----------------------------------------------------------------------------
+
+
+class ListingProvider(StubProvider):
+    """A stub that can also list models."""
+
+    models: list[ModelInfo]
+    listing_error: Exception | None
+
+    def list_models(self, *, timeout_s: float) -> list[ModelInfo]:
+        self.calls.append({"timeout_s": timeout_s})
+        if self.listing_error:
+            raise self.listing_error
+        return self.models
+
+
+def listing_client(
+    tmp_path: Path,
+    models: list[ModelInfo] | None = None,
+    error: Exception | None = None,
+    **llm: Any,
+) -> tuple[LLMClient, SecretStore, list[ListingProvider]]:
+    settings = get_settings(secrets_dir=tmp_path / "secrets", llm=llm)
+    store = SecretStore(settings)
+    built: list[ListingProvider] = []
+
+    def factory(preset: Preset, model: str, base_url: str, key: str | None) -> LLMProvider:
+        provider = ListingProvider(preset, model, base_url, key)
+        provider.models, provider.listing_error = models or [], error
+        built.append(provider)
+        return provider  # type: ignore[return-value]
+
+    return LLMClient(settings, store, provider_factory=factory), store, built
+
+
+def test_list_models_ok(tmp_path: Path) -> None:
+    models = [ModelInfo("a", "Model A"), ModelInfo("b")]
+    client, store, built = listing_client(tmp_path, models, preset="deepseek")
+    store.set("llm_api_key_deepseek", KEY)
+    assert client.list_models() == {  # the LLM is disabled: listing still works
+        "ok": True,
+        "preset": "deepseek",
+        "models": [{"id": "a", "label": "Model A"}, {"id": "b", "label": None}],
+        "default_model": "deepseek-flash",
+    }
+    assert built[0].calls == [{"timeout_s": 10}] and built[0].closed
+
+
+def test_list_models_overrides_and_no_server_side_cache(tmp_path: Path) -> None:
+    client, store, built = listing_client(tmp_path, [ModelInfo("a")], preset="deepseek")
+    store.set("llm_api_key_groq", KEY)
+    result = client.list_models(preset="groq", base_url="http://x.test/v1")
+    assert result["ok"] and result["preset"] == "groq"
+    assert (built[0].base_url, built[0].key) == ("http://x.test/v1", KEY)
+    client.list_models(preset="groq")
+    assert len(built) == 2
+
+
+def test_list_models_without_a_key(tmp_path: Path) -> None:
+    client, _, built = listing_client(tmp_path, [ModelInfo("a")])
+    assert client.list_models() == {"ok": False, "error": "No API key is set for OpenAI."}
+    assert built == []
+
+
+def test_list_models_for_a_custom_preset_without_a_model(tmp_path: Path) -> None:
+    client, _, built = listing_client(tmp_path, [ModelInfo("llama3")], preset="custom")
+    result = client.list_models()
+    assert result["ok"] and result["models"] == [{"id": "llama3", "label": None}]
+    assert result["default_model"] == "" and built[0].model == "unset"
+
+
+def test_list_models_with_a_provider_that_cannot_list(tmp_path: Path) -> None:
+    client, _, factory, _ = make(tmp_path, preset="custom")
+    assert client.list_models() == {"ok": False, "error": NOT_SUPPORTED_TEXT}
+    assert factory.built[0].closed
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        LLMAuthError("Authentication failed (HTTP 401). Check the API key."),
+        LLMTimeout("Timed out"),
+        LLMNotSupported(NOT_SUPPORTED_TEXT),
+    ],
+)
+def test_list_models_reports_llm_errors_as_safe_text(tmp_path: Path, error: Exception) -> None:
+    client, _, built = listing_client(tmp_path, error=error, preset="custom")
+    assert client.list_models() == {"ok": False, "error": str(error)}
+    assert built[0].closed
+
+
+def test_list_models_never_shows_the_key(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level(logging.DEBUG)
+    client, store, _ = listing_client(tmp_path)
+    assert client.list_models()["error"] == "No API key is set for OpenAI."
+    store.set("llm_api_key_openai", KEY)
+    results = [client.list_models(), client.list_models(preset="custom")]
+    assert all(KEY not in repr(r) for r in results) and KEY not in caplog.text
 
 
 # -- settings --------------------------------------------------------------------------------

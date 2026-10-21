@@ -48,6 +48,13 @@ export const settingsStrings = {
     testOk: (model: string, seconds: string) => `Works: ${model} replied in ${seconds} s`,
     testFailedTitle: "The connection test didn't work",
     testRequestFailed: "Couldn't run the test",
+    loadModels: 'Load models',
+    loadingModels: 'Loading models',
+    modelsLoaded: (count: number, provider: string) =>
+      `${count} ${count === 1 ? 'model' : 'models'} from ${provider}. Click the model field to pick one, or type a name.`,
+    modelsNone: (provider: string) => `${provider} returned no chat models. Type the model name.`,
+    modelsFailedTitle: "The model list didn't load",
+    modelsRequestFailed: "Couldn't load the model list",
     save: 'Save LLM settings',
   },
 

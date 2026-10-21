@@ -526,6 +526,161 @@ describe('Settings: LLM', () => {
     await user.click(llm.getByRole('button', { name: 'Test connection' }))
     expect(await llm.findByText('unknown preset')).toBeInTheDocument()
   })
+
+  describe('model list', () => {
+    const OPENAI_LIST = {
+      ok: true,
+      preset: 'openai',
+      models: [
+        { id: 'gpt-6-luna', label: null },
+        { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
+      ],
+      default_model: 'gpt-6-luna',
+    }
+
+    const modelRequests = (api: ReturnType<typeof stubApi>) =>
+      api.mock.calls
+        .filter(([input]) => String(input) === '/api/llm/models')
+        .map(([, init]) => JSON.parse(String(init?.body)))
+
+    const options = () =>
+      Array.from(document.querySelectorAll('datalist option')).map((option) => ({
+        value: option.getAttribute('value'),
+        text: option.textContent,
+      }))
+
+    it('loads the list on request and offers it as suggestions for the model field', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      expect(
+        await llm.findByText('2 models from OpenAI. Click the model field to pick one, or type a name.'),
+      ).toBeInTheDocument()
+      expect(modelRequests(api)).toEqual([{ preset: 'openai', base_url: '' }])
+      expect(llm.getByLabelText('Model')).toHaveAttribute('list', 'llm-models-openai')
+      expect(document.getElementById('llm-models-openai')).toBeInTheDocument()
+      expect(options()).toEqual([
+        { value: 'gpt-6-luna', text: '' },
+        { value: 'claude-haiku-5-5', text: 'Claude Haiku 5.5' },
+      ])
+    })
+
+    it('still takes a typed model name after loading and saves it', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST, 'PUT /api/settings': view() }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      await llm.findByText(/2 models from OpenAI/)
+      await user.type(llm.getByLabelText('Model'), 'my-finetune')
+      await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+      await waitFor(() => expect(putBodies(api, '/api/settings')).toHaveLength(1))
+      expect(putBodies(api, '/api/settings')[0].llm.model).toBe('my-finetune')
+    })
+
+    it('saves a typed model without loading the list', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'PUT /api/settings': view() }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.type(llm.getByLabelText('Model'), 'deepseek-reasoner')
+      await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+      await waitFor(() => expect(putBodies(api, '/api/settings')).toHaveLength(1))
+      expect(putBodies(api, '/api/settings')[0].llm.model).toBe('deepseek-reasoner')
+      expect(modelRequests(api)).toHaveLength(0)
+    })
+
+    it('does not load anything on its own', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+      expect(modelRequests(api)).toHaveLength(0)
+      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+    })
+
+    it('says so when the provider lists no models', async () => {
+      const user = userEvent.setup()
+      stubApi(
+        routes({
+          'POST /api/llm/models': { ok: true, preset: 'openai', models: [], default_model: 'gpt-4o-mini' },
+        }),
+      )
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      expect(await llm.findByText('OpenAI returned no chat models. Type the model name.')).toBeInTheDocument()
+      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      expect(document.querySelector('datalist')).toBeNull()
+    })
+
+    it('shows the error text when the provider cannot list its models', async () => {
+      const user = userEvent.setup()
+      stubApi(routes({ 'POST /api/llm/models': { ok: false, error: 'No API key is set for DeepSeek.' } }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      expect(await llm.findByText('No API key is set for DeepSeek.')).toBeInTheDocument()
+      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+    })
+
+    it('shows a request that failed', async () => {
+      const user = userEvent.setup()
+      stubApi(routes({ 'POST /api/llm/models': jsonResponse({ detail: 'boom' }, 500) }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      expect(await llm.findByText("Couldn't load the model list")).toBeInTheDocument()
+      expect(llm.getByText('boom')).toBeInTheDocument()
+      expect(llm.getByRole('button', { name: 'Load models' })).toBeEnabled()
+    })
+
+    it('keeps each provider list separate and restores it without another request', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      await llm.findByText(/2 models from OpenAI/)
+
+      await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      expect(document.querySelector('datalist')).toBeNull()
+      expect(llm.queryByText(/models from OpenAI/)).not.toBeInTheDocument()
+
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      expect(llm.getByLabelText('Model')).toHaveAttribute('list', 'llm-models-openai')
+      expect(llm.getByText(/2 models from OpenAI/)).toBeInTheDocument()
+      expect(options()).toHaveLength(2)
+      expect(modelRequests(api)).toHaveLength(1)
+    })
+
+    it('disables the button and shows a spinner while loading', async () => {
+      const user = userEvent.setup()
+      let release: (value: unknown) => void = () => {}
+      const waiting = new Promise((resolve) => {
+        release = resolve
+      })
+      stubApi(routes({ 'POST /api/llm/models': () => waiting }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      expect(await llm.findByText('Loading models')).toBeInTheDocument()
+      expect(llm.getByRole('button', { name: 'Load models' })).toBeDisabled()
+      release(OPENAI_LIST)
+      await waitFor(() => expect(llm.getByRole('button', { name: 'Load models' })).toBeEnabled())
+      expect(llm.queryByText('Loading models')).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('Settings: about', () => {

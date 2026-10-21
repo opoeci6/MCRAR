@@ -14,6 +14,7 @@ from mcrar.llm import openai_compat
 from mcrar.llm.base import (
     LLMAuthError,
     LLMInvalidReply,
+    LLMNotSupported,
     LLMRateLimited,
     LLMRequestError,
     LLMTimeout,
@@ -267,3 +268,121 @@ def test_the_key_is_not_in_repr_or_logs(caplog: pytest.LogCaptureFixture) -> Non
     provider.close()
     assert KEY not in str(info.value) and KEY not in repr(info.value)
     assert KEY not in caplog.text
+
+
+# -- list_models -----------------------------------------------------------------------------
+
+
+def models_reply(*ids: Any) -> httpx.Response:
+    return httpx.Response(200, json={"object": "list", "data": [{"id": i} for i in ids]})
+
+
+def listed(provider: OpenAICompatProvider) -> list[str]:
+    return [m.id for m in provider.list_models(timeout_s=5.0)]
+
+
+def test_models_are_parsed_deduped_and_sorted_case_insensitively() -> None:
+    rec = Recorder(models_reply("gpt-b", "GPT-a", "gpt-b", "gpt-c", "o1"))
+    provider = make(rec)
+    assert listed(provider) == ["GPT-a", "gpt-b", "gpt-c", "o1"]
+    assert all(m.label is None for m in provider.list_models(timeout_s=5.0))
+    request = rec.requests[0]
+    assert request.method == "GET" and str(request.url) == "https://api.openai.com/v1/models"
+
+
+def test_models_trailing_slash_in_base_url() -> None:
+    rec = Recorder(models_reply("m"))
+    listed(make(rec, "custom", base_url="http://localhost:11434/v1/"))
+    assert str(rec.requests[0].url) == "http://localhost:11434/v1/models"
+
+
+def test_models_tolerate_odd_entries() -> None:
+    body = {"data": ["x", None, {"id": 5}, {"name": "n"}, {"id": ""}, {"id": "ok"}, 7]}
+    assert listed(make(Recorder(httpx.Response(200, json=body)))) == ["ok"]
+
+
+def test_models_prefix_is_stripped() -> None:
+    rec = Recorder(models_reply("models/gemini-3.8-flash", "models/gemini-3.8-pro"))
+    assert listed(make(rec, "gemini")) == ["gemini-3.8-flash", "gemini-3.8-pro"]
+
+
+def test_non_chat_models_are_hidden() -> None:
+    ids = [
+        "gpt-6-luna",
+        "text-embedding-3-large",
+        "whisper-1",
+        "gpt-4o-mini-tts",
+        "DALL-E-3",
+        "omni-moderation-latest",
+        "gpt-image-1",
+        "gpt-4o-realtime-preview",
+        "gpt-4o-transcribe",
+        "gpt-4o-search-preview",  # a chat model: kept on purpose
+    ]
+    assert listed(make(Recorder(models_reply(*ids)))) == ["gpt-4o-search-preview", "gpt-6-luna"]
+
+
+def test_openrouter_models_without_text_output_are_hidden() -> None:
+    data = [
+        {"id": "a/text", "architecture": {"output_modalities": ["text"]}},
+        {"id": "b/both", "architecture": {"output_modalities": ["image", "text"]}},
+        {"id": "c/pic", "architecture": {"output_modalities": ["image"]}},
+        {"id": "d/none"},
+        {"id": "e/odd", "architecture": "x"},
+    ]
+    rec = Recorder(httpx.Response(200, json={"data": data}))
+    assert listed(make(rec, "openrouter")) == ["a/text", "b/both", "d/none", "e/odd"]
+
+
+def test_models_are_capped_at_500() -> None:
+    rec = Recorder(models_reply(*(f"m{n:04d}" for n in range(700))))
+    result = listed(make(rec))
+    assert len(result) == 500 and result[0] == "m0000" and result[-1] == "m0499"
+
+
+def test_models_request_has_a_bearer_header_only_with_a_key() -> None:
+    rec = Recorder(models_reply("m"))
+    listed(make(rec))
+    assert rec.requests[0].headers["authorization"] == f"Bearer {KEY}"
+    rec = Recorder(models_reply("m"))
+    listed(make(rec, "custom", key=None))
+    assert "authorization" not in rec.requests[0].headers
+
+
+@pytest.mark.parametrize(
+    ("status", "error", "text"),
+    [
+        (401, LLMAuthError, "HTTP 401"),
+        (403, LLMAuthError, "HTTP 403"),
+        (429, LLMRateLimited, "429"),
+        (500, LLMRequestError, "HTTP 500"),
+        (404, LLMNotSupported, "does not list its models"),
+        (405, LLMNotSupported, "does not list its models"),
+    ],
+)
+def test_models_status_mapping_never_shows_the_body(status: int, error: type, text: str) -> None:
+    with pytest.raises(error) as info:
+        listed(make(Recorder(httpx.Response(status, text=f"secret detail {KEY}"))))
+    assert text in str(info.value)
+    assert KEY not in str(info.value) and "secret detail" not in str(info.value)
+
+
+def test_models_timeout_and_connection_failure() -> None:
+    with pytest.raises(LLMTimeout, match="Timed out after 5 s"):
+        listed(make(Recorder(httpx.ReadTimeout("slow"))))
+    with pytest.raises(LLMRequestError, match="Could not reach OpenAI"):
+        listed(make(Recorder(httpx.ConnectError("refused"))))
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(200, text="<html>not json</html>"),
+        httpx.Response(200, json=["gpt"]),
+        httpx.Response(200, json={"models": []}),
+        httpx.Response(200, json={"data": {"id": "x"}}),
+    ],
+)
+def test_models_unexpected_reply_is_invalid(response: httpx.Response) -> None:
+    with pytest.raises(LLMInvalidReply, match="unexpected format"):
+        listed(make(Recorder(response)))

@@ -13,6 +13,7 @@ import type {
   JamendoIngestRequest,
   Job,
   JobDetail,
+  LlmModelList,
   LlmStatus,
   LlmTestRequest,
   LlmTestResult,
@@ -74,6 +75,10 @@ export const getLlmStatus = (o?: CallOptions) => request<LlmStatus>('GET', '/api
 /** Tries the LLM with the given values (or the saved ones). A failure is a 200 with ok: false. */
 export const testLlm = (body?: LlmTestRequest, o?: CallOptions) =>
   request<LlmTestResult>('POST', '/api/llm/test', { ...o, body: body ?? {} })
+
+/** The provider's model names (for the draft provider and address). A failure is a 200 with ok: false. */
+export const listLlmModels = (body: { preset?: string; base_url?: string }, o?: CallOptions) =>
+  request<LlmModelList>('POST', '/api/llm/models', { ...o, body })
 
 // -- tracks --------------------------------------------------------------------------------
 

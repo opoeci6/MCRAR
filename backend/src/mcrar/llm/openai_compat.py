@@ -24,24 +24,28 @@ import httpx
 
 from mcrar.llm.base import (
     NOT_FOUND_TEXT,
+    NOT_SUPPORTED_TEXT,
     LLMAuthError,
     LLMError,
     LLMInvalidReply,
+    LLMNotSupported,
     LLMRateLimited,
     LLMRequestError,
     LLMTimeout,
     Message,
+    ModelInfo,
     auth_text,
     status_text,
     timeout_text,
 )
 from mcrar.llm.jsonutil import parse_json_reply
-from mcrar.llm.presets import JsonMode, Preset
+from mcrar.llm.presets import JsonMode, Preset, is_chat_model_id
 
 STEP_DOWN: dict[JsonMode, JsonMode] = {"json_schema": "json_object", "json_object": "none"}
 _FORMAT_WORDS = ("response_format", "json_schema")
 _modes: dict[tuple[str, str], JsonMode] = {}
 _modes_lock = threading.Lock()
+MAX_LISTED_MODELS = 500
 
 
 def _remembered(base_url: str, model: str, default: JsonMode) -> JsonMode:
@@ -75,6 +79,14 @@ def _content_text(content: object) -> str:
             part["text"] for part in content if isinstance(part, dict) and "text" in part
         )
     return ""
+
+
+def _outputs_text(entry: dict[str, Any]) -> bool:
+    """False for an entry that says (OpenRouter's ``architecture.output_modalities``) it does
+    not produce text; an entry without that field is kept."""
+    architecture = entry.get("architecture")
+    modalities = architecture.get("output_modalities") if isinstance(architecture, dict) else None
+    return "text" in modalities if isinstance(modalities, list) else True
 
 
 class OpenAICompatProvider:
@@ -126,10 +138,11 @@ class OpenAICompatProvider:
             body.update(self.preset.extra_body)
         return body
 
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+
     def _post(self, body: dict[str, Any], timeout_s: float) -> httpx.Response:
-        headers = {"Content-Type": "application/json"}
-        if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+        headers = {"Content-Type": "application/json", **self._headers()}
         failure: LLMError | None = None
         try:
             return self._client.post(
@@ -137,6 +150,18 @@ class OpenAICompatProvider:
                 headers=headers,
                 json=body,
                 timeout=timeout_s,
+            )
+        except httpx.TimeoutException:
+            failure = LLMTimeout(timeout_text(timeout_s))
+        except (httpx.HTTPError, httpx.InvalidURL):
+            failure = LLMRequestError(f"Could not reach {self.label}.")
+        raise failure
+
+    def _get(self, path: str, timeout_s: float) -> httpx.Response:
+        failure: LLMError | None = None
+        try:
+            return self._client.get(
+                f"{self._base_url}{path}", headers=self._headers(), timeout=timeout_s
             )
         except httpx.TimeoutException:
             failure = LLMTimeout(timeout_text(timeout_s))
@@ -167,6 +192,40 @@ class OpenAICompatProvider:
         if mode != default_mode:
             _remember(self._base_url, self.model, mode)
         return self._reply(response)
+
+    def list_models(self, *, timeout_s: float) -> list[ModelInfo]:
+        """The chat models the service offers (``GET {base_url}/models``), sorted by id.
+
+        Ids that look like embedding, speech or image models are hidden (the preset's
+        ``hide_model_patterns``), as are OpenRouter entries whose output modalities lack text.
+        HTTP 404/405 means the service has no list: :class:`LLMNotSupported`."""
+        response = self._get("/models", timeout_s)
+        if response.status_code in (404, 405):
+            raise LLMNotSupported(NOT_SUPPORTED_TEXT)
+        self._check_status(response.status_code)
+        return self._models(response)
+
+    def _models(self, response: httpx.Response) -> list[ModelInfo]:
+        entries: object = None
+        try:
+            payload = response.json()
+            entries = payload.get("data") if isinstance(payload, dict) else None
+        except ValueError:
+            pass
+        if not isinstance(entries, list):
+            raise LLMInvalidReply("The LLM service sent a reply in an unexpected format.")
+        ids: set[str] = set()
+        for entry in entries:
+            if not isinstance(entry, dict) or not isinstance(entry.get("id"), str):
+                continue
+            model_id = entry["id"].strip().removeprefix("models/")  # Gemini's compat layer
+            if not model_id or not is_chat_model_id(model_id, self.preset.hide_model_patterns):
+                continue
+            if not _outputs_text(entry):
+                continue
+            ids.add(model_id)
+        ordered = sorted(ids, key=lambda i: (i.casefold(), i))
+        return [ModelInfo(id=i) for i in ordered[:MAX_LISTED_MODELS]]
 
     # -- response --------------------------------------------------------------------------
 

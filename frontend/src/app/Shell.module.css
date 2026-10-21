@@ -118,7 +118,8 @@
   outline: none;
 }
 
-.withPlayer {
+/* Two classes, so the narrow-window padding of .main below doesn't hide content behind the bar. */
+.main.withPlayer {
   padding-bottom: calc(var(--player-h) + var(--space-8));
 }
 
