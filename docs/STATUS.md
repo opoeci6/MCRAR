@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-19.
+Last updated: 2026-10-20.
 
 ## 1. Milestones
 
@@ -22,11 +22,11 @@ Last updated: 2026-10-19.
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
 | M8–M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after M7:
-- Backend, default env: 1,599 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 1,596 passed, 31 skipped.
+Test suite on `dev`, counted after M7 and the model-list change (2026-10-20):
+- Backend, default env: 1,660 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it; last counted after M7): 1,596 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 254 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 263 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -361,6 +361,19 @@ Details are in `docs/llm.md`.
   - With `--llm` it gave 1.40, but on only 5 rated hits, with 25 unrated.
   - The LLM's English rewrite changes the CLAP results so much that most hits were never rated,
     so the two can't be compared yet. See §5.2.
+- **Model list (2026-10-20, the owner's request).** Settings → LLM has a "Load models" button
+  (`POST /api/llm/models`, `mcrar llm models`), and the model field suggests the loaded names
+  while still taking any typed name.
+  - It is fetched only on click.
+  - Non-chat models are hidden by id patterns, plus OpenAI-only ones (legacy completion models,
+    codex, `-pro`, sora). With the owner's key, OpenAI listed 64 models.
+  - Z.AI documents no list endpoint and is untested.
+- **Player bar (2026-10-20).** Below 1,100 px the seek bar moves to a second row; before, it
+  collapsed into the volume control. Below 560 px the badge gets a row too.
+  - Checked at widths from 1,400 px down to 400 px: nothing overlaps and the bar never
+    overflows.
+  - A related fix: below 1,000 px the page's bottom padding no longer drops to 40 px, which
+    had hidden the last rows behind the bar.
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 

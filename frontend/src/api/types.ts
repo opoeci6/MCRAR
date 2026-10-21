@@ -418,6 +418,16 @@ export type LlmTestResult =
   | { ok: true; model: string; elapsed_ms: number }
   | { ok: false; error: string }
 
+export interface LlmModel {
+  id: string
+  /** A friendlier name, when the provider gives one. */
+  label: string | null
+}
+
+export type LlmModelList =
+  | { ok: true; preset: string; models: LlmModel[]; default_model: string }
+  | { ok: false; error: string }
+
 export interface SecretItem {
   name: string
   /** `env` or the backend label. Never the value. */

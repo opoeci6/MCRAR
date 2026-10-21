@@ -7,6 +7,7 @@ import pytest
 from mcrar.llm import PRESET_IDS, PRESETS, get_preset
 from mcrar.llm.base import LLMInvalidReply
 from mcrar.llm.jsonutil import parse_json_reply
+from mcrar.llm.presets import is_chat_model_id
 from mcrar.secrets import validate_name
 
 
@@ -45,6 +46,28 @@ def test_custom_preset_needs_no_key_and_has_no_default_model() -> None:
     custom = get_preset("custom")
     assert not custom.key_required and custom.default_model == ""
     assert get_preset("openai").token_param == "max_completion_tokens"
+
+
+@pytest.mark.parametrize(
+    ("model_id", "openai_shows", "others_show"),
+    [
+        ("gpt-6-luna", True, True),
+        ("gpt-4o-search-preview", True, True),
+        ("text-embedding-3-small", False, False),
+        ("gpt-4o-mini-tts", False, False),
+        ("davinci-002", False, True),
+        ("gpt-3.5-turbo-instruct", False, True),
+        ("gpt-5.1-codex", False, True),
+        ("gpt-5-pro", False, True),
+        ("sora-2", False, True),
+        ("Qwen/Qwen2.5-7B-Instruct", False, True),
+        ("gemini-3.8-pro", False, True),
+    ],
+)
+def test_model_list_filter(model_id: str, openai_shows: bool, others_show: bool) -> None:
+    assert is_chat_model_id(model_id, get_preset("openai").hide_model_patterns) is openai_shows
+    for other in ("siliconflow", "gemini", "openrouter"):
+        assert is_chat_model_id(model_id, get_preset(other).hide_model_patterns) is others_show
 
 
 def test_unknown_preset() -> None:

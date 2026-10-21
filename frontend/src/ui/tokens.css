@@ -80,6 +80,19 @@
   --color-success: #167a43;
 }
 
+/* The player bar takes two rows at this width (PlayerBar.module.css). */
+@media (max-width: 1100px) {
+  :root {
+    --player-h: 104px;
+  }
+}
+
+@media (max-width: 560px) {
+  :root {
+    --player-h: 136px;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --color-bg: #101218;

@@ -1,4 +1,4 @@
-"""`mcrar llm status|test`, `mcrar search --llm` and `mcrar ratings eval --llm` (fake provider)."""
+"""`mcrar llm status|test|models`, `search --llm` and `ratings eval --llm` (fake provider)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from mcrar import cli
 from mcrar.catalog import open_catalog
 from mcrar.cli import app
 from mcrar.config import get_settings
-from mcrar.llm.base import LLMAuthError, LLMTimeout
+from mcrar.llm.base import LLMAuthError, LLMTimeout, ModelInfo
 from mcrar.recommend import SearchFilters
 from mcrar.recommend.ratings import filters_to_json
 
@@ -97,6 +97,36 @@ def test_test_failure_exits_1_with_the_safe_message(monkeypatch: pytest.MonkeyPa
 def test_test_without_a_key_names_the_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     result = runner.invoke(app, ["llm", "test"])
     assert result.exit_code == 1 and "No API key is set for OpenAI." in result.output
+
+
+# -- llm models ------------------------------------------------------------------------------
+
+
+def test_models_prints_one_id_per_line_with_the_label(monkeypatch: pytest.MonkeyPatch) -> None:
+    provider = FakeProvider(models=[ModelInfo("claude-a", "Claude A"), ModelInfo("claude-b")])
+    use_provider(monkeypatch, provider)
+    result = runner.invoke(app, ["llm", "models"])
+    assert result.exit_code == 0, result.output
+    assert result.output.splitlines() == ["claude-a (Claude A)", "claude-b"]
+
+
+def test_models_failure_exits_1_with_the_safe_message(monkeypatch: pytest.MonkeyPatch) -> None:
+    message = "Authentication failed (HTTP 401). Check the API key."
+    use_provider(monkeypatch, FakeProvider(models=LLMAuthError(message)))
+    result = runner.invoke(app, ["llm", "models"])
+    assert result.exit_code == 1 and f"error: {message}" in result.output
+
+
+def test_models_without_a_key_names_the_provider() -> None:
+    result = runner.invoke(app, ["llm", "models", "--preset", "deepseek"])
+    assert result.exit_code == 1 and "No API key is set for DeepSeek." in result.output
+
+
+def test_models_rejects_a_bad_preset_or_base_url() -> None:
+    bad_preset = runner.invoke(app, ["llm", "models", "--preset", "nope"])
+    assert bad_preset.exit_code == 2 and "unknown preset 'nope'" in bad_preset.output
+    bad_url = runner.invoke(app, ["llm", "models", "--base-url", "localhost:11434"])
+    assert bad_url.exit_code == 2 and "http://" in bad_url.output
 
 
 # -- search --llm ----------------------------------------------------------------------------

@@ -16,6 +16,26 @@ from typing import Literal
 JsonMode = Literal["json_schema", "json_object", "none"]
 TokenParam = Literal["max_tokens", "max_completion_tokens"]
 
+# Case-insensitive substrings of model ids that are not chat models; the model list hides them.
+# "search" is left out on purpose: OpenAI's ``gpt-4o-search-preview`` is a chat model, and the
+# word could hide others. Models that fit the other words badly stay one typed name away.
+DEFAULT_HIDE_MODEL_PATTERNS: tuple[str, ...] = (
+    "embedding",
+    "embed",
+    "whisper",
+    "tts",
+    "dall-e",
+    "moderation",
+    "image",
+    "audio",
+    "realtime",
+    "transcribe",
+    "imagen",
+    "veo",
+    "aqa",
+    "rerank",
+)
+
 
 @dataclass(frozen=True)
 class Preset:
@@ -29,10 +49,19 @@ class Preset:
     key_required: bool
     docs_url: str
     extra_body: Mapping[str, object] = field(default_factory=dict)
+    hide_model_patterns: tuple[str, ...] = DEFAULT_HIDE_MODEL_PATTERNS
 
     @property
     def key_secret(self) -> str:
         return f"llm_api_key_{self.id}"
+
+
+def is_chat_model_id(
+    model_id: str, patterns: tuple[str, ...] = DEFAULT_HIDE_MODEL_PATTERNS
+) -> bool:
+    """False when ``model_id`` holds one of the (case-insensitive) hide patterns."""
+    lowered = model_id.lower()
+    return not any(pattern in lowered for pattern in patterns)
 
 
 def _openai(
@@ -45,6 +74,7 @@ def _openai(
     json_mode: JsonMode,
     extra_body: Mapping[str, object],
     token_param: TokenParam = "max_tokens",
+    hide_model_patterns: tuple[str, ...] = DEFAULT_HIDE_MODEL_PATTERNS,
 ) -> Preset:
     return Preset(
         id=id,
@@ -57,6 +87,7 @@ def _openai(
         key_required=True,
         docs_url=docs_url,
         extra_body=extra_body,
+        hide_model_patterns=hide_model_patterns,
     )
 
 
@@ -70,6 +101,19 @@ PRESETS: tuple[Preset, ...] = (
         json_mode="json_schema",
         token_param="max_completion_tokens",
         extra_body={"reasoning_effort": "none"},  # gpt-6-luna has no "minimal"
+        # Not usable through chat completions: legacy completion models, video and live voice
+        # models, and the codex and pro models (Responses API only). OpenAI-only, because other
+        # services name chat models "...-instruct" or "...-pro".
+        hide_model_patterns=(
+            *DEFAULT_HIDE_MODEL_PATTERNS,
+            "babbage",
+            "davinci",
+            "instruct",
+            "sora",
+            "gpt-live",
+            "codex",
+            "-pro",
+        ),
     ),
     _openai(
         "deepseek",

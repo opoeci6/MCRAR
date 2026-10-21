@@ -457,11 +457,13 @@ class FakeProvider:
     """A ``LLMProvider`` that returns a canned reply (a dict, an exception to raise, or a function
     of the call) and records every call. No network."""
 
-    def __init__(self, reply: Any = None, *, model: str = "fake-model") -> None:
+    def __init__(self, reply: Any = None, *, model: str = "fake-model", models: Any = None) -> None:
         self.reply = reply if reply is not None else {}
         self.model = model
+        self.models = models if models is not None else []  # a list of ModelInfo or an exception
         self.label = "Fake"
         self.calls: list[dict[str, Any]] = []
+        self.model_calls: list[float] = []  # the timeout of each list_models call
         self.closed = 0
 
     def complete_json(
@@ -485,6 +487,12 @@ class FakeProvider:
         if isinstance(reply, Exception):
             raise reply
         return reply
+
+    def list_models(self, *, timeout_s: float) -> list[Any]:
+        self.model_calls.append(timeout_s)
+        if isinstance(self.models, Exception):
+            raise self.models
+        return list(self.models)
 
     def close(self) -> None:
         self.closed += 1

@@ -8,6 +8,7 @@ in the UI and the CLI as it is.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TypedDict
 
 
@@ -44,6 +45,19 @@ class LLMRequestError(LLMError):
     """Any other HTTP or connection failure."""
 
 
+NOT_SUPPORTED_TEXT = "This provider does not list its models. Type the model name."
+
+
+class LLMNotSupported(LLMError):
+    """The provider has no model-list endpoint (HTTP 404/405 there)."""
+
+
+@dataclass(frozen=True)
+class ModelInfo:
+    id: str
+    label: str | None = None
+
+
 class LLMProvider(Protocol):
     model: str
     label: str
@@ -61,6 +75,13 @@ class LLMProvider(Protocol):
         ...
 
     def close(self) -> None: ...
+
+
+class ModelLister(Protocol):
+    """Optional: a provider that can list the models it offers (kept apart from
+    :class:`LLMProvider` so a provider without it, such as a test fake, stays valid)."""
+
+    def list_models(self, *, timeout_s: float) -> list[ModelInfo]: ...
 
 
 NOT_FOUND_TEXT = "Model or endpoint not found (HTTP 404). Check the model name and base URL."

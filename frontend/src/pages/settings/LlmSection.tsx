@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { testLlm } from '../../api/endpoints'
-import type { LlmSettings, LlmTestResult } from '../../api/types'
+import { listLlmModels, testLlm } from '../../api/endpoints'
+import type { LlmModelList, LlmSettings, LlmTestResult } from '../../api/types'
 import { errorMessage } from '../../api/useAsync'
 import { useToast } from '../../app/toastContext'
 import { Button } from '../../ui/Button'
@@ -35,6 +35,11 @@ type TestState =
   | { kind: 'done'; result: LlmTestResult }
   | { kind: 'failed'; message: string }
 
+/** What loading the model list ended in, kept per provider and address. */
+type ModelsState =
+  | { kind: 'done'; result: LlmModelList }
+  | { kind: 'failed'; message: string }
+
 function isHttpUrl(value: string): boolean {
   return /^https?:\/\/\S+$/i.test(value)
 }
@@ -52,6 +57,8 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
   const [topNError, setTopNError] = useState<string | undefined>()
   const [urlError, setUrlError] = useState<string | undefined>()
   const [test, setTest] = useState<TestState>({ kind: 'idle' })
+  const [modelLists, setModelLists] = useState<Record<string, ModelsState>>({})
+  const [loadingModels, setLoadingModels] = useState(false)
   const { pending, error, save } = useSettingsSave(onUpdated)
 
   const isPinned = (field: keyof LlmSettings) => view.overridden_by_env.includes(`llm.${field}`)
@@ -75,6 +82,27 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
     if (baseUrl === '' || baseUrl === preset.base_url) next.base_url = ''
     edit(next)
     setTest({ kind: 'idle' })
+  }
+
+  // The list belongs to the provider and address it was loaded for, so switching away hides it
+  // and switching back shows it again without another request.
+  const modelsKey = `${preset.id}|${baseUrl.trim()}`
+  const modelsState = modelLists[modelsKey]
+  const loadedModels =
+    modelsState?.kind === 'done' && modelsState.result.ok ? modelsState.result.models : []
+  const datalistId = `llm-models-${preset.id}`
+
+  const loadModels = async () => {
+    const key = modelsKey
+    setLoadingModels(true)
+    let next: ModelsState
+    try {
+      next = { kind: 'done', result: await listLlmModels({ preset: preset.id, base_url: baseUrl.trim() }) }
+    } catch (caught) {
+      next = { kind: 'failed', message: errorMessage(caught) }
+    }
+    setModelLists((previous) => ({ ...previous, [key]: next }))
+    setLoadingModels(false)
   }
 
   const submit = async () => {
@@ -149,8 +177,18 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
         disabled={isPinned('model') || pending}
         autoComplete="off"
         spellCheck={false}
+        list={loadedModels.length > 0 ? datalistId : undefined}
         onChange={(event) => edit({ model: event.target.value })}
       />
+      {loadedModels.length > 0 ? (
+        <datalist id={datalistId}>
+          {loadedModels.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label ?? ''}
+            </option>
+          ))}
+        </datalist>
+      ) : null}
 
       <details className={styles.details}>
         <summary>{t.llm.advanced}</summary>
@@ -197,7 +235,28 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
         <Button disabled={test.kind === 'running'} onClick={() => void runTest()}>
           {t.llm.test}
         </Button>
+        <Button disabled={loadingModels} onClick={() => void loadModels()}>
+          {t.llm.loadModels}
+        </Button>
       </div>
+      {loadingModels ? <Spinner label={t.llm.loadingModels} /> : null}
+      {modelsState?.kind === 'done' && modelsState.result.ok ? (
+        <Notice>
+          {loadedModels.length > 0
+            ? t.llm.modelsLoaded(loadedModels.length, preset.label)
+            : t.llm.modelsNone(preset.label)}
+        </Notice>
+      ) : null}
+      {modelsState?.kind === 'done' && !modelsState.result.ok ? (
+        <Notice kind="error" title={t.llm.modelsFailedTitle}>
+          {modelsState.result.error}
+        </Notice>
+      ) : null}
+      {modelsState?.kind === 'failed' ? (
+        <Notice kind="error" title={t.llm.modelsRequestFailed}>
+          {modelsState.message}
+        </Notice>
+      ) : null}
       {test.kind === 'running' ? <Spinner label={t.llm.testing} /> : null}
       {test.kind === 'done' && test.result.ok ? (
         <Notice>{t.llm.testOk(test.result.model, (test.result.elapsed_ms / 1000).toFixed(1))}</Notice>

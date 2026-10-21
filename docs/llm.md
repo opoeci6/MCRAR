@@ -19,8 +19,18 @@ Code: `backend/src/mcrar/llm/` (providers), `recommend/llm_parse.py` and `recomm
 
 In **Settings → LLM**:
 1. Pick a provider and turn on "Use an LLM".
-2. Optionally type a model. An empty field uses the provider's default.
-3. Paste the provider's API key and click **Test connection**.
+2. Paste the provider's API key.
+3. Optionally choose a model. An empty field uses the provider's default.
+   - **Load models** fetches the provider's model list (`GET {base_url}/models`, or the Anthropic
+     models API), so you can pick a model in the model field or keep typing a name.
+   - Nothing is fetched until you click it.
+   - Models that can't chat are hidden: embedding, speech, image, video, moderation and
+     realtime models. For OpenAI, the legacy completion models and the codex and `-pro` models
+     (Responses API only) are hidden too.
+   - A hidden model can still be typed.
+   - Z.AI doesn't document a model list. A provider without one answers "This provider does not
+     list its models".
+4. Click **Test connection**.
 
 The API key is stored like the Jamendo key: in `.secrets/secrets.toml` by default, or in the OS
 keyring or an environment variable (`MCRAR_SECRET_LLM_API_KEY_<PRESET>`). Each provider has its
@@ -31,6 +41,7 @@ environment variables.
 From the CLI:
 - `mcrar llm status`
 - `mcrar llm test`
+- `mcrar llm models [--preset X] [--base-url U]`
 - `mcrar search --llm "..."`
 - `mcrar ratings eval --llm`: compares against the rules on your ratings.
 
