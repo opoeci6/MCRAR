@@ -51,7 +51,10 @@ export const settingsStrings = {
     loadModels: 'Load models',
     loadingModels: 'Loading models',
     modelsLoaded: (count: number, provider: string) =>
-      `${count} ${count === 1 ? 'model' : 'models'} from ${provider}. Click the model field to pick one, or type a name.`,
+      `${count} ${count === 1 ? 'model' : 'models'} from ${provider}. Open the model list (▾) or type a name.`,
+    modelList: 'Models',
+    showModels: 'Show models',
+    noMatchingModels: 'No matching models',
     modelsNone: (provider: string) => `${provider} returned no chat models. Type the model name.`,
     modelsFailedTitle: "The model list didn't load",
     modelsRequestFailed: "Couldn't load the model list",

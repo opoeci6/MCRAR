@@ -4,6 +4,7 @@ import type { LlmModelList, LlmSettings, LlmTestResult } from '../../api/types'
 import { errorMessage } from '../../api/useAsync'
 import { useToast } from '../../app/toastContext'
 import { Button } from '../../ui/Button'
+import { Combobox } from '../../ui/Combobox'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
 import { Spinner } from '../../ui/Spinner'
@@ -90,7 +91,6 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
   const modelsState = modelLists[modelsKey]
   const loadedModels =
     modelsState?.kind === 'done' && modelsState.result.ok ? modelsState.result.models : []
-  const datalistId = `llm-models-${preset.id}`
 
   const loadModels = async () => {
     const key = modelsKey
@@ -163,7 +163,7 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
           </option>
         ))}
       </Select>
-      <TextInput
+      <Combobox
         label={t.llm.model}
         hint={
           isPinned('model')
@@ -173,22 +173,15 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
               : t.llm.modelRequired
         }
         placeholder={preset.default_model}
+        emptyValue={preset.default_model}
         value={model}
         disabled={isPinned('model') || pending}
-        autoComplete="off"
-        spellCheck={false}
-        list={loadedModels.length > 0 ? datalistId : undefined}
-        onChange={(event) => edit({ model: event.target.value })}
+        options={loadedModels.map((m) => ({ value: m.id, label: m.label }))}
+        listLabel={t.llm.modelList}
+        toggleLabel={t.llm.showModels}
+        emptyText={t.llm.noMatchingModels}
+        onValueChange={(value) => edit({ model: value })}
       />
-      {loadedModels.length > 0 ? (
-        <datalist id={datalistId}>
-          {loadedModels.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label ?? ''}
-            </option>
-          ))}
-        </datalist>
-      ) : null}
 
       <details className={styles.details}>
         <summary>{t.llm.advanced}</summary>

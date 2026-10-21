@@ -544,29 +544,57 @@ describe('Settings: LLM', () => {
         .map(([, init]) => JSON.parse(String(init?.body)))
 
     const options = () =>
-      Array.from(document.querySelectorAll('datalist option')).map((option) => ({
-        value: option.getAttribute('value'),
-        text: option.textContent,
-      }))
+      within(screen.getByRole('listbox', { name: 'Models' }))
+        .getAllByRole('option')
+        .map((option) => option.textContent)
+    const showModels = (llm: ReturnType<typeof within>) =>
+      llm.queryByRole('button', { name: 'Show models' })
 
-    it('loads the list on request and offers it as suggestions for the model field', async () => {
+    it('loads the list on request and offers it in the model field', async () => {
       const user = userEvent.setup()
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
       await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
-      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      expect(showModels(llm)).not.toBeInTheDocument()
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       expect(
-        await llm.findByText('2 models from OpenAI. Click the model field to pick one, or type a name.'),
+        await llm.findByText('2 models from OpenAI. Open the model list (▾) or type a name.'),
       ).toBeInTheDocument()
       expect(modelRequests(api)).toEqual([{ preset: 'openai', base_url: '' }])
-      expect(llm.getByLabelText('Model')).toHaveAttribute('list', 'llm-models-openai')
-      expect(document.getElementById('llm-models-openai')).toBeInTheDocument()
-      expect(options()).toEqual([
-        { value: 'gpt-6-luna', text: '' },
-        { value: 'claude-haiku-5-5', text: 'Claude Haiku 5.5' },
-      ])
+      expect(llm.queryByRole('listbox')).not.toBeInTheDocument()
+      await user.click(showModels(llm)!)
+      expect(llm.getByRole('listbox', { name: 'Models' })).toBeInTheDocument()
+      expect(options()).toEqual(['gpt-6-luna', 'claude-haiku-5-5 Claude Haiku 5.5'])
+    })
+
+    it('saves the model picked from the list', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST, 'PUT /api/settings': view() }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      await llm.findByText(/2 models from OpenAI/)
+      await user.click(showModels(llm)!)
+      await user.click(within(llm.getByRole('listbox')).getByRole('option', { name: /claude-haiku-5-5/ }))
+      expect(llm.getByLabelText('Model')).toHaveValue('claude-haiku-5-5')
+      expect(llm.queryByRole('listbox')).not.toBeInTheDocument()
+      await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
+      await waitFor(() => expect(putBodies(api, '/api/settings')).toHaveLength(1))
+      expect(putBodies(api, '/api/settings')[0].llm.model).toBe('claude-haiku-5-5')
+    })
+
+    it('filters the list while typing', async () => {
+      const user = userEvent.setup()
+      stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
+      renderWithProviders(<SettingsPage />)
+      const llm = await llmRegion()
+      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await user.click(llm.getByRole('button', { name: 'Load models' }))
+      await llm.findByText(/2 models from OpenAI/)
+      await user.type(llm.getByLabelText('Model'), 'HAIKU')
+      expect(options()).toEqual(['claude-haiku-5-5 Claude Haiku 5.5'])
     })
 
     it('still takes a typed model name after loading and saves it', async () => {
@@ -603,7 +631,7 @@ describe('Settings: LLM', () => {
       await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
       await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
       expect(modelRequests(api)).toHaveLength(0)
-      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      expect(showModels(llm)).not.toBeInTheDocument()
     })
 
     it('says so when the provider lists no models', async () => {
@@ -618,8 +646,7 @@ describe('Settings: LLM', () => {
       await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       expect(await llm.findByText('OpenAI returned no chat models. Type the model name.')).toBeInTheDocument()
-      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
-      expect(document.querySelector('datalist')).toBeNull()
+      expect(showModels(llm)).not.toBeInTheDocument()
     })
 
     it('shows the error text when the provider cannot list its models', async () => {
@@ -629,7 +656,7 @@ describe('Settings: LLM', () => {
       const llm = await llmRegion()
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       expect(await llm.findByText('No API key is set for DeepSeek.')).toBeInTheDocument()
-      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
+      expect(showModels(llm)).not.toBeInTheDocument()
     })
 
     it('shows a request that failed', async () => {
@@ -653,13 +680,12 @@ describe('Settings: LLM', () => {
       await llm.findByText(/2 models from OpenAI/)
 
       await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
-      expect(llm.getByLabelText('Model')).not.toHaveAttribute('list')
-      expect(document.querySelector('datalist')).toBeNull()
+      expect(showModels(llm)).not.toBeInTheDocument()
       expect(llm.queryByText(/models from OpenAI/)).not.toBeInTheDocument()
 
       await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
-      expect(llm.getByLabelText('Model')).toHaveAttribute('list', 'llm-models-openai')
       expect(llm.getByText(/2 models from OpenAI/)).toBeInTheDocument()
+      await user.click(showModels(llm)!)
       expect(options()).toHaveLength(2)
       expect(modelRequests(api)).toHaveLength(1)
     })
