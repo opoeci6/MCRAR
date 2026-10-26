@@ -79,6 +79,20 @@ export function FiltersPanel({ value, onChange, vocab, vocabFailed }: FiltersPan
         limit={MOODS_SHOWN}
         onToggle={(id) => set({ moods: toggled(value.moods, id) })}
       />
+      <ChipGroup
+        label={f.scenes}
+        labels={vocab?.scene ?? []}
+        selected={value.scenes}
+        onToggle={(id) => set({ scenes: toggled(value.scenes, id) })}
+      />
+      <Select
+        label={f.intensity}
+        hint={f.intensityHint}
+        value={value.intensity}
+        onChange={(event) => set({ intensity: event.target.value as FilterState['intensity'] })}
+      >
+        {optionList(f.intensityOptions)}
+      </Select>
 
       <fieldset className={styles.group}>
         <legend className={styles.legend}>{f.bpm}</legend>

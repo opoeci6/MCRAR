@@ -1,4 +1,5 @@
 import type { ComponentType } from 'react'
+import LabelPage from '../pages/label'
 import LibraryPage from '../pages/library'
 import ProjectsPage from '../pages/projects'
 import SearchPage from '../pages/search'
@@ -14,5 +15,6 @@ export const PAGES: { id: PageId; label: string; component: ComponentType<PagePr
   { id: 'search', label: strings.nav.search, component: SearchPage },
   { id: 'projects', label: strings.nav.projects, component: ProjectsPage },
   { id: 'library', label: strings.nav.library, component: LibraryPage },
+  { id: 'label', label: strings.nav.label, component: LabelPage },
   { id: 'settings', label: strings.nav.settings, component: SettingsPage },
 ]

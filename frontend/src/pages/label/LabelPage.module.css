@@ -1,0 +1,90 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.name {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+
+.part {
+  flex: 0 1 200px;
+}
+
+.export {
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.progress progress {
+  width: 100%;
+  max-width: 480px;
+  height: 10px;
+  accent-color: var(--color-accent);
+}
+
+.muted {
+  color: var(--color-text-muted);
+}
+
+.help {
+  font-size: var(--text-sm);
+}
+
+.help summary {
+  width: fit-content;
+  cursor: pointer;
+  font-weight: 550;
+}
+
+.helpNote {
+  margin-top: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+}
+
+.shortcut {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.shortcut dt {
+  min-width: 11em;
+}
+
+.shortcut dd {
+  margin: 0;
+}
+
+.keys {
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+}

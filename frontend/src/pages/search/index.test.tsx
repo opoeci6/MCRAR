@@ -15,6 +15,10 @@ const VOCAB = {
     { id: 'dark-ambient', display: 'Dark Ambient', synonyms: [] },
   ],
   moodtheme: Array.from({ length: 15 }, (_, i) => ({ id: `mood${i}`, display: `Mood ${i}`, synonyms: [] })),
+  scene: [
+    { id: 'combat', display: 'Combat', synonyms: [] },
+    { id: 'stealth', display: 'Stealth', synonyms: [] },
+  ],
 }
 
 function item(id: number, overrides: Record<string, unknown> = {}) {
@@ -221,6 +225,39 @@ describe('Search page: filters', () => {
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ duration_min_s: 20, duration_max_s: 90 })
   })
 
+  it('maps game scenes and intensity', async () => {
+    const mock = setup({ 'POST /api/search': response([item(1)]) })
+    renderWithProviders(<SearchPage />)
+    const group = await screen.findByRole('group', { name: 'Game scene' })
+    expect(within(group).getAllByRole('button').map((chip) => chip.textContent)).toEqual(['Combat', 'Stealth'])
+    await userEvent.click(within(group).getByRole('button', { name: 'Stealth' }))
+    await userEvent.click(within(group).getByRole('button', { name: 'Combat' }))
+    await userEvent.selectOptions(screen.getByLabelText('Intensity'), 'High')
+    await searchFor('sneaking')
+    await screen.findByText('Track 1')
+    expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ scenes: ['stealth', 'combat'], intensity: 'high' })
+  })
+
+  it('leaves scenes and intensity out when they are not set', async () => {
+    const mock = setup({ 'POST /api/search': response([item(1)]) })
+    renderWithProviders(<SearchPage />)
+    await screen.findByRole('group', { name: 'Game scene' })
+    await searchFor('rain')
+    await screen.findByText('Track 1')
+    expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({})
+  })
+
+  it('shows a scene tag of a result by its display name', async () => {
+    setup({
+      'POST /api/search': response([
+        item(1, { top_tags: [{ label_set: 'scene', label: 'combat', display: 'Combat', score: 0.9 }] }),
+      ]),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    expect(await screen.findByText('Combat 90%')).toBeInTheDocument()
+  })
+
   it('does not send a search when a range is back to front', async () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
@@ -247,9 +284,16 @@ describe('Search page: filters', () => {
     await userEvent.click(rock)
     await userEvent.selectOptions(screen.getByLabelText('Vocals'), 'vocal')
     expect(screen.getByRole('button', { name: 'Filters (2)' })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Combat' }))
+    expect(screen.getByRole('button', { name: 'Filters (3)' })).toBeInTheDocument()
+    await userEvent.selectOptions(screen.getByLabelText('Intensity'), 'Low')
+    expect(screen.getByRole('button', { name: 'Filters (4)' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByRole('button', { name: 'Rock' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Combat' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByLabelText('Vocals')).toHaveValue('')
+    expect(screen.getByLabelText('Intensity')).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument()
   })
 })
 
