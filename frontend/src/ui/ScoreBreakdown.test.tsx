@@ -25,6 +25,25 @@ describe('ScoreBreakdown', () => {
     expect(screen.getByText('not used')).toBeInTheDocument()
   })
 
+  it('shows the reference song term, named "Sounds like", right after the description', () => {
+    render(
+      <ScoreBreakdown
+        breakdown={{
+          energy: { raw: 0.1, weight: 0.1, contribution: 0.01 },
+          tags: { raw: 0.3, weight: 0.2, contribution: 0.06 },
+          reference: { raw: 0.7, weight: 0.4, contribution: 0.28 },
+          semantic: { raw: 0.9, weight: 0.4, contribution: 0.36 },
+        }}
+      />,
+    )
+    const rows = screen.getAllByRole('listitem').map((li) => li.textContent ?? '')
+    expect(rows[0]).toContain('Matches the description')
+    expect(rows[1]).toContain('Sounds like')
+    expect(rows[2]).toContain('Genre and mood')
+    expect(rows[3]).toContain('Energy')
+    expect(screen.getByText('Sounds like: score 0.70, weight 0.40, adds 0.28')).toBeInTheDocument()
+  })
+
   it('lists the known terms first, in a fixed order, and keeps unknown ones', () => {
     render(
       <ScoreBreakdown

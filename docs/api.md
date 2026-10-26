@@ -25,23 +25,25 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 | Area | Routes |
 |---|---|
 | Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
-| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, by default 0.40 for CLAP and MuQ-MuLan, none for GLAP); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
-| LLM (M7, optional; see `docs/llm.md`) | `GET /llm` → `{enabled, ready, preset, label, kind, model, reason, rerank_top_n}`, where `reason` is `disabled`, `missing_model`, `missing_key` or null. `POST /llm/test` `{preset?, model?, base_url?}` → always 200 with `{ok: true, model, elapsed_ms}` or `{ok: false, error}`; it tests unsaved values too. `POST /llm/models` `{preset?, base_url?}` → always 200 with `{ok: true, preset, models: [{id, label}], default_model}` (chat models only, sorted, needs the key but no model) or `{ok: false, error}`. `POST /search/rerank` takes the `/search` body (text required) → the same response shape, with the top `llm.rerank_top_n` results in the LLM's order, each item's `llm_rank` and `llm_explanation`, and `rerank: {model, verdict: good\|partial\|poor, summary, search_terms, elapsed_ms}`. It answers 503 when no LLM is ready and 502 when the LLM call fails. Every `/search` response also has `parsed.source` (`rules`/`llm`), `parsed.search_terms` and `llm: {used, model, cached, error} \| null` |
+| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, reference?{track_id \| upload_id}, reference_weight = 0.5, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, by default 0.40 for CLAP and MuQ-MuLan, none for GLAP; always null/false without text), and `reference: {kind: track\|upload, track_id, label, weight} \| null` (the reference song as used, never its vector); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
+| LLM (M7, optional; see `docs/llm.md`) | `GET /llm` → `{enabled, ready, preset, label, kind, model, reason, rerank_top_n}`, where `reason` is `disabled`, `missing_model`, `missing_key` or null. `POST /llm/test` `{preset?, model?, base_url?}` → always 200 with `{ok: true, model, elapsed_ms}` or `{ok: false, error}`; it tests unsaved values too. `POST /llm/models` `{preset?, base_url?}` → always 200 with `{ok: true, preset, models: [{id, label}], default_model}` (chat models only, sorted, needs the key but no model) or `{ok: false, error}`. `POST /search/rerank` takes the `/search` body (text required) → the same response shape, with the top `llm.rerank_top_n` results in the LLM's order, each item's `llm_rank` and `llm_explanation`, and `rerank: {model, verdict: good\|partial\|poor, summary, search_terms, elapsed_ms}`. It answers 503 when no LLM is ready and 502 when the LLM call fails, and 422 ("LLM rerank doesn't use a reference song yet.") when the body has a `reference`. Every `/search` response also has `parsed.source` (`rules`/`llm`), `parsed.search_terms` and `llm: {used, model, cached, error} \| null` |
 | Ratings | `PUT /ratings` `{text?, filters?, track_id, rating: 0\|1\|2}`; `DELETE /ratings` (same body without `rating`); `GET /ratings?limit&offset`. A rating is keyed by the lowercased query text, or by canonical filters for a filter-only search. |
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
 | Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=` |
 | Settings | `GET/PUT /settings` (editable: `default_embedder`, `search.*`, `llm.*`; the view also lists `llm_presets`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |
 | Ingest | `POST /ingest/jamendo`, `POST /ingest/local`, `POST /ingest/reprocess` (`embed` or `tag`) → 202 with a job; `GET /jobs`; `GET /jobs/{id}`; `POST /jobs/{id}/cancel`; `GET /jobs/{id}/events` (Server-Sent Events) |
-| Analyze | `POST /analyze` (multipart upload, ≤ 50 MB) → BPM, key, loudness and energy. Nothing is stored. Reference-song similarity is M10. |
+| Analyze | `POST /analyze` (multipart upload, ≤ 50 MB) → BPM, key, loudness and energy. Nothing is stored. |
+| Reference song (M10) | `POST /reference` (multipart `file`, same type and size rules as `/analyze`) → `{upload_id, filename, duration_s, model_id}`. The first 4 minutes are embedded with the default embedder (the way catalog tracks are) and the vector, not the audio, is kept in memory. Pass the `upload_id` to `POST /search` (below). 503 without the `ml` extra; 422 for a wrong file type or audio that can't be decoded; 413 over the size limit. |
 
 Errors are JSON `{"detail": "..."}`:
 
 | Code | Meaning |
 |---|---|
-| 422 | Bad input |
-| 404 | Unknown id |
-| 409 | Conflict: a job is already running, a field is pinned by an environment variable, or the secret backend is read-only |
-| 503 | Missing prerequisite: no `ml` extra for text search (or for a genre/mood filter when a matching track has no usable stored tags), no Jamendo client id, or no ready LLM for a rerank |
+| 422 | Bad input (also a reference track with no embedding for the current model, a `reference` with both or neither of `track_id` and `upload_id`, or a `reference_weight` outside 0–1) |
+| 404 | Unknown id (also an unknown reference `track_id`, or an `upload_id` that expired: the store is lost on restart) |
+| 409 | Conflict: a job is already running, a field is pinned by an environment variable, the secret backend is read-only, or a reference upload was embedded with another model than the one searched (the default embedder changed since the upload) |
+| 413 | An upload is over 50 MB (`/analyze`, `/reference`) |
+| 503 | Missing prerequisite: no `ml` extra for text search or a reference upload (or for a genre/mood filter when a matching track has no usable stored tags), no Jamendo client id, or no ready LLM for a rerank |
 | 502 | Jamendo failed, or the LLM call of a rerank failed |
 
 ## Behaviour worth knowing
@@ -59,6 +61,19 @@ Errors are JSON `{"detail": "..."}`:
   0.5 means "an average track for this label", and genre and mood scores share one scale. The
   raw stored probabilities are in `GET /tracks/{id}`. A genre/mood filter without text needs no
   `ml` extra when every matching track has stored tags from the allowed model.
+- **Search by a reference song.** `reference` is exactly one of `{track_id}` (a catalog track,
+  which must have an embedding for the current model and is left out of its own results) or
+  `{upload_id}` from `POST /reference`. A reference needs no text or filter, and a reference
+  track needs no `ml` extra (its embedding is already stored); a text in the same request does.
+  Results are ranked by the audio–audio cosine; with text, the semantic weight is split:
+  `reference_weight` is the reference's share (1 = reference only, 0 = text only, though the
+  reference tracks still join the candidates). Both cosines are min-max scaled over the candidates
+  and the breakdown gains a `reference` term. The explanation says "Sounds close to / similar to /
+  Loosely like". Filters and relaxation work as for text. A search with a reference has no
+  `rating`s (they are filed under text and filters only).
+- **Uploaded references are in memory only.** The last 32 uploads are kept (least recently used
+  first out) and all are lost on restart, so a client must be ready to upload again after a 404.
+  They hold the vector, file name and duration, never the audio.
 - **Ingest jobs.** Only one job runs at a time (a second gets 409). A finished job's report
   lists `new_track_ids` (up to 200). Jobs use the same loaded
   model as search.

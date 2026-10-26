@@ -8,6 +8,7 @@ export const trackFeatureStrings = {
   album: (album: string) => `from ${album}`,
   playLabel: (title: string) => `Play ${title}`,
   pauseLabel: (title: string) => `Pause ${title}`,
+  findSimilar: 'Find similar',
   openOnJamendo: 'Open on Jamendo',
   openSource: 'Open the source page',
   localFile: 'Local file',

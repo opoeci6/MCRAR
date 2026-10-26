@@ -66,12 +66,12 @@ def test_default_weights_are_the_documented_ones() -> None:
 @pytest.mark.parametrize(
     ("active", "expected"),
     [
-        (["semantic", "tags", "bpm", "energy"], (0.6, 0.2, 0.1, 0.1)),
-        (["semantic"], (1.0, 0.0, 0.0, 0.0)),
-        (["semantic", "bpm"], (0.6 / 0.7, 0.0, 0.1 / 0.7, 0.0)),
-        (["tags", "energy"], (0.0, 0.2 / 0.3, 0.0, 0.1 / 0.3)),
-        (["bpm"], (0.0, 0.0, 1.0, 0.0)),
-        ([], (0.0, 0.0, 0.0, 0.0)),
+        (["semantic", "tags", "bpm", "energy"], (0.6, 0.0, 0.2, 0.1, 0.1)),
+        (["semantic"], (1.0, 0.0, 0.0, 0.0, 0.0)),
+        (["semantic", "bpm"], (0.6 / 0.7, 0.0, 0.0, 0.1 / 0.7, 0.0)),
+        (["tags", "energy"], (0.0, 0.0, 0.2 / 0.3, 0.0, 0.1 / 0.3)),
+        (["bpm"], (0.0, 0.0, 0.0, 1.0, 0.0)),
+        ([], (0.0, 0.0, 0.0, 0.0, 0.0)),
     ],
 )
 def test_inactive_terms_are_dropped_and_the_rest_renormalised(
@@ -79,14 +79,14 @@ def test_inactive_terms_are_dropped_and_the_rest_renormalised(
 ) -> None:
     got = effective_weights(W, active)
     assert tuple(got.values()) == pytest.approx(expected)
-    assert list(got) == ["semantic", "tags", "bpm", "energy"]
+    assert list(got) == ["semantic", "reference", "tags", "bpm", "energy"]
     assert sum(got.values()) == pytest.approx(1.0 if active else 0.0)
 
 
 def test_active_terms_that_all_weigh_zero_share_equally() -> None:
     only_semantic = SearchWeights(semantic=1.0, tags=0.0, bpm=0.0, energy=0.0)
     got = effective_weights(only_semantic, ["bpm", "energy"])
-    assert got == {"semantic": 0.0, "tags": 0.0, "bpm": 0.5, "energy": 0.5}
+    assert got == {"semantic": 0.0, "reference": 0.0, "tags": 0.0, "bpm": 0.5, "energy": 0.5}
 
 
 def candidates(n: int = 12, seed: int = 0) -> list[Candidate]:
@@ -256,3 +256,63 @@ def test_ties_break_by_risk_first_then_track_id() -> None:
         tags=True,
     )
     assert [r.track_id for r in better] == [1, 2]
+
+
+# -- the reference-song term (M10) -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reference_weight", "semantic", "expected"),
+    [
+        (0.5, True, {"semantic": 0.3 / 0.7, "reference": 0.3 / 0.7, "bpm": 0.1 / 0.7}),
+        (0.25, True, {"semantic": 0.45 / 0.7, "reference": 0.15 / 0.7, "bpm": 0.1 / 0.7}),
+        (0.0, True, {"semantic": 0.6 / 0.7, "reference": 0.0, "bpm": 0.1 / 0.7}),
+        (1.0, True, {"semantic": 0.0, "reference": 0.6 / 0.7, "bpm": 0.1 / 0.7}),
+        (0.5, False, {"semantic": 0.0, "reference": 0.6 / 0.7, "bpm": 0.1 / 0.7}),  # w is moot
+    ],
+)
+def test_the_reference_shares_the_semantic_weight(
+    reference_weight: float, semantic: bool, expected: dict[str, float]
+) -> None:
+    active = ["reference", "bpm", *(["semantic"] if semantic else [])]
+    got = effective_weights(W, active, reference_weight)
+    assert got["tags"] == got["energy"] == 0.0
+    assert {k: got[k] for k in expected} == pytest.approx(expected)
+    assert sum(got.values()) == pytest.approx(1.0)
+
+
+def test_reference_cosines_are_scaled_over_the_pool_apart_from_the_text_cosines() -> None:
+    cands = [
+        Candidate(1, cosine=0.9, ref_cosine=0.2),
+        Candidate(2, cosine=0.5, ref_cosine=0.8),
+        Candidate(3, cosine=0.1, ref_cosine=0.4),
+    ]
+    ranked = {
+        r.track_id: r
+        for r in rank_candidates(
+            cands, weights=W, semantic=True, tags=False, reference=True, reference_weight=0.5
+        )
+    }
+    ref = {i: ranked[i].breakdown.terms["reference"] for i in ranked}
+    assert [ref[i].raw for i in (1, 2, 3)] == pytest.approx([0.0, 1.0, 1 / 3])  # (c - 0.2) / 0.6
+    assert [ranked[i].breakdown.terms["semantic"].raw for i in (1, 2, 3)] == pytest.approx(
+        [1.0, 0.5, 0.0]
+    )
+    assert all(t.weight == pytest.approx(0.5) for t in ref.values())
+    assert ranked[2].score == pytest.approx(0.5 * 0.5 + 0.5 * 1.0)
+    assert sum(t.contribution for t in ranked[1].breakdown.terms.values()) == ranked[1].score
+
+
+def test_a_reference_alone_ranks_by_its_cosine_and_text_terms_stay_inactive() -> None:
+    cands = [
+        Candidate(1, ref_cosine=0.3),
+        Candidate(2, ref_cosine=0.9),
+        Candidate(3, ref_cosine=0.6),
+    ]
+    ranked = rank_candidates(
+        cands, weights=W, semantic=False, tags=False, reference=True, reference_weight=0.2
+    )
+    assert [r.track_id for r in ranked] == [2, 3, 1]
+    terms = ranked[0].breakdown.to_dict()
+    assert terms["reference"] == {"raw": 1.0, "weight": 1.0, "contribution": 1.0}
+    assert terms["semantic"] == {"raw": None, "weight": 0.0, "contribution": 0.0}

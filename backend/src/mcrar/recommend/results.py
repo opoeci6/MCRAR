@@ -86,12 +86,22 @@ class RerankInfo:
 
 
 @dataclass(frozen=True)
+class ReferenceInfo:
+    """The reference song a search was ranked by, as echoed to the client (never its vector)."""
+
+    kind: Literal["track", "upload"]
+    track_id: int | None
+    label: str
+    weight: float
+
+
+@dataclass(frozen=True)
 class SearchResult:
     """``total_candidates`` is the number of ranked candidates (after the per-artist cap) that
     ``offset`` and ``limit`` page through. ``parsed`` is the query as understood, before any
     relaxation; ``relaxed`` says what was relaxed to find results, in order. ``notes`` carries
     messages for the user (missing embeddings, an empty result and why). ``llm`` and ``rerank``
-    are None unless the LLM took part."""
+    are None unless the LLM took part; ``reference`` is None unless a reference song was used."""
 
     items: list[SearchItem]
     total_candidates: int
@@ -104,6 +114,7 @@ class SearchResult:
     match: MatchQuality = field(default_factory=MatchQuality)
     llm: LLMUse | None = None
     rerank: RerankInfo | None = None
+    reference: ReferenceInfo | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

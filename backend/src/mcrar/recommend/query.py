@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
+import numpy as np
+
 from mcrar.licensing import Risk
 
 Vocal = Literal["vocal", "instrumental"]
@@ -44,12 +46,31 @@ class Preferences:
 
 
 @dataclass(frozen=True)
+class ReferenceQuery:
+    """A song to find similar tracks to: its embedding (with the search model) and where it came
+    from. ``kind`` is ``"track"`` (a catalog track, left out of the results) or ``"upload"``.
+    ``weight`` is the reference's share of the semantic score, in [0, 1]: 1 ranks by the
+    reference alone, 0 by the text alone (without text the reference is all there is)."""
+
+    vector: np.ndarray = field(repr=False, compare=False)
+    label: str
+    kind: Literal["track", "upload"]
+    track_id: int | None = None
+    weight: float = 0.5
+
+    def __post_init__(self) -> None:
+        if not 0.0 <= self.weight <= 1.0:  # also rejects NaN
+            raise ValueError("the reference weight must be between 0 and 1")
+
+
+@dataclass(frozen=True)
 class SearchRequest:
     text: str | None = None
     filters: SearchFilters = field(default_factory=SearchFilters)
     limit: int = 20
     offset: int = 0
     explain: bool = True
+    reference: ReferenceQuery | None = None
 
 
 @dataclass(frozen=True)

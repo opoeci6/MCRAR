@@ -13,8 +13,10 @@ from recommend_support import (
     QUERY_TEXTS,
     FakeJamendoClient,
     MapEmbedder,
+    ToneEmbedder,
     build_catalog,
     fake_features,
+    tone_wav_bytes,
     write_wav,
 )
 from typer.testing import CliRunner
@@ -32,16 +34,19 @@ runner = CliRunner()
 class Loader:
     """Replaces ``cli._load_embedder``: hands out fake embedders and records the requests."""
 
-    def __init__(self, error: Exception | None = None) -> None:
+    def __init__(
+        self, error: Exception | None = None, embedder_class: type[MapEmbedder] = MapEmbedder
+    ) -> None:
         self.calls: list[str] = []
         self.loaded: list[MapEmbedder] = []
         self.error = error
+        self.embedder_class = embedder_class
 
     def __call__(self, key: str, settings: object, **kwargs: object) -> MapEmbedder:
         self.calls.append(key)
         if self.error is not None:
             raise self.error
-        embedder = MapEmbedder(QUERY_TEXTS, key=key)
+        embedder = self.embedder_class(QUERY_TEXTS, key=key)
         self.loaded.append(embedder)
         return embedder
 
@@ -267,9 +272,123 @@ def test_search_help_lists_the_options() -> None:
     result = runner.invoke(app, ["search", "--help"])
     assert result.exit_code == 0
     options = "--genre --mood --bpm --instrumental --vocal --max-risk --duration --source".split()
-    options += "--limit --offset --json --no-explain".split()
+    options += "--limit --offset --json --no-explain --like --like-file --ref-weight".split()
     for option in options:
         assert option in result.output
+
+
+# -- search by a reference song (M10) -------------------------------------------------------------
+
+
+def test_search_like_a_catalog_track(loader: Loader, catalog: dict[str, int]) -> None:
+    result = runner.invoke(app, ["search", "--like", str(catalog["Shadow Walk"]), "--limit", "3"])
+    assert result.exit_code == 0, result.output
+    assert "Reference song: Shadow Walk — Ada (reference weight 0.5)" in result.stdout
+    rows = [line for line in result.stdout.splitlines() if "https://example.test/" in line]
+    assert len(rows) == 3
+    assert "Quiet Vents — Ada" in rows[0] and "Night Heist — Ada" in rows[1]
+    assert "Shadow Walk" not in "".join(rows)  # the reference is not its own result
+    assert "1. Sounds close to “Shadow Walk — Ada” · " in result.stdout
+    assert loader.calls == []  # its stored embedding is all that is needed
+
+
+def test_search_like_with_json_echoes_the_reference(
+    loader: Loader, catalog: dict[str, int]
+) -> None:
+    args = ["search", "--like", str(catalog["Shadow Walk"]), "--ref-weight", "0.25", "--json"]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["reference"] == {
+        "kind": "track",
+        "track_id": catalog["Shadow Walk"],
+        "label": "Shadow Walk — Ada",
+        "weight": 0.25,
+    }
+    assert data["items"][0]["breakdown"]["reference"]["weight"] == 1.0
+    plain = json.loads(runner.invoke(app, ["search", "epic battle", "--json"]).stdout)
+    assert plain["reference"] is None
+
+
+def test_search_like_blends_with_text_and_filters(loader: Loader, catalog: dict[str, int]) -> None:
+    result = runner.invoke(
+        app,
+        ["search", "epic battle", "--like", str(catalog["Shadow Walk"]), "--max-risk", "green"]
+        + ["--json", "--limit", "50"],
+    )
+    assert result.exit_code == 0, result.output
+    data = json.loads(result.stdout)
+    assert data["items"] and {i["risk"] for i in data["items"]} == {"green"}
+    breakdown = data["items"][0]["breakdown"]
+    assert breakdown["semantic"]["weight"] > 0 < breakdown["reference"]["weight"]
+    assert loader.calls == ["clap"]  # the text needs the model
+
+
+def test_search_like_file_embeds_the_file_with_the_search_model(
+    monkeypatch: pytest.MonkeyPatch, catalog: dict[str, int], tmp_path: Path
+) -> None:
+    loader = Loader(embedder_class=ToneEmbedder)
+    monkeypatch.setattr(cli, "_load_embedder", loader)
+    monkeypatch.setattr(cli, "_torch_available", lambda: True)
+    song = tmp_path / "my song.wav"
+    song.write_bytes(tone_wav_bytes("stealth"))
+    result = runner.invoke(app, ["search", "--like-file", str(song), "--limit", "2"])
+    assert result.exit_code == 0, result.output
+    assert "Reference song: my song.wav (reference weight 0.5)" in result.stdout
+    assert "Shadow Walk — Ada" in result.stdout and "Sounds close to “my song.wav”" in result.stdout
+    assert loader.calls == ["clap"]
+    assert all(e.closed for e in loader.loaded)  # the model is freed again
+    blended = runner.invoke(
+        app, ["search", "epic battle", "--like-file", str(song), "--json", "--ref-weight", "1"]
+    )
+    assert blended.exit_code == 0, blended.output
+    data = json.loads(blended.stdout)
+    assert data["reference"]["kind"] == "upload" and data["reference"]["label"] == "my song.wav"
+    assert data["items"][0]["breakdown"]["semantic"]["weight"] == 0.0  # all of it is the reference
+    assert loader.calls == ["clap", "clap"] and all(e.closed for e in loader.loaded)
+
+
+def test_search_like_and_like_file_are_mutually_exclusive(
+    loader: Loader, catalog: dict[str, int], tmp_path: Path
+) -> None:
+    song = tmp_path / "song.wav"
+    song.write_bytes(tone_wav_bytes("stealth"))
+    result = runner.invoke(app, ["search", "--like", "1", "--like-file", str(song)])
+    assert result.exit_code == 2
+    assert "error: --like and --like-file are mutually exclusive" in result.stderr
+    assert loader.calls == []
+
+
+@pytest.mark.parametrize(
+    ("args", "message"),
+    [
+        (["--like", "99999"], "error: no track with id 99999"),
+        (
+            ["--like", "{unembedded}"],
+            'error: "Unembedded Tune — Nan" has no clap@195c3a3 embedding',
+        ),
+        (["--like-file", "{missing}"], "error: audio file not found:"),
+        (["--like-file", "{text}"], "error: could not decode"),
+    ],
+)
+def test_search_like_reports_what_cannot_be_used(
+    loader: Loader, catalog: dict[str, int], tmp_path: Path, args: list[str], message: str
+) -> None:
+    (tmp_path / "notes.wav").write_bytes(b"this is not audio")
+    fill = {
+        "{unembedded}": str(catalog["Unembedded Tune"]),
+        "{missing}": str(tmp_path / "nothing.wav"),
+        "{text}": str(tmp_path / "notes.wav"),
+    }
+    result = runner.invoke(app, ["search", *(fill.get(a, a) for a in args)])
+    assert result.exit_code == 1
+    assert message in result.stderr
+    assert "Traceback" not in result.output
+
+
+def test_search_ref_weight_must_be_between_0_and_1(loader: Loader, catalog: dict[str, int]) -> None:
+    result = runner.invoke(app, ["search", "--like", "1", "--ref-weight", "1.5"])
+    assert result.exit_code == 2
 
 
 # -- ingest embeds by default ----------------------------------------------------------------------

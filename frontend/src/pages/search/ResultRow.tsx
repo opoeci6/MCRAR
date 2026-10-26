@@ -21,12 +21,15 @@ export interface ResultRowProps {
   item: SearchItem
   /** The track was imported from Jamendo for this search. */
   isNew?: boolean
+  /** Show the rating control. Off in a search by reference song, which has no ratings. */
+  rateable?: boolean
   onOpen: (trackId: number) => void
   onRate: (item: SearchItem, rating: RatingValue | null) => void
+  onFindSimilar: (item: SearchItem) => void
 }
 
 /** One search result: play, title, licence, facts, tags, the reason, rating and actions. */
-export function ResultRow({ item, isNew = false, onOpen, onRate }: ResultRowProps) {
+export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate, onFindSimilar }: ResultRowProps) {
   const player = usePlayer()
   const whyId = useId()
   const [whyOpen, setWhyOpen] = useState(false)
@@ -110,7 +113,9 @@ export function ResultRow({ item, isNew = false, onOpen, onRate }: ResultRowProp
         {item.explanation ? <p className={styles.explanation}>{item.explanation}</p> : null}
 
         <div className={styles.actions}>
-          <RatingControl value={item.rating} onChange={(value) => onRate(item, value)} />
+          {rateable ? (
+            <RatingControl value={item.rating} onChange={(value) => onRate(item, value)} />
+          ) : null}
           <AddToProjectMenu trackId={item.track_id} trackTitle={item.title ?? ''} />
           {item.download_url ? (
             <Button
@@ -122,6 +127,9 @@ export function ResultRow({ item, isNew = false, onOpen, onRate }: ResultRowProp
               <span className="sr-only"> {strings.common.opensInNewTab}</span>
             </Button>
           ) : null}
+          <Button size="sm" aria-label={r.findSimilarTo(title)} onClick={() => onFindSimilar(item)}>
+            {r.findSimilar}
+          </Button>
           <Button
             size="sm"
             variant="ghost"

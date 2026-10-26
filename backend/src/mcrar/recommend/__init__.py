@@ -5,9 +5,22 @@ Importing this package never imports torch; the text model is loaded by
 """
 
 from mcrar.recommend.parser import QueryParser, RuleParser, parse
-from mcrar.recommend.query import ParsedQuery, Preferences, SearchFilters, SearchRequest
+from mcrar.recommend.query import (
+    ParsedQuery,
+    Preferences,
+    ReferenceQuery,
+    SearchFilters,
+    SearchRequest,
+)
 from mcrar.recommend.rank import ScoreBreakdown, TermScore
-from mcrar.recommend.results import LLMUse, RerankInfo, SearchItem, SearchResult, TagScore
+from mcrar.recommend.results import (
+    LLMUse,
+    ReferenceInfo,
+    RerankInfo,
+    SearchItem,
+    SearchResult,
+    TagScore,
+)
 from mcrar.recommend.service import SearchError, SearchService
 from mcrar.recommend.tags import (
     CompositeTagScorer,
@@ -24,6 +37,8 @@ __all__ = [
     "ParsedQuery",
     "Preferences",
     "QueryParser",
+    "ReferenceInfo",
+    "ReferenceQuery",
     "RerankInfo",
     "RuleParser",
     "ScoreBreakdown",

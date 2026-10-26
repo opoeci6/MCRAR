@@ -32,11 +32,12 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any, Literal, NamedTuple, Protocol
 
-from mcrar.audio import ANALYSIS_VERSION, analyze_audio, load_audio
+from mcrar.audio import ANALYSIS_VERSION, analyze_audio
 from mcrar.catalog import CatalogRepository, StoredTrack
 from mcrar.ingest.mapping import to_track_record
 from mcrar.licensing import LicenseInfo, parse_license
-from mcrar.ml.embedders.base import Embedder, embed_track
+from mcrar.ml.embedders.base import Embedder
+from mcrar.ml.embedders.source import EMBED_MAX_SECONDS, embed_audio_source
 from mcrar.ml.errors import EmbedderMemoryError
 from mcrar.sources import JamendoAuthError, JamendoRateLimitError, SourceTrack
 from mcrar.sources.local_folder import iter_audio_files, scan_local
@@ -110,10 +111,13 @@ class EmbeddingStage:
     """One text-audio embedding per track for one model (see :mod:`mcrar.ml.embedders`).
 
     Decodes the first ``max_seconds`` at the model's sample rate, embeds up to three windows
-    (:func:`~mcrar.ml.embedders.embed_track`) and stores the vector under ``embedder.model_id``.
+    (:func:`~mcrar.ml.embedders.embed_audio_source`) and stores the vector under
+    ``embedder.model_id``.
     """
 
-    def __init__(self, embedder: Embedder, *, max_seconds: float | None = 240) -> None:
+    def __init__(
+        self, embedder: Embedder, *, max_seconds: float | None = EMBED_MAX_SECONDS
+    ) -> None:
         self.embedder = embedder
         self.name = f"embed:{embedder.key}"
         self.version = embedder.model_id
@@ -123,11 +127,8 @@ class EmbeddingStage:
         return repo.get_embedding(track_id, self.version) is not None
 
     def run(self, repo: CatalogRepository, track_id: int, audio: Audio) -> None:
-        clip = load_audio(
-            audio, sr=self.embedder.sample_rate, mono=True, max_seconds=self._max_seconds
-        )
-        vector = embed_track(self.embedder, clip.samples, clip.sr)
-        repo.set_embedding(track_id, self.version, vector)
+        embedded = embed_audio_source(self.embedder, audio, max_seconds=self._max_seconds)
+        repo.set_embedding(track_id, self.version, embedded.vector)
 
 
 # --------------------------------------------------------------------------------------

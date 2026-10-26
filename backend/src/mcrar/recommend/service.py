@@ -5,8 +5,11 @@ Flow of one search
    filters, soft preferences and the text to embed.
 2. ``filter_track_ids`` applies the hard filters in SQL.
 3. With text: embed it and take the ``pool_size`` nearest filtered tracks from the in-memory
-   index. Without text: take the filtered tracks themselves (only the ``pool_size`` safest-licensed,
-   unless a preference can rank them all).
+   index. With a reference song (M10: a catalog track or an uploaded file, already embedded) do
+   the same with its audio embedding; with both, the pool is the union of the two top lists and
+   every pool track gets both cosines. The reference track itself is left out. Without text and
+   reference: take the filtered tracks themselves (only the ``pool_size`` safest-licensed, unless
+   a preference can rank them all).
 4. Rank the pool (:mod:`mcrar.recommend.rank`), cap the tracks per artist, page, explain.
 5. If fewer than ``search.min_results`` results remain, relax one hard filter at a time and
    search again: the duration bounds, then the BPM range (it becomes a soft target), then the
@@ -24,18 +27,25 @@ import threading
 import time
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
 from mcrar.catalog import NumpyVectorIndex, StoredTrack
 from mcrar.licensing import RISK_ORDER
-from mcrar.recommend.explain import explain
+from mcrar.recommend.explain import REFERENCE_BANDS, explain
 from mcrar.recommend.parser import QueryParser, RuleParser
-from mcrar.recommend.query import ParsedQuery, SearchFilters, SearchRequest
+from mcrar.recommend.query import ParsedQuery, ReferenceQuery, SearchFilters, SearchRequest
 from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
-from mcrar.recommend.results import LLMUse, MatchQuality, SearchItem, SearchResult, TagScore
+from mcrar.recommend.results import (
+    LLMUse,
+    MatchQuality,
+    ReferenceInfo,
+    SearchItem,
+    SearchResult,
+    TagScore,
+)
 from mcrar.recommend.tags import (
     CompositeTagScorer,
     StandardisedTagScorer,
@@ -90,6 +100,14 @@ class _Outcome:
     top_sets: tuple[str, ...]
     unembedded: int
     top_cosine: float | None = None  # highest raw cosine of the ranked candidates (text only)
+    ref_cosines: dict[int, float] = field(default_factory=dict)  # raw, per pool track
+
+
+def _cosines(matrix: np.ndarray, vector: np.ndarray) -> list[float]:
+    """Cosine of each unit row of ``matrix`` with ``vector`` (normalised here)."""
+    unit = np.asarray(vector, dtype=np.float32)
+    unit = unit / np.linalg.norm(unit)
+    return [float(c) for c in matrix @ unit]
 
 
 # -- relaxation ---------------------------------------------------------------------------------
@@ -261,8 +279,9 @@ class SearchService:
         self._check_labels(parsed)
         min_results = self._settings.search.min_results
 
+        reference = request.reference
         attempt, relaxed = parsed, []
-        outcome = self._execute(attempt)
+        outcome = self._execute(attempt, reference)
         for relax in RELAXATIONS:
             if len(outcome.ranked) >= min_results:
                 break
@@ -271,18 +290,19 @@ class SearchService:
                 continue
             attempt, note = step
             relaxed.append(note)
-            outcome = self._execute(attempt)
+            outcome = self._execute(attempt, reference)
 
         notes: list[str] = []
         if outcome.unembedded:
+            by = "text search" if parsed.semantic_text or reference is None else "reference search"
             notes.append(
                 f"{outcome.unembedded} matching track(s) have no {self.model_id} embedding, so "
-                "text search cannot find them; run: mcrar embed"
+                f"{by} cannot find them; run: mcrar embed"
             )
         if not outcome.ranked:
             notes.append(_empty_note(attempt.filters))
         page = outcome.ranked[request.offset : request.offset + request.limit]
-        items = [self._item(r, outcome, attempt, request.explain) for r in page]
+        items = [self._item(r, outcome, attempt, request.explain, reference) for r in page]
         return SearchResult(
             items=items,
             total_candidates=len(outcome.ranked),
@@ -294,7 +314,31 @@ class SearchService:
             notes=notes,
             match=self._match(attempt, outcome),
             llm=llm_use,
+            reference=None
+            if reference is None
+            else ReferenceInfo(
+                reference.kind, reference.track_id, reference.label, reference.weight
+            ),
         )
+
+    def reference_for_track(self, track_id: int, weight: float = 0.5) -> ReferenceQuery:
+        """A catalog track as the reference song of a search, with its stored embedding.
+
+        Raises ``LookupError`` for an unknown track and :class:`SearchError` for a track that has
+        no embedding yet for the model searched. ``weight`` is the reference's share (0 to 1)."""
+        track = self._repo.get_track(track_id)
+        if track is None:
+            raise LookupError(f"no track with id {track_id}")
+        label = track.title or "(untitled)"
+        if track.artist:
+            label += f" — {track.artist}"
+        vector = self._repo.get_embedding(track_id, self.model_id)
+        if vector is None:
+            raise SearchError(
+                f'"{label}" has no {self.model_id} embedding yet, so it cannot be a reference '
+                'song; use "Re-embed missing tracks" in Settings, or run: mcrar embed'
+            )
+        return ReferenceQuery(vector, label, "track", track_id, weight)
 
     def _parse(self, request: SearchRequest) -> tuple[ParsedQuery, LLMUse | None]:
         """Parse with the parser's ``parse_with_info`` when it has one (the LLM parser: what it
@@ -314,10 +358,14 @@ class SearchService:
         configured = self._settings.search.weak_cosine
         if configured is not None:
             return configured
+        key = self._embedder_key()
+        return WEAK_COSINE_DEFAULTS.get(key) if key is not None else None
+
+    def _embedder_key(self) -> str | None:
+        """The registry key (``clap``, ...) of the model this service searches with, if known."""
         from mcrar.ml import MODELS
 
-        key = next((k for k, spec in MODELS.items() if spec.model_id == self.model_id), None)
-        return WEAK_COSINE_DEFAULTS.get(key) if key is not None else None
+        return next((k for k, spec in MODELS.items() if spec.model_id == self.model_id), None)
 
     def _match(self, attempt: ParsedQuery, outcome: _Outcome) -> MatchQuality:
         if not attempt.semantic_text:
@@ -342,7 +390,7 @@ class SearchService:
             return self._tags_with_text
         return self._ranked_tags
 
-    def _execute(self, q: ParsedQuery) -> _Outcome:
+    def _execute(self, q: ParsedQuery, reference: ReferenceQuery | None = None) -> _Outcome:
         f, prefs = q.filters, q.preferences
         cfg = self._settings.search
         ids = self._repo.filter_track_ids(
@@ -359,14 +407,38 @@ class SearchService:
 
         requested = q.requested_labels()
         cosines: dict[int, float] = {}
-        if q.semantic_text:
-            vector = self._embed_query(q.semantic_text)
-            try:
-                hits = index.search(vector, k=cfg.pool_size, allowed_ids=ids)
-            except ValueError as exc:
-                raise SearchError(f"the query embedding does not fit the index: {exc}") from None
-            cosines = dict(hits)
-            pool = [track_id for track_id, _ in hits]
+        ref_cosines: dict[int, float] = {}
+        if q.semantic_text or reference is not None:
+            # the reference track is not its own best match
+            allowed = [i for i in ids if reference is None or i != reference.track_id]
+            text_vector = self._embed_query(q.semantic_text) if q.semantic_text else None
+            text_hits: list[tuple[int, float]] = []
+            ref_hits: list[tuple[int, float]] = []
+            if text_vector is not None:
+                try:
+                    text_hits = index.search(text_vector, k=cfg.pool_size, allowed_ids=allowed)
+                except ValueError as exc:
+                    raise SearchError(
+                        f"the query embedding does not fit the index: {exc}"
+                    ) from None
+            if reference is not None:
+                try:
+                    ref_hits = index.search(reference.vector, k=cfg.pool_size, allowed_ids=allowed)
+                except ValueError as exc:
+                    raise SearchError(
+                        f"the reference song's embedding does not fit the index: {exc}"
+                    ) from None
+            pool = list(dict.fromkeys(track_id for track_id, _ in (*text_hits, *ref_hits)))
+            if text_vector is not None and reference is not None:
+                # Both lists feed the pool, so every pool track needs both cosines.
+                if pool:
+                    _, matrix = index.vectors(pool)  # every pool track is indexed
+                    cosines = dict(zip(pool, _cosines(matrix, text_vector), strict=True))
+                    ref_cosines = dict(zip(pool, _cosines(matrix, reference.vector), strict=True))
+            elif text_vector is not None:
+                cosines = dict(text_hits)
+            else:
+                ref_cosines = dict(ref_hits)
         else:
             # Without text only preferences can tell tracks apart; then rank them all.
             has_preference = bool(requested) or prefs.bpm_target is not None
@@ -403,6 +475,7 @@ class SearchService:
                     artist=tracks[track_id].artist,
                     risk=tracks[track_id].risk,
                     cosine=cosines.get(track_id),
+                    ref_cosine=ref_cosines.get(track_id),
                     bpm=feats.get("bpm"),
                     bpm_confidence=feats.get("bpm_confidence"),
                     energy=feats.get("energy"),
@@ -414,6 +487,8 @@ class SearchService:
             weights=cfg.weights,
             semantic=bool(q.semantic_text),
             tags=bool(requested),
+            reference=reference is not None,
+            reference_weight=reference.weight if reference is not None else 0.5,
             bpm_target=prefs.bpm_target,
             energy_target=prefs.energy_target,
             max_per_artist=cfg.max_per_artist,
@@ -429,9 +504,17 @@ class SearchService:
             top_cosine=max((float(cosines[r.track_id]) for r in ranked), default=None)
             if q.semantic_text
             else None,
+            ref_cosines=ref_cosines,
         )
 
-    def _item(self, ranked: Ranked, outcome: _Outcome, q: ParsedQuery, with_explanation: bool):
+    def _item(
+        self,
+        ranked: Ranked,
+        outcome: _Outcome,
+        q: ParsedQuery,
+        with_explanation: bool,
+        reference: ReferenceQuery | None = None,
+    ):
         track = outcome.tracks[ranked.track_id]
         feats = outcome.features.get(ranked.track_id) or {}
         i = outcome.pool_index[ranked.track_id]
@@ -445,6 +528,10 @@ class SearchService:
             (label, float(outcome.tag_arrays[(label_set, label)][i]))
             for label_set, label in q.requested_labels()
         ]
+        similar = None
+        if reference is not None and ranked.track_id in outcome.ref_cosines:
+            similar = (reference.label, outcome.ref_cosines[ranked.track_id])
+        bands = REFERENCE_BANDS.get(self._embedder_key() or "") if similar else None
         return SearchItem(
             track_id=track.id,
             title=track.title,
@@ -466,6 +553,8 @@ class SearchService:
             score=ranked.score,
             breakdown=ranked.breakdown.to_dict(),
             explanation=(
-                explain(track, feats, ranked.breakdown, q, asked) if with_explanation else None
+                explain(track, feats, ranked.breakdown, q, asked, similar, bands)
+                if with_explanation
+                else None
             ),
         )

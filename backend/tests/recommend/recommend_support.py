@@ -336,6 +336,40 @@ class MapEmbedder:
         self.closed = True
 
 
+def axis_freq(name: str) -> float:
+    """The tone frequency (Hz) that :class:`ToneEmbedder` maps to the concept axis ``name``."""
+    return 300.0 * (AXES[name] + 1)
+
+
+class ToneEmbedder(MapEmbedder):
+    """A ``MapEmbedder`` whose ``embed_audio`` maps a pure tone to a concept axis (the loudest
+    frequency, see :func:`axis_freq`), so an uploaded tone stands for "a song of that concept"."""
+
+    def embed_audio(self, clips: Sequence[np.ndarray]) -> np.ndarray:
+        rows = []
+        for clip in clips:
+            peak = int(np.argmax(np.abs(np.fft.rfft(np.asarray(clip, dtype=np.float32)))))
+            freq = peak * self.sample_rate / len(clip)
+            rows.append(axis_by_index(round(freq / 300.0) - 1))
+        return np.stack(rows).astype(np.float32)
+
+
+def axis_by_index(i: int) -> np.ndarray:
+    v = np.zeros(DIM, dtype=np.float32)
+    v[min(max(i, 0), DIM - 1)] = 1.0
+    return v
+
+
+def tone_wav_bytes(name: str, seconds: float = 3.0, sr: int = 22050) -> bytes:
+    """A WAV of a sine at :func:`axis_freq` of the axis ``name``."""
+    t = np.arange(round(seconds * sr)) / sr
+    buf = io.BytesIO()
+    sf.write(
+        buf, (0.5 * np.sin(2 * np.pi * axis_freq(name) * t)).astype(np.float32), sr, format="WAV"
+    )
+    return buf.getvalue()
+
+
 QUERY_TEXTS = {
     "tense stealth level": axis("stealth"),
     "happy upbeat tune": axis("happy"),

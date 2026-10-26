@@ -16,6 +16,20 @@ export const searchStrings = {
     ],
     needInput: 'Describe the music you need, or pick at least one filter.',
   },
+  reference: {
+    group: 'Reference song',
+    upload: 'Upload a song',
+    uploadHint: 'to find tracks that sound like it. "Find similar" on any result works too.',
+    uploading: 'Uploading song',
+    chip: (label: string) => `Sounds like: ${label}`,
+    remove: 'Remove reference song',
+    uploadFailed: "Couldn't use this song",
+    expired: 'The reference song is gone',
+    weight: 'Text ↔ Reference song',
+    weightText: 'Text',
+    weightReference: 'Reference song',
+    weightValue: (percent: number) => `${100 - percent}% text, ${percent}% reference song`,
+  },
   filters: {
     heading: 'Filters',
     toggle: 'Filters',
@@ -54,6 +68,7 @@ export const searchStrings = {
     heading: 'Results',
     summary: (shown: number, total: number) =>
       `${shown} ${shown === 1 ? 'result' : 'results'} of ${total} ${total === 1 ? 'candidate' : 'candidates'}`,
+    similarTo: (label: string) => `Similar to ${label}`,
     elapsed: (ms: number) => (ms >= 1000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms)} ms`),
     relaxed: (what: string) => `No exact matches, so we relaxed: ${what}`,
     unembedded: (count: number) =>
@@ -120,6 +135,8 @@ export const searchStrings = {
     tag: (display: string, percent: number) => `${display} ${percent}%`,
     isNew: 'New',
     newHint: 'Added from Jamendo for this search',
+    findSimilar: 'Find similar',
+    findSimilarTo: (title: string) => `Find similar to ${title}`,
     why: 'Why this result',
     llmPrefix: 'LLM:',
     download: 'Download',
