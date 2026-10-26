@@ -17,6 +17,8 @@ EXPECTED_TABLES = {
     "projects",
     "shortlist_items",
     "ratings",
+    "scene_labels",
+    "label_pool",
 }
 
 

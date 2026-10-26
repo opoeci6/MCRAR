@@ -285,6 +285,10 @@ class _Run:
             if stage not in item.needs:
                 self._log(item, stage, "skipped", UP_TO_DATE)
         if not item.needs:
+            if not self.stages:  # a metadata-only run: storing the metadata was the work
+                self.processed += 1
+                self.emit("track_done", item.title, f"metadata only ({item.risk})")
+                return
             self.skipped += 1
             self.emit("track_skipped", item.title, UP_TO_DATE)
             return
@@ -470,6 +474,37 @@ def ingest_jamendo(
             if any(needs_audio(s) for s in item.needs):
                 _start_fetch(executor, client, item, src)
             yield item
+
+    aborted, error = _drive(run, executor, make_items)
+    return _finish(run, aborted, error)
+
+
+def ingest_jamendo_ids(
+    client: Any,
+    repo: CatalogRepository,
+    ids: Sequence[str | int],
+    *,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the Jamendo tracks with these ids (looked up with ``client.get_tracks``).
+
+    ``stages=[]`` stores the metadata and licence only: no audio is fetched (labelling a track
+    only needs it to stream). Ids Jamendo no longer knows are simply not seen. Failures, aborts
+    and Ctrl+C behave as in :func:`ingest_jamendo`.
+    """
+    wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))
+    run = _Run("jamendo", repo, _default_stages(stages), force, len(wanted), on_progress)
+    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
+
+    def make_items() -> Iterator[_Prepared]:
+        for start in range(0, len(wanted), REFRESH_BATCH):
+            for src in client.get_tracks(wanted[start : start + REFRESH_BATCH]):
+                item = run.prepare(src, parse_license(src.license_url))
+                if any(needs_audio(s) for s in item.needs):
+                    _start_fetch(executor, client, item, src)
+                yield item
 
     aborted, error = _drive(run, executor, make_items)
     return _finish(run, aborted, error)

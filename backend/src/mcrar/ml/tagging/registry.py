@@ -1,7 +1,9 @@
 """Validate content-addressed artifacts and select the best test-split entry.
 
 An entry may carry ``metrics: null`` (not evaluated yet); such an entry is selected only when its
-label set has no evaluated one.
+label set has no evaluated one. The ``scene`` set has no test split: its entries may instead be
+scored by cross-validation on hand labels (``split: "hand-labels-cv"``, primary
+``mean_p_at_10``), which :func:`select_entry` prefers over everything else.
 """
 
 from __future__ import annotations
@@ -25,29 +27,80 @@ def entry_id(label_set: str, variant: str, path: Path) -> str:
     return f"{label_set}-{variant}@{digest(path)[:7]}"
 
 
-def select_entry(label_set: dict) -> dict | None:
-    """The entry with the best finite test-split primary metric (ties: the larger id).
+# The scene set has no labelled dataset: its entries are scored on the owner's hand labels by
+# cross-validation (mean precision@10 over the scenes with enough positives).
+HAND_LABELS_SPLIT = "hand-labels-cv"
+HAND_LABELS_PRIMARY = "mean_p_at_10"
+HAND_LABELS_SETS = ("scene",)
 
-    Entries without metrics (``metrics: null``, e.g. the zero-shot scene tagger, which has no
-    labelled data to score it on) only count when no entry has any: then the newest of them wins
-    (by ``created_at``, then id).
+
+def _finite(metrics: dict, key: str) -> bool:
+    return isinstance(metrics.get(key), (int, float)) and math.isfinite(metrics[key])
+
+
+def _hand_label_rank(entry: dict) -> tuple[bool, float]:
+    """Preference among equal scores, larger is better: a zero-shot entry before a trained head
+    (the simpler model), and among zero-shot entries the lower centering."""
+    return entry["method"] == "zeroshot", -float(entry.get("centering", 0.0))
+
+
+def select_entry(label_set: dict) -> dict | None:
+    """The entry with the best finite primary metric.
+
+    Entries scored on hand labels (``split == "hand-labels-cv"``, the ``scene`` set only) come
+    first: the best ``mean_p_at_10`` wins, ties go to the simpler entry (zero-shot before head,
+    then the lower ``centering``, then the larger id). Otherwise the best test-split primary
+    metric wins (ties: the larger id).
+
+    Entries without metrics (``metrics: null``, e.g. the zero-shot scene taggers before any
+    labels exist) only count when no entry has any: then an entry marked ``"prefer": true`` wins,
+    else the newest (by ``created_at``, then id).
     """
     metric = PRIMARY[label_set["kind"]]
+    hand = [
+        e
+        for e in label_set["entries"]
+        if (m := e["metrics"]) is not None
+        and m.get("split") == HAND_LABELS_SPLIT
+        and m.get("primary") == HAND_LABELS_PRIMARY
+        and _finite(m, HAND_LABELS_PRIMARY)
+    ]
+    if hand:
+        return max(
+            hand, key=lambda e: (e["metrics"][HAND_LABELS_PRIMARY], *_hand_label_rank(e), e["id"])
+        )
     candidates = [
         e
         for e in label_set["entries"]
         if (m := e["metrics"]) is not None
         and m.get("split") == "test"
         and m.get("primary") == metric
-        and isinstance(m.get(metric), (int, float))
-        and math.isfinite(m[metric])
+        and _finite(m, metric)
     ]
     if candidates:
         return max(candidates, key=lambda e: (e["metrics"][metric], e["id"]))
     unevaluated = [e for e in label_set["entries"] if e["metrics"] is None]
     return (
-        max(unevaluated, key=lambda e: (e.get("created_at", ""), e["id"])) if unevaluated else None
+        max(unevaluated, key=lambda e: (bool(e.get("prefer")), e.get("created_at", ""), e["id"]))
+        if unevaluated
+        else None
     )
+
+
+def _check_metrics(name: str, primary: str, m: object) -> None:
+    """Metrics must be test-split ones with a finite primary; the scene set may instead carry
+    cross-validated hand-label metrics (no other set may use that split)."""
+    if isinstance(m, dict) and name in HAND_LABELS_SETS and m.get("split") == HAND_LABELS_SPLIT:
+        primary = HAND_LABELS_PRIMARY
+        if m.get("primary") != primary:
+            raise ValueError(f"hand-label metrics need the {primary} primary")
+    elif not isinstance(m, dict) or m.get("split") != "test" or m.get("primary") != primary:
+        raise ValueError(
+            "selection requires test-split metrics"
+            + (" (or hand-labels-cv metrics)" if name in HAND_LABELS_SETS else "")
+        )
+    if not _finite(m, primary):
+        raise ValueError("primary metric must be finite")
 
 
 def validate_registry(registry: dict, models: Path | None = None) -> None:
@@ -101,14 +154,7 @@ def validate_registry(registry: dict, models: Path | None = None) -> None:
             m = entry["metrics"]
             primary = PRIMARY[spec["kind"]]
             if m is not None:  # null: not evaluated (no labelled data yet)
-                if (
-                    not isinstance(m, dict)
-                    or m.get("split") != "test"
-                    or m.get("primary") != primary
-                ):
-                    raise ValueError("selection requires test-split metrics")
-                if not isinstance(m.get(primary), (int, float)) or not math.isfinite(m[primary]):
-                    raise ValueError("primary metric must be finite")
+                _check_metrics(name, primary, m)
             if entry["commercial_ok"] and (
                 name in {"valence", "arousal"}
                 or (

@@ -19,7 +19,7 @@ from mcrar.config import get_settings
 from mcrar.ml.tagging import TaggingStage, load_taggers, select_entry, tagging_stages
 from mcrar.ml.tagging.registry import _NON_COMMERCIAL, read_registry, validate_registry
 from mcrar.ml.tagging.runtime import load_tagger
-from mcrar.ml.tagging.scenes import MIN_REFERENCE, build_scene_entry
+from mcrar.ml.tagging.scenes import MIN_REFERENCE, build_scene_entries
 from mcrar.recommend.tags import allowed_tag_versions
 from mcrar.recommend.vocab import DEFAULT_SCENE_DISPLAY, DEFAULT_SCENES
 
@@ -29,6 +29,11 @@ MODEL = "clap@195c3a3"
 
 def clap() -> FakeEmbedder:
     return FakeEmbedder("clap", revision="195c3a3", dim=512)
+
+
+def build_scene_entry(settings, embedder, repo, **kwargs) -> dict:  # noqa: ANN001, ANN003
+    """Build both variants and return the selected one (the centered entry)."""
+    return build_scene_entries(settings, embedder, repo, **kwargs)[1]
 
 
 def fill_catalog(repo: CatalogRepository, n: int, seed: int = 0) -> np.ndarray:
@@ -111,32 +116,37 @@ def test_build_writes_a_content_addressed_artifact_and_registers_it() -> None:
     with open_catalog(settings) as repo:
         reference = fill_catalog(repo, 60)
         embedder = clap()
-        built = build_scene_entry(settings, embedder, repo)
-    assert re.fullmatch(r"scene-zeroshot-catalog@[0-9a-f]{7}", built["id"])
-    assert (settings.models_dir / built["file"]).is_file()
-    assert (built["method"], built["variant"], built["metrics"]) == (
-        "zeroshot",
-        "zeroshot-catalog",
-        None,
-    )
-    assert built["commercial_ok"] is True and built["seed"] == 0
-    assert built["reference_data"] == "catalog@60 tracks"
-    assert "NC" not in built["data_license"].upper() and built["created_at"].endswith("Z")
+        plain, built = build_scene_entries(settings, embedder, repo)
+    assert re.fullmatch(r"scene-zeroshot-catalog@[0-9a-f]{7}", plain["id"])
+    assert re.fullmatch(r"scene-zeroshot-catalog-centered@[0-9a-f]{7}", built["id"])
+    assert (plain["centering"], built["centering"]) == (0.0, 0.75)
+    assert built["prefer"] is True and "prefer" not in plain
+    for entry, variant in ((plain, "zeroshot-catalog"), (built, "zeroshot-catalog-centered")):
+        assert (settings.models_dir / entry["file"]).is_file()
+        assert (entry["method"], entry["variant"], entry["metrics"]) == ("zeroshot", variant, None)
+        assert entry["commercial_ok"] is True and entry["seed"] == 0
+        assert entry["reference_data"] == "catalog@60 tracks"
+        assert "NC" not in entry["data_license"].upper() and entry["created_at"].endswith("Z")
     assert not embedder.closed  # the caller owns the embedder
 
     registry = read_registry(settings)
     spec = registry["label_sets"]["scene"]
     assert (spec["kind"], spec["labels"]) == ("multi_label", list(DEFAULT_SCENES))
     assert spec["display"] == DEFAULT_SCENE_DISPLAY
-    assert [e["id"] for e in spec["entries"]] == [built["id"]]
-    assert registry["selected"]["scene"] == built["id"]
+    assert [e["id"] for e in spec["entries"]] == [plain["id"], built["id"]]
+    assert registry["selected"]["scene"] == built["id"]  # the centered one, before any labels
 
     tagger = load_tagger(settings.models_dir / built["file"], built["id"])
     assert (tagger.label_set, tagger.method, tagger.labels) == ("scene", "zeroshot", DEFAULT_SCENES)
-    scores = reference @ tagger.arrays["text_vectors"].T
+    scores = reference @ tagger.arrays["text_vectors"].T  # the stored (centered) vectors
     np.testing.assert_allclose(tagger.arrays["reference_mean"], scores.mean(axis=0), atol=1e-6)
     np.testing.assert_allclose(tagger.arrays["reference_std"], scores.std(axis=0), rtol=1e-4)
     assert np.isfinite(tagger.arrays["text_vectors"]).all()
+    # centering: t' = t - 0.75 * mean of the label vectors, and the plain entry keeps t
+    flat = load_tagger(settings.models_dir / plain["file"], plain["id"]).arrays["text_vectors"]
+    np.testing.assert_allclose(
+        tagger.arrays["text_vectors"], flat - 0.75 * flat.mean(axis=0), atol=1e-6
+    )
     # the prompts of prompts/scene.toml, embedded with the fake: three templates per synonym
     texts = tagger.arrays["prompt_texts"].tolist()
     assert "video game music for an epic boss fight" in texts
@@ -160,15 +170,27 @@ def test_building_again_replaces_the_entry_and_is_deterministic() -> None:
     settings = get_settings()
     with open_catalog(settings) as repo:
         fill_catalog(repo, 60)
-        first = build_scene_entry(settings, clap(), repo)
-        again = build_scene_entry(settings, clap(), repo)
-        assert again["id"] == first["id"]  # same catalog, same prompts: same artifact
+        first = build_scene_entries(settings, clap(), repo)
+        again = build_scene_entries(settings, clap(), repo)
+        assert [e["id"] for e in again] == [e["id"] for e in first]  # same artifacts
         fill_catalog(repo, 70, seed=0)  # ten more tracks (the first 60 keep their vectors)
-        grown = build_scene_entry(settings, clap(), repo)
-    assert grown["id"] != first["id"] and grown["reference_data"] == "catalog@70 tracks"
+        grown = build_scene_entries(settings, clap(), repo)
+    assert {e["id"] for e in grown}.isdisjoint(e["id"] for e in first)
+    assert all(e["reference_data"] == "catalog@70 tracks" for e in grown)
     registry = read_registry(settings)
-    assert [e["id"] for e in registry["label_sets"]["scene"]["entries"]] == [grown["id"]]
-    assert registry["selected"]["scene"] == grown["id"]
+    assert [e["id"] for e in registry["label_sets"]["scene"]["entries"]] == [e["id"] for e in grown]
+    assert registry["selected"]["scene"] == grown[1]["id"]
+
+
+def test_the_preferred_unevaluated_entry_wins_whatever_the_timestamps() -> None:
+    old_but_preferred = {**entry("a", "2026-01-01", None), "prefer": True}
+    newer = entry("z", "2026-09-01", None)
+    spec = {"kind": "multi_label", "entries": [newer, old_but_preferred]}
+    assert select_entry(spec)["id"] == "a"
+    spec["entries"][1] = entry(
+        "b", "2026-09-01", {"split": "test", "primary": "macro_pr_auc", "macro_pr_auc": 0.1}
+    )
+    assert select_entry(spec)["id"] == "b"  # an evaluated entry still beats a preferred one
 
 
 def test_the_models_dir_can_be_overridden(tmp_path) -> None:  # noqa: ANN001
@@ -189,7 +211,7 @@ def test_a_catalog_that_is_too_small_is_refused() -> None:
         with pytest.raises(
             ValueError, match=rf"has {MIN_REFERENCE - 1} {MODEL} embeddings.*at least"
         ):
-            build_scene_entry(settings, embedder, repo)
+            build_scene_entries(settings, embedder, repo)
     assert not (settings.models_dir / "registry.json").exists()
     assert embedder.text_calls == []  # it failed before embedding any prompt
 
@@ -255,7 +277,9 @@ def test_scenes_build_cli_registers_the_entry_and_points_at_tag(loader: Loader) 
     result = runner.invoke(app, ["scenes", "build"])
     assert result.exit_code == 0, result.output
     built = read_registry(settings)["selected"]["scene"]
-    assert f"Built and selected {built}" in result.output
+    assert (
+        f"Selected: {built}" in result.output and "Built scene-zeroshot-catalog@" in result.output
+    )
     assert "mcrar tag --label-sets scene" in result.output
     assert loader.calls == ["clap"] and loader.embedder.closed
 
@@ -296,9 +320,9 @@ def test_tagging_evaluate_and_select_cope_with_an_unevaluated_scene_set(loader: 
     assert evaluated.exit_code == 0, evaluated.output
     assert read_registry(settings)["label_sets"]["scene"]["entries"][0]["metrics"] is None
     selected = runner.invoke(app, ["tagging", "select"])
-    assert selected.exit_code == 0 and "scene: scene-zeroshot-catalog@" in selected.output
+    assert selected.exit_code == 0 and "scene: scene-zeroshot-catalog-centered@" in selected.output
     on_disk = json.loads((settings.models_dir / "registry.json").read_text(encoding="utf-8"))
-    assert on_disk["selected"]["scene"].startswith("scene-zeroshot-catalog@")
+    assert on_disk["selected"]["scene"].startswith("scene-zeroshot-catalog-centered@")
 
 
 @pytest.mark.parametrize(

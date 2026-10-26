@@ -146,6 +146,110 @@ class Rating:
 RATING_VALUES = (0, 1, 2)
 _RATING_COLUMNS = "query_key, query_text, filters_json, track_id, rating, created_at, updated_at"
 
+
+@dataclass(frozen=True)
+class SceneLabel:
+    """One person's hand label of one track (M9).
+
+    ``scenes`` are scene ids; status ``labelled`` with no scenes means "no scene fits". A
+    ``skipped`` label has no scenes and no intensity. ``intensity`` is ``low``, ``mid``, ``high``
+    or None (not given).
+    """
+
+    track_id: int
+    labeller: str
+    scenes: tuple[str, ...]
+    intensity: str | None
+    status: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class PoolEntry:
+    """One track of the labelling pool: its place in the order, why it is there and which part
+    of the pool it belongs to (``A``, ``B`` or ``both``: labelled by both people)."""
+
+    track_id: int
+    position: int
+    reason: str
+    part: str
+
+
+SCENE_INTENSITIES = ("low", "mid", "high")
+LABEL_STATUSES = ("labelled", "skipped")
+POOL_PARTS = ("A", "B", "both")
+LABELLER_MAX_CHARS = 40
+# which pool parts a labeller who works on one part sees (A and B each also cover ``both``)
+_PART_FILTERS: dict[str, tuple[str, ...]] = {
+    "all": POOL_PARTS,
+    "A": ("A", "both"),
+    "B": ("B", "both"),
+    "both": ("both",),
+}
+_LABEL_COLUMNS = "track_id, labeller, scenes_json, intensity, status, created_at, updated_at"
+
+
+def clean_labeller(name: object) -> str:
+    """The labeller name trimmed; 1 to 40 characters without control characters."""
+    if not isinstance(name, str):
+        raise ValueError("labeller must be text")
+    cleaned = name.strip()
+    if not cleaned or len(cleaned) > LABELLER_MAX_CHARS:
+        raise ValueError(f"labeller must be 1 to {LABELLER_MAX_CHARS} characters")
+    if any(ord(c) < 32 or ord(c) == 127 for c in cleaned):
+        raise ValueError("labeller must not contain control characters")
+    return cleaned
+
+
+def normalise_time(text: str) -> str:
+    """An ISO 8601 time as the catalog stores times (UTC, microseconds); ``ValueError`` if it
+    is not one. A time without an offset is taken as UTC."""
+    return _iso(_parse_time(text))
+
+
+def _parse_time(text: str) -> datetime:
+    """An ISO 8601 time; one without an offset is taken as UTC."""
+    moment = datetime.fromisoformat(text)
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def _scene_label(row: sqlite3.Row) -> SceneLabel:
+    return SceneLabel(
+        track_id=int(row["track_id"]),
+        labeller=row["labeller"],
+        scenes=tuple(json.loads(row["scenes_json"])),
+        intensity=row["intensity"],
+        status=row["status"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _label_fields(
+    labeller: object, scenes: Iterable[str], intensity: str | None, status: str
+) -> tuple[str, list[str], str | None]:
+    """Check one label's fields; a skipped label keeps no scenes and no intensity."""
+    name = clean_labeller(labeller)
+    if status not in LABEL_STATUSES:
+        raise ValueError(f"status must be one of {LABEL_STATUSES}, got {status!r}")
+    if intensity is not None and intensity not in SCENE_INTENSITIES:
+        raise ValueError(f"intensity must be one of {SCENE_INTENSITIES} or None, got {intensity!r}")
+    listed = list(scenes)
+    if any(not isinstance(s, str) or not s for s in listed):
+        raise ValueError("scenes must be non-empty ids")
+    if status == "skipped":
+        return name, [], None
+    return name, list(dict.fromkeys(listed)), intensity
+
+
+def _part_values(part: str | None) -> tuple[str, ...]:
+    values = _PART_FILTERS.get("all" if part is None else part)
+    if values is None:
+        raise ValueError(f"part must be one of {tuple(_PART_FILTERS)}, got {part!r}")
+    return values
+
+
 _TRACK_FIELDS = tuple(f.name for f in fields(TrackRecord))
 _BOOL_FIELDS = frozenset(
     {
@@ -909,3 +1013,176 @@ class CatalogRepository:
             )
             entry[3] += 1
         return [(k, text, filters, count) for k, text, filters, count in out.values()]
+
+    # -- scene labels and the labelling pool (M9) ---------------------------------------------
+
+    def _put_scene_label(
+        self,
+        conn: sqlite3.Connection,
+        track_id: int,
+        fields_: tuple[str, list[str], str | None],
+        status: str,
+        *,
+        created_at: str,
+        updated_at: str,
+    ) -> None:
+        name, scenes, intensity = fields_
+        conn.execute(
+            f"INSERT INTO scene_labels ({_LABEL_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (track_id, labeller) DO UPDATE SET "
+            "scenes_json = excluded.scenes_json, intensity = excluded.intensity, "
+            "status = excluded.status, updated_at = excluded.updated_at",
+            (
+                track_id,
+                name,
+                json.dumps(scenes, ensure_ascii=False),
+                intensity,
+                status,
+                created_at,
+                updated_at,
+            ),
+        )
+
+    def set_scene_label(
+        self,
+        track_id: int,
+        labeller: str,
+        scenes: Iterable[str],
+        intensity: str | None,
+        status: str,
+    ) -> SceneLabel:
+        """Store a labeller's label of a track; labelling again replaces it (``created_at`` stays).
+
+        The scene ids are not checked against the vocabulary here (see
+        :func:`mcrar.ml.tagging.scene_labels.check_scenes`). A ``skipped`` label drops its scenes
+        and intensity.
+        """
+        fields_ = _label_fields(labeller, scenes, intensity, status)
+        now = self._now()
+        with self._write() as conn:
+            self._require_track(conn, track_id)
+            self._put_scene_label(conn, track_id, fields_, status, created_at=now, updated_at=now)
+            row = conn.execute(
+                f"SELECT {_LABEL_COLUMNS} FROM scene_labels WHERE track_id = ? AND labeller = ?",
+                (track_id, fields_[0]),
+            ).fetchone()
+        return _scene_label(row)
+
+    def merge_scene_label(
+        self,
+        track_id: int,
+        labeller: str,
+        scenes: Iterable[str],
+        intensity: str | None,
+        status: str,
+        updated_at: str,
+    ) -> bool:
+        """Store an imported label unless a newer (or equally new) one exists. True if stored.
+
+        ``updated_at`` is the time the label was made (ISO 8601); it is kept as the row's time.
+        """
+        fields_ = _label_fields(labeller, scenes, intensity, status)
+        stamp = _iso(_parse_time(updated_at))
+        with self._write() as conn:
+            self._require_track(conn, track_id)
+            row = conn.execute(
+                "SELECT created_at, updated_at FROM scene_labels "
+                "WHERE track_id = ? AND labeller = ?",
+                (track_id, fields_[0]),
+            ).fetchone()
+            if row is not None and _parse_time(row["updated_at"]) >= _parse_time(stamp):
+                return False
+            created = row["created_at"] if row is not None else stamp
+            self._put_scene_label(
+                conn, track_id, fields_, status, created_at=created, updated_at=stamp
+            )
+        return True
+
+    def get_scene_label(self, track_id: int, labeller: str) -> SceneLabel | None:
+        rows = self._query(
+            f"SELECT {_LABEL_COLUMNS} FROM scene_labels WHERE track_id = ? AND labeller = ?",
+            (track_id, clean_labeller(labeller)),
+        )
+        return _scene_label(rows[0]) if rows else None
+
+    def delete_scene_label(self, track_id: int, labeller: str) -> bool:
+        with self._write() as conn:
+            cur = conn.execute(
+                "DELETE FROM scene_labels WHERE track_id = ? AND labeller = ?",
+                (track_id, clean_labeller(labeller)),
+            )
+            return cur.rowcount > 0
+
+    def iter_scene_labels(self, labeller: str | None = None) -> list[SceneLabel]:
+        """Every scene label (of one labeller when given), ordered by track id then labeller."""
+        sql = f"SELECT {_LABEL_COLUMNS} FROM scene_labels"
+        params: tuple[Any, ...] = ()
+        if labeller is not None:
+            sql, params = sql + " WHERE labeller = ?", (clean_labeller(labeller),)
+        return [_scene_label(r) for r in self._query(sql + " ORDER BY track_id, labeller", params)]
+
+    def labellers(self) -> list[str]:
+        """The names that have labelled (or skipped) a track, alphabetically."""
+        rows = self._query("SELECT DISTINCT labeller FROM scene_labels ORDER BY labeller")
+        return [r["labeller"] for r in rows]
+
+    def replace_label_pool(self, entries: Iterable[PoolEntry]) -> int:
+        """Replace the whole pool; returns its size. Labels are per track and are not touched."""
+        rows = list(entries)
+        for entry in rows:
+            if entry.part not in POOL_PARTS:
+                raise ValueError(f"part must be one of {POOL_PARTS}, got {entry.part!r}")
+            if not entry.reason:
+                raise ValueError("a pool entry needs a reason")
+        with self._write() as conn:
+            for entry in rows:
+                self._require_track(conn, entry.track_id)
+            conn.execute("DELETE FROM label_pool")
+            conn.executemany(
+                "INSERT INTO label_pool (track_id, position, reason, part) VALUES (?, ?, ?, ?)",
+                [(e.track_id, e.position, e.reason, e.part) for e in rows],
+            )
+        return len(rows)
+
+    def label_pool(self, part: str | None = None) -> list[PoolEntry]:
+        """The pool in order. ``part`` ``A`` or ``B`` also includes the ``both`` tracks; ``None``
+        or ``all`` is the whole pool."""
+        values = _part_values(part)
+        rows = self._query(
+            "SELECT track_id, position, reason, part FROM label_pool "
+            f"WHERE part IN ({', '.join('?' * len(values))}) ORDER BY position",
+            values,
+        )
+        return [PoolEntry(int(r[0]), int(r[1]), r[2], r[3]) for r in rows]
+
+    def next_pool_track(
+        self, labeller: str, part: str | None = None, after_position: int | None = None
+    ) -> PoolEntry | None:
+        """The first pool track (in order, after ``after_position`` when given) of the part that
+        this labeller has not labelled or skipped yet; None when there is none."""
+        values = _part_values(part)
+        rows = self._query(
+            "SELECT p.track_id, p.position, p.reason, p.part FROM label_pool p "
+            f"WHERE p.part IN ({', '.join('?' * len(values))}) AND p.position > ? "
+            "AND NOT EXISTS (SELECT 1 FROM scene_labels l "
+            "WHERE l.track_id = p.track_id AND l.labeller = ?) "
+            "ORDER BY p.position LIMIT 1",
+            (*values, -1 if after_position is None else after_position, clean_labeller(labeller)),
+        )
+        return PoolEntry(int(rows[0][0]), int(rows[0][1]), rows[0][2], rows[0][3]) if rows else None
+
+    def label_progress(self, labeller: str) -> dict[str, dict[str, int]]:
+        """Per pool part (``A``, ``B``, ``both``): ``{total, labelled, skipped}`` for a labeller.
+
+        Only labels of pool tracks count."""
+        out = {p: {"total": 0, "labelled": 0, "skipped": 0} for p in POOL_PARTS}
+        rows = self._query(
+            "SELECT p.part, COUNT(*), "
+            "COALESCE(SUM(l.status = 'labelled'), 0), COALESCE(SUM(l.status = 'skipped'), 0) "
+            "FROM label_pool p LEFT JOIN scene_labels l "
+            "ON l.track_id = p.track_id AND l.labeller = ? GROUP BY p.part",
+            (clean_labeller(labeller),),
+        )
+        for part, total, labelled, skipped in rows:
+            out[part] = {"total": int(total), "labelled": int(labelled), "skipped": int(skipped)}
+        return out
