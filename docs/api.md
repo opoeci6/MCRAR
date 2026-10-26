@@ -24,8 +24,8 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 
 | Area | Routes |
 |---|---|
-| Meta | `GET /health`, `GET /vocab` (genre and mood labels for filters), `GET /stats` |
-| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods}, reference?{track_id \| upload_id}, reference_weight = 0.5, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, by default 0.40 for CLAP and MuQ-MuLan, none for GLAP; always null/false without text), and `reference: {kind: track\|upload, track_id, label, weight} \| null` (the reference song as used, never its vector); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
+| Meta | `GET /health`, `GET /vocab` (`{genre, moodtheme, scene}`: the labels for filters, each `{id, display, synonyms}`), `GET /stats` |
+| Search | `POST /search` `{text?, filters{max_risk, vocal, bpm_min/max, duration_min_s/max_s, sources, genres, moods, scenes, intensity: low\|mid\|high}, reference?{track_id \| upload_id}, reference_weight = 0.5, limit, offset, explain}` → results with a score breakdown, explanation and the stored `rating` (0–2 or null) for this query, plus `match: {top_cosine, weak}` (the raw text–audio cosine of the best hit, and whether it is below `search.weak_cosine`, by default 0.40 for CLAP and MuQ-MuLan, none for GLAP; always null/false without text), and `reference: {kind: track\|upload, track_id, label, weight} \| null` (the reference song as used, never its vector); `POST /search/import` `{text, filters, limit 1–100 = 50}` → 202 with an `ingest-query` job that searches Jamendo for the query and imports up to `limit` tracks not yet in the catalog (embedded with the default model and CLAP, then tagged) |
 | LLM (M7, optional; see `docs/llm.md`) | `GET /llm` → `{enabled, ready, preset, label, kind, model, reason, rerank_top_n}`, where `reason` is `disabled`, `missing_model`, `missing_key` or null. `POST /llm/test` `{preset?, model?, base_url?}` → always 200 with `{ok: true, model, elapsed_ms}` or `{ok: false, error}`; it tests unsaved values too. `POST /llm/models` `{preset?, base_url?}` → always 200 with `{ok: true, preset, models: [{id, label}], default_model}` (chat models only, sorted, needs the key but no model) or `{ok: false, error}`. `POST /search/rerank` takes the `/search` body (text required) → the same response shape, with the top `llm.rerank_top_n` results in the LLM's order, each item's `llm_rank` and `llm_explanation`, and `rerank: {model, verdict: good\|partial\|poor, summary, search_terms, elapsed_ms}`. It answers 503 when no LLM is ready and 502 when the LLM call fails, and 422 ("LLM rerank doesn't use a reference song yet.") when the body has a `reference`. Every `/search` response also has `parsed.source` (`rules`/`llm`), `parsed.search_terms` and `llm: {used, model, cached, error} \| null` |
 | Ratings | `PUT /ratings` `{text?, filters?, track_id, rating: 0\|1\|2}`; `DELETE /ratings` (same body without `rating`); `GET /ratings?limit&offset`. A rating is keyed by the lowercased query text, or by canonical filters for a filter-only search. |
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
@@ -61,6 +61,17 @@ Errors are JSON `{"detail": "..."}`:
   0.5 means "an average track for this label", and genre and mood scores share one scale. The
   raw stored probabilities are in `GET /tracks/{id}`. A genre/mood filter without text needs no
   `ml` extra when every matching track has stored tags from the allowed model.
+- **Game scenes (M9).** `scenes` take the ids, display names or synonyms of the 14 labels of
+  `GET /vocab`'s `scene` set (combat, boss, exploration, menu, town, puzzle, stealth, horror,
+  victory, defeat, credits, cutscene, chase, ambient); an unknown one is a 422. Like genres and
+  moods they are soft: they feed the `tags` term, and the parser also hints scenes from the text
+  (`parsed.preferences.scene_hints`, for example "boss fight" or "victory jingle"). Scene tags
+  come from a zero-shot model that `mcrar scenes build` creates from text prompts and the
+  catalog's own CLAP vectors, then `mcrar tag --label-sets scene` stores them; until a track has
+  them, its scene score is zero-shot on the fly (needs the `ml` extra). `intensity` sets the
+  energy target (`low` 0.25, `mid` 0.5, `high` 0.8) and wins over an energy word in the text
+  ("calm"); `scenes` and `intensity` are part of the filters a rating is keyed by (a
+  filter-only search).
 - **Search by a reference song.** `reference` is exactly one of `{track_id}` (a catalog track,
   which must have an embedding for the current model and is left out of its own results) or
   `{upload_id}` from `POST /reference`. A reference needs no text or filter, and a reference

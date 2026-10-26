@@ -28,6 +28,8 @@ def metric_tables(registry: dict) -> str:
             if name == "genre"
             else {"macro_roc_auc": "Macro ROC-AUC", "ece": "ECE"}
             if name == "moodtheme"
+            else {}
+            if name == "scene"  # zero-shot from prompts, not evaluated on labelled data
             else {"pearson_r": "Pearson r", "mae": "MAE"}
         )
         lines.extend(
@@ -40,6 +42,9 @@ def metric_tables(registry: dict) -> str:
         )
         for entry in spec["entries"]:
             metrics = entry["metrics"]
+            if metrics is None:
+                lines.append(f"| {entry['variant']} | — | not evaluated |" + " — |" * len(columns))
+                continue
             lines.append(
                 f"| {entry['variant']} | {metrics.get('n', '—')} | {_primary(metrics)} | "
                 + " | ".join(_number(metrics.get(k)) for k in columns)

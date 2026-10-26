@@ -57,6 +57,8 @@ class FiltersBody(BaseModel):
     sources: list[str] | None = None
     genres: list[str] = Field(default_factory=list)
     moods: list[str] = Field(default_factory=list)
+    scenes: list[str] = Field(default_factory=list)
+    intensity: Literal["low", "mid", "high"] | None = None
 
 
 class ReferenceBody(BaseModel):
@@ -93,6 +95,8 @@ def resolve_filters(f: FiltersBody, vocab: Vocabulary) -> SearchFilters:
         vocab,
         genres=f.genres,
         moods=f.moods,
+        scenes=f.scenes,
+        intensity=f.intensity,
         bpm=(f.bpm_min, f.bpm_max),
         duration=(f.duration_min_s, f.duration_max_s),
         max_risk=None if f.max_risk == "unknown" else f.max_risk,

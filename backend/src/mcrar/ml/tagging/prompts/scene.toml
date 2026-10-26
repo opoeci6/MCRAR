@@ -1,0 +1,23 @@
+# Zero-shot prompts for the game-scene labels (M9). Every synonym is a noun phrase that reads
+# naturally in every template. The ids and display names live in mcrar.recommend.vocab.
+templates = [
+  "video game music for {label}",
+  "{label} in a video game",
+  "a soundtrack for {label} in a game",
+]
+
+[labels]
+combat = ["an intense battle", "a fight against enemies", "action combat"]
+boss = ["an epic boss fight", "a final boss battle"]
+exploration = ["exploring an open world", "an adventure across the land"]
+menu = ["the main menu", "a title screen"]
+town = ["a peaceful town", "a village shop"]
+puzzle = ["solving a puzzle", "a calm puzzle level"]
+stealth = ["sneaking past guards", "a tense stealth mission"]
+horror = ["a horror scene", "a creepy haunted place"]
+victory = ["a victory fanfare", "winning the level"]
+defeat = ["the game over screen", "losing the battle"]
+credits = ["the end credits", "the closing credits"]
+cutscene = ["an emotional story cutscene", "a sad farewell"]
+chase = ["a frantic chase", "escaping from danger"]
+ambient = ["a quiet ambient atmosphere", "peaceful building and farming"]

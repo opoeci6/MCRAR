@@ -326,7 +326,10 @@ def test_not_configured_is_not_remembered() -> None:
     request = SearchRequest(text="stealth")
     parsed, use = parser.parse_with_info(request, VOCAB)
     assert use is not None and not use.used and "API key" in (use.error or "")
-    assert parsed.notes == ["LLM unavailable (not configured); used the rule parser."]
+    assert parsed.notes == [
+        "scene: stealth",  # the rules' own hint stays
+        "LLM unavailable (not configured); used the rule parser.",
+    ]
     assert provider.calls == []
 
 

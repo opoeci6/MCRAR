@@ -213,7 +213,8 @@ def evaluate_entries(
     settings: Settings, label_sets: list[str] | None = None, *, n_resamples: int = 1000
 ) -> tuple[dict, object]:
     registry = read_registry(settings)
-    selected = label_sets or list(registry["label_sets"])
+    # Sets without a labelled dataset (the zero-shot ``scene`` set) have nothing to evaluate on.
+    selected = label_sets or [name for name in registry["label_sets"] if name in DATASETS]
     result = {"schema": 1, "embedder": EMBEDDER, "label_sets": {}}
     for name in selected:
         if name not in registry["label_sets"]:

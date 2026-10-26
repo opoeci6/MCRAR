@@ -1,7 +1,8 @@
 """The query model: what the user asked (``SearchRequest``) and what the parser understood
 (``ParsedQuery``).
 
-Hard filters remove tracks. Soft preferences (and genre/mood labels) only influence the ranking.
+Hard filters remove tracks. Soft preferences (and genre/mood/scene labels) only influence the
+ranking.
 """
 
 from __future__ import annotations
@@ -14,14 +15,19 @@ import numpy as np
 from mcrar.licensing import Risk
 
 Vocal = Literal["vocal", "instrumental"]
+Intensity = Literal["low", "mid", "high"]
+# The energy target (0 calm .. 1 intense) each intensity stands for.
+INTENSITY_ENERGY: dict[str, float] = {"low": 0.25, "mid": 0.5, "high": 0.8}
 
 
 @dataclass(frozen=True)
 class SearchFilters:
     """Hard constraints, from the UI or the parser. ``None``/empty means "not set".
 
-    ``max_risk="unknown"`` is the loosest level and filters nothing. ``genres`` and ``moods``
-    are label ids; despite living here they are soft: they feed the tag term of the ranking.
+    ``max_risk="unknown"`` is the loosest level and filters nothing. ``genres``, ``moods`` and
+    ``scenes`` are label ids; despite living here they are soft: they feed the tag term of the
+    ranking. So is ``intensity``: it sets the energy target (:data:`INTENSITY_ENERGY`) and
+    overrides an energy word in the text.
     """
 
     max_risk: Risk = "unknown"
@@ -33,6 +39,8 @@ class SearchFilters:
     sources: tuple[str, ...] | None = None
     genres: tuple[str, ...] = ()
     moods: tuple[str, ...] = ()
+    scenes: tuple[str, ...] = ()
+    intensity: Intensity | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +51,7 @@ class Preferences:
     bpm_target: float | None = None
     genre_hints: tuple[str, ...] = ()
     mood_hints: tuple[str, ...] = ()
+    scene_hints: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -92,4 +101,5 @@ class ParsedQuery:
         """``(label set, label)`` pairs the tag term scores: UI labels first, then the hints."""
         pairs = [("genre", g) for g in (*self.filters.genres, *self.preferences.genre_hints)]
         pairs += [("moodtheme", m) for m in (*self.filters.moods, *self.preferences.mood_hints)]
+        pairs += [("scene", s) for s in (*self.filters.scenes, *self.preferences.scene_hints)]
         return list(dict.fromkeys(pairs))

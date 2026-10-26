@@ -1,8 +1,9 @@
 """The rule-based query parser: pure, deterministic, no model and no network.
 
 Hard-constraint phrases (BPM, vocals, duration, licence) are recognised, turned into filters and
-removed from the text that is embedded. Soft cues (energy and tempo words, genre and mood
-labels) become preferences and stay in the text. Filters set explicitly in the request win over
+removed from the text that is embedded. Soft cues (energy and tempo words, genre, mood and
+scene labels) become preferences and stay in the text; an intensity set in the request replaces
+the energy words. Filters set explicitly in the request win over
 parsed ones, group by group (the BPM pair and the duration pair are never mixed). The one
 exception is the licence: when both set a limit, the stricter one applies.
 
@@ -16,8 +17,8 @@ from dataclasses import replace
 from typing import Protocol
 
 from mcrar.licensing import RISK_ORDER
-from mcrar.recommend.query import ParsedQuery, Preferences, SearchRequest, Vocal
-from mcrar.recommend.vocab import GENRE, MOODTHEME, Vocabulary
+from mcrar.recommend.query import INTENSITY_ENERGY, ParsedQuery, Preferences, SearchRequest, Vocal
+from mcrar.recommend.vocab import GENRE, MOODTHEME, SCENE, Vocabulary
 
 BPM_AROUND_SPREAD = 10.0
 JINGLE_MAX_S = 20.0
@@ -257,7 +258,10 @@ class RuleParser:
         if ENERGY_HIGH.search(cues):
             energies.append(HIGH_ENERGY)
         energy = _mean(energies) if energies else None
-        if energy is not None:
+        if ui.intensity is not None:  # the intensity picked in the UI wins over an energy word
+            energy = INTENSITY_ENERGY[ui.intensity]
+            notes.append(f"energy preference {energy:.2f} (intensity {ui.intensity})")
+        elif energy is not None:
             notes.append(f"energy preference {energy:.2f}")
         bpm_target = None
         has_bpm_filter = filters.bpm_min is not None or filters.bpm_max is not None
@@ -273,6 +277,9 @@ class RuleParser:
             notes.append("genre: " + ", ".join(genre_hints))
         if mood_hints:
             notes.append("mood: " + ", ".join(mood_hints))
+        scene_hints = hints.get(SCENE, ())
+        if scene_hints:
+            notes.append("scene: " + ", ".join(scene_hints))
 
         return ParsedQuery(
             semantic_text=semantic,
@@ -282,6 +289,7 @@ class RuleParser:
                 bpm_target=bpm_target,
                 genre_hints=tuple(genre_hints),
                 mood_hints=tuple(mood_hints),
+                scene_hints=tuple(scene_hints),
             ),
             notes=notes,
         )

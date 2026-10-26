@@ -1,4 +1,8 @@
-"""Validate content-addressed artifacts and select the best test-split entry."""
+"""Validate content-addressed artifacts and select the best test-split entry.
+
+An entry may carry ``metrics: null`` (not evaluated yet); such an entry is selected only when its
+label set has no evaluated one.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +17,8 @@ from mcrar.ml.datasets.embedding import EMBEDDER
 from mcrar.ml.tagging.runtime import Tagger, load_tagger
 
 PRIMARY = {"single_label": "macro_f1", "multi_label": "macro_pr_auc", "regression": "r2"}
+# "NC" as a licence element (CC BY-NC-SA ...), not as letters inside a word such as "reference"
+_NON_COMMERCIAL = re.compile(r"\bNC\b|NON-?COMMERCIAL", re.IGNORECASE)
 
 
 def entry_id(label_set: str, variant: str, path: Path) -> str:
@@ -20,17 +26,28 @@ def entry_id(label_set: str, variant: str, path: Path) -> str:
 
 
 def select_entry(label_set: dict) -> dict | None:
-    """The entry with the best finite test-split primary metric (ties: the larger id)."""
+    """The entry with the best finite test-split primary metric (ties: the larger id).
+
+    Entries without metrics (``metrics: null``, e.g. the zero-shot scene tagger, which has no
+    labelled data to score it on) only count when no entry has any: then the newest of them wins
+    (by ``created_at``, then id).
+    """
     metric = PRIMARY[label_set["kind"]]
     candidates = [
         e
         for e in label_set["entries"]
-        if e["metrics"].get("split") == "test"
-        and e["metrics"].get("primary") == metric
-        and isinstance(e["metrics"].get(metric), (int, float))
-        and math.isfinite(e["metrics"][metric])
+        if (m := e["metrics"]) is not None
+        and m.get("split") == "test"
+        and m.get("primary") == metric
+        and isinstance(m.get(metric), (int, float))
+        and math.isfinite(m[metric])
     ]
-    return max(candidates, key=lambda e: (e["metrics"][metric], e["id"])) if candidates else None
+    if candidates:
+        return max(candidates, key=lambda e: (e["metrics"][metric], e["id"]))
+    unevaluated = [e for e in label_set["entries"] if e["metrics"] is None]
+    return (
+        max(unevaluated, key=lambda e: (e.get("created_at", ""), e["id"])) if unevaluated else None
+    )
 
 
 def validate_registry(registry: dict, models: Path | None = None) -> None:
@@ -83,18 +100,22 @@ def validate_registry(registry: dict, models: Path | None = None) -> None:
                 raise ValueError("artifact path must match its content-addressed entry id")
             m = entry["metrics"]
             primary = PRIMARY[spec["kind"]]
-            if m.get("split") != "test" or m.get("primary") != primary:
-                raise ValueError("selection requires test-split metrics")
-            if not isinstance(m.get(primary), (int, float)) or not math.isfinite(m[primary]):
-                raise ValueError("primary metric must be finite")
+            if m is not None:  # null: not evaluated (no labelled data yet)
+                if (
+                    not isinstance(m, dict)
+                    or m.get("split") != "test"
+                    or m.get("primary") != primary
+                ):
+                    raise ValueError("selection requires test-split metrics")
+                if not isinstance(m.get(primary), (int, float)) or not math.isfinite(m[primary]):
+                    raise ValueError("primary metric must be finite")
             if entry["commercial_ok"] and (
                 name in {"valence", "arousal"}
                 or (
                     name == "moodtheme"
                     and (entry["method"], entry["variant"]) != ("zeroshot", "zeroshot-unsupervised")
                 )
-                or "NC" in entry["data_license"].upper()
-                or "NON-COMMERCIAL" in entry["data_license"].upper()
+                or _NON_COMMERCIAL.search(entry["data_license"])
             ):
                 raise ValueError("non-commercial fitted parameters cannot be commercial-safe")
             if models is not None:

@@ -1,4 +1,5 @@
-"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search, llm."""
+"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search, llm and
+the scene tagger."""
 
 from __future__ import annotations
 
@@ -1552,6 +1553,12 @@ def search(
     ] = 0.5,
     genre: Annotated[str | None, typer.Option(help="Comma-separated genres to favour.")] = None,
     mood: Annotated[str | None, typer.Option(help="Comma-separated moods to favour.")] = None,
+    scene: Annotated[
+        str | None, typer.Option(help="Comma-separated game scenes to favour.")
+    ] = None,
+    intensity: Annotated[
+        str | None, typer.Option(help="Energy to favour: low, mid or high (beats an energy word).")
+    ] = None,
     bpm: Annotated[str | None, typer.Option(help="BPM range 80-100, or one value (±10).")] = None,
     instrumental: Annotated[
         bool, typer.Option("--instrumental", help="Only instrumental tracks.")
@@ -1600,6 +1607,8 @@ def search(
             vocab,
             genres=(genre or "").split(","),
             moods=(mood or "").split(","),
+            scenes=(scene or "").split(","),
+            intensity=intensity,
             bpm=parse_range(bpm, "bpm", single_is_max=False),
             duration=parse_range(duration, "duration", single_is_max=True),
             max_risk=max_risk,
@@ -1666,6 +1675,37 @@ def search(
         typer.echo(json.dumps(result.to_dict(), indent=2))
         return
     _print_search_result(result, explain=not no_explain, offset=offset)
+
+
+# -- scenes ----------------------------------------------------------------------------------------
+
+scenes_app = typer.Typer(
+    help="Game-scene tags: zero-shot from text prompts, standardised on your catalog.",
+    no_args_is_help=True,
+)
+app.add_typer(scenes_app, name="scenes")
+
+
+@scenes_app.command("build")
+def scenes_build() -> None:
+    """Build the scene tagger from the catalog's CLAP embeddings and select it in the registry.
+
+    Run it again after the catalog grew. It only embeds the text prompts; tag the catalog with
+    the result afterwards: mcrar tag --label-sets scene
+    """
+    from mcrar.ml import ModelError
+    from mcrar.ml.tagging.scenes import build_scene_entry, catalog_reference
+
+    settings = _settings()
+    try:
+        with _open_repo() as repo:
+            catalog_reference(repo)  # fail before loading the model when the catalog is too small
+            with _embedders(["clap"], settings) as (embedder,):
+                entry = build_scene_entry(settings, embedder, repo)
+    except (ModelError, ValueError) as exc:
+        raise _fail(str(exc), 1) from None
+    _line(f"Built and selected {entry['id']} (reference: {entry['reference_data']})")
+    _line("Next, tag the catalog with it: mcrar tag --label-sets scene")
 
 
 # -- ratings ---------------------------------------------------------------------------------------

@@ -60,13 +60,16 @@ def tag(
     from mcrar.catalog import open_catalog
     from mcrar.ingest import reprocess_catalog
     from mcrar.ml.tagging import tagging_stages
+    from mcrar.recommend.vocab import LABEL_SETS
 
     with cli_errors():
         settings = get_settings()
         stages = tagging_stages(settings)
         if label_sets:
             wanted = set(label_sets.replace(",", " ").split())
-            unknown = wanted - {"genre", "moodtheme", "valence", "arousal"}
+            # the trained sets, the vocabulary's (genre, moodtheme, scene) and any in the registry
+            known = {"valence", "arousal", *LABEL_SETS, *(s.tagger.label_set for s in stages)}
+            unknown = wanted - known
             if unknown:
                 raise ValueError(f"unknown label sets: {', '.join(sorted(unknown))}")
             stages = [s for s in stages if s.tagger.label_set in wanted]

@@ -93,9 +93,10 @@ def test_search_prints_a_table_explanations_and_notes(
     assert "Shadow Walk — Ada" in rows[0] and "[green] CC BY 3.0" in rows[0]
     assert "https://example.test/1" in rows[0] and "C minor" in rows[0] and "0.30" in rows[0]
     assert "Quiet Vents — Ada" in rows[1]
-    assert '1. Close match for "tense stealth level" · instrumental · CC BY 3.0 (green)' in (
-        result.stdout
-    )
+    assert (
+        '1. Close match for "tense stealth level" · instrumental · tags stealth 0.95 '
+        "· CC BY 3.0 (green)"
+    ) in result.stdout
     assert "Understood: instrumental only" in result.stdout
     assert "1 matching track(s) have no clap@195c3a3 embedding" in result.stdout
     assert "mcrar embed" in result.stdout

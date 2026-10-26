@@ -1,9 +1,10 @@
 """Build ``SearchFilters`` from user-facing arguments; shared by the CLI and the HTTP API.
 
-Both front ends validate the same way: the licence risk and sources against fixed choices, genre
-and mood names against the vocabulary, and numeric ranges for order. They differ only in how
-they spell an argument in an error message (``--max-risk`` vs ``max_risk``), which the ``arg``
-callable controls. All problems are raised as ``ValueError`` with a message fit for the user.
+Both front ends validate the same way: the licence risk, sources and intensity against fixed
+choices, genre, mood and scene names against the vocabulary, and numeric ranges for order. They
+differ only in how they spell an argument in an error message (``--max-risk`` vs ``max_risk``),
+which the ``arg`` callable controls. All problems are raised as ``ValueError`` with a message fit
+for the user.
 """
 
 from __future__ import annotations
@@ -12,11 +13,12 @@ import re
 from collections.abc import Callable, Sequence
 
 from mcrar.recommend.query import SearchFilters
-from mcrar.recommend.vocab import GENRE, MOODTHEME, Vocabulary
+from mcrar.recommend.vocab import GENRE, MOODTHEME, SCENE, Vocabulary
 
 SOURCES = ("jamendo", "local")
 RISKS = ("green", "amber", "red")  # "unknown" (the default) is the loosest level and is implicit
 VOCALS = ("vocal", "instrumental")
+INTENSITIES = ("low", "mid", "high")
 BPM_SPREAD = 10.0  # a single BPM value N means N +- this
 _RANGE = r"\s*(\d+(?:\.\d+)?)?\s*(-)?\s*(\d+(?:\.\d+)?)?\s*"
 
@@ -68,6 +70,8 @@ def build_filters(
     *,
     genres: Sequence[str] = (),
     moods: Sequence[str] = (),
+    scenes: Sequence[str] = (),
+    intensity: str | None = None,
     bpm: Range = (None, None),
     duration: Range = (None, None),
     max_risk: str | None = None,
@@ -77,9 +81,10 @@ def build_filters(
 ) -> SearchFilters:
     """Validate the arguments and return the filters.
 
-    ``genres``/``moods`` are names (ids, display names or synonyms) resolved to label ids,
-    ``bpm`` and ``duration`` are ``(min, max)`` pairs (seconds for the duration), and an empty
-    ``sources`` means every source. Raises ``ValueError`` on the first problem.
+    ``genres``/``moods``/``scenes`` are names (ids, display names or synonyms) resolved to label
+    ids, ``intensity`` is ``low``, ``mid`` or ``high``, ``bpm`` and ``duration`` are
+    ``(min, max)`` pairs (seconds for the duration), and an empty ``sources`` means every
+    source. Raises ``ValueError`` on the first problem.
     """
     if max_risk is not None and max_risk not in RISKS:
         raise ValueError(f"{arg('max_risk')} must be one of: {', '.join(RISKS)}")
@@ -90,6 +95,9 @@ def build_filters(
             raise ValueError(f"{arg('source')} must be one of: {', '.join(SOURCES)}")
     resolved_genres = vocab.resolve(GENRE, genres)
     resolved_moods = vocab.resolve(MOODTHEME, moods)
+    resolved_scenes = vocab.resolve(SCENE, scenes)
+    if intensity is not None and intensity not in INTENSITIES:
+        raise ValueError(f"{arg('intensity')} must be one of: {', '.join(INTENSITIES)}")
     bpm_min, bpm_max = _checked_range(bpm, arg("bpm_min"), arg("bpm_max"))
     dur_min, dur_max = _checked_range(duration, arg("duration_min_s"), arg("duration_max_s"))
     return SearchFilters(
@@ -102,4 +110,6 @@ def build_filters(
         sources=tuple(dict.fromkeys(sources)) if sources else None,
         genres=resolved_genres,
         moods=resolved_moods,
+        scenes=resolved_scenes,
+        intensity=intensity,  # type: ignore[arg-type]
     )

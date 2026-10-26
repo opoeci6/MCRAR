@@ -54,7 +54,7 @@ from mcrar.recommend.tags import (
     ZeroShotTagScorer,
     allowed_tag_versions,
 )
-from mcrar.recommend.vocab import GENRE, MOODTHEME, Vocabulary
+from mcrar.recommend.vocab import GENRE, MOODTHEME, SCENE, Vocabulary
 
 if TYPE_CHECKING:
     from mcrar.catalog import CatalogRepository
@@ -457,6 +457,7 @@ class SearchService:
         top_sets = tuple(dict.fromkeys(label_set for label_set, _ in requested)) or (
             GENRE,
             MOODTHEME,
+            SCENE,
         )
         tag_arrays: dict[tuple[str, str], np.ndarray] = {}
         if pool:
