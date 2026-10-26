@@ -1829,12 +1829,85 @@
           "reference_data": "FMA-medium training audio embeddings (no labels), slope 1"
         }
       ]
+    },
+    "scene": {
+      "kind": "multi_label",
+      "labels": [
+        "combat",
+        "boss",
+        "exploration",
+        "menu",
+        "town",
+        "puzzle",
+        "stealth",
+        "horror",
+        "victory",
+        "defeat",
+        "credits",
+        "cutscene",
+        "chase",
+        "ambient"
+      ],
+      "display": {
+        "combat": "Combat",
+        "boss": "Boss fight",
+        "exploration": "Exploration",
+        "menu": "Menu / title",
+        "town": "Town / shop",
+        "puzzle": "Puzzle",
+        "stealth": "Stealth",
+        "horror": "Horror",
+        "victory": "Victory",
+        "defeat": "Defeat / game over",
+        "credits": "Credits",
+        "cutscene": "Cutscene / emotional",
+        "chase": "Chase / escape",
+        "ambient": "Ambient / background"
+      },
+      "entries": [
+        {
+          "id": "scene-zeroshot-catalog@540a9cd",
+          "method": "zeroshot",
+          "variant": "zeroshot-catalog",
+          "file": "heads/scene-zeroshot-catalog@540a9cd.npz",
+          "seed": 0,
+          "metrics": null,
+          "created_at": "2026-10-26T18:54:28.179803Z",
+          "commercial_ok": true,
+          "data_license": "none (text prompts only; catalog embeddings used as the score baseline)",
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/scene.toml",
+          "reference_data": "catalog@1054 tracks",
+          "centering": 0.0,
+          "embedding": {
+            "model": "clap@195c3a3"
+          }
+        },
+        {
+          "id": "scene-zeroshot-catalog-centered@be97137",
+          "method": "zeroshot",
+          "variant": "zeroshot-catalog-centered",
+          "file": "heads/scene-zeroshot-catalog-centered@be97137.npz",
+          "seed": 0,
+          "metrics": null,
+          "created_at": "2026-10-26T18:54:28.179803Z",
+          "commercial_ok": true,
+          "data_license": "none (text prompts only; catalog embeddings used as the score baseline)",
+          "prompts": "backend/src/mcrar/ml/tagging/prompts/scene.toml",
+          "reference_data": "catalog@1054 tracks",
+          "centering": 0.75,
+          "embedding": {
+            "model": "clap@195c3a3"
+          },
+          "prefer": true
+        }
+      ]
     }
   },
   "selected": {
     "genre": "genre-logreg@2b67df0",
     "moodtheme": "moodtheme-mlp@b2ac67d",
     "valence": "valence-mlp@f2069d3",
-    "arousal": "arousal-mlp@51348c6"
+    "arousal": "arousal-mlp@51348c6",
+    "scene": "scene-zeroshot-catalog-centered@be97137"
   }
 }
