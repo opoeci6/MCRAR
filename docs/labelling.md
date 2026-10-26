@@ -81,6 +81,9 @@ centering). The model card gets a "Game scenes" section from the newest result.
 
 ## The collaborator
 
+A step-by-step checklist for the collaborator and their agent is in
+[`docs/handover/M9-labelling.md`](handover/M9-labelling.md).
+
 1. Pull the branch and get your own Jamendo client id (free, from
    <https://devportal.jamendo.com>); store it with `mcrar secrets set jamendo_client_id`. The pack
    does not contain the owner's key, and no audio is downloaded: labelling streams the tracks
