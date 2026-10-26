@@ -10,7 +10,7 @@ export interface ScoreBreakdownProps {
   className?: string
 }
 
-const ORDER = ['semantic', 'tags', 'bpm', 'energy']
+const ORDER = ['semantic', 'reference', 'tags', 'bpm', 'energy']
 
 /**
  * Why a track got its score, one row per term: a bar for how well it matched (raw, 0 to 1), and

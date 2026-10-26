@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-20.
+Last updated: 2026-10-26.
 
 ## 1. Milestones
 
@@ -20,13 +20,14 @@ Last updated: 2026-10-20.
 | M5 API | Done (2026-10-14) | `dev` | `mcrar serve`; routes, security model and limits in `docs/api.md`; see §3.8 |
 | M6 UI | Done (2026-10-15) | `dev` | React UI served by `mcrar serve` at `/`; result ratings; see §3.9 |
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
-| M8–M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
+| M8, M9, M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after M7 and the model-list change (2026-10-20):
-- Backend, default env: 1,660 passed, 30 skipped.
+Test suite on `dev`, counted after M10 (2026-10-26):
+- Backend, default env: 1,731 passed, 30 skipped.
 - Without the `ml` extra (as CI runs it; last counted after M7): 1,596 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 263 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 295 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -375,6 +376,47 @@ Details are in `docs/llm.md`.
   - A related fix: below 1,000 px the page's bottom padding no longer drops to 40 px, which
     had hidden the last rows behind the bar.
 
+### 3.12 Reference song (M10, 2026-10-26)
+- **How it ranks.** A reference song is a new rank term, `reference`: the min-max scaled
+  audio-audio cosine. It shares the semantic weight with the text. With both, the text gets
+  `W·(1−w)` and the reference `W·w`, where `w` is `reference_weight` (default 0.5, the UI
+  slider). Alone, it gets all of `W`. `SearchWeights` is unchanged.
+  - The pool is the union of the text's and the reference's top lists; every pool track gets
+    both cosines. A picked track is left out of its own results.
+  - The weak-match notice is for text only (its 0.40 is a text-audio threshold).
+- **Where the reference comes from.**
+  - A catalog track (`reference: {track_id}`): its stored vector, so no torch is needed.
+  - An upload (`POST /api/reference`): embedded once with the default embedder and kept in an
+    in-memory LRU of 32 (lost on restart). Searches name its `upload_id`. An unknown id gives
+    404 and a changed model 409; the UI then clears the reference and asks for the upload again.
+  - One recipe (`embed_audio_source`: first 240 s, 3 windows) is shared by ingest, uploads and
+    `--like-file`, so uploaded and stored vectors match.
+- **Wording bands, measured on the catalog** (1,054 tracks). Audio-audio cosines sit on a
+  different scale per model, so "Sounds close to / similar to / Loosely like" uses per-model
+  bands (`REFERENCE_BANDS` in `recommend/explain.py`): CLAP 0.80 / 0.65, GLAP 0.93 / 0.88,
+  MuQ-MuLan 0.80 / 0.62. Close is about a track's few nearest neighbours, similar about its
+  nearest 50.
+
+  | Model | top-1 cosine (median) | top-10 | top-50 | top-10 neighbours with the same top genre |
+  |---|---|---|---|---|
+  | CLAP | 0.856 | 0.755 | 0.643 | 72% (random 24%) |
+  | GLAP | 0.948 | 0.918 | 0.884 | 68% |
+  | MuQ-MuLan | 0.867 | 0.750 | 0.619 | 68% |
+
+  The genre heads are trained on CLAP vectors, so CLAP's 72% is partly circular; GLAP's and
+  MuQ's 68% are an independent sign that neighbours are musically close.
+- **End-to-end check** (catalog copy, built UI):
+  - "Find similar" on the piano piece "Crystaleyes" gave mostly solo piano and classical
+    pieces, without the track itself. It cleared the text, focused the "Sounds like" chip, and
+    hid the ratings and the rerank button.
+  - Adding the text "sad" showed the slider; moving it to "Reference song" reordered the list
+    towards the reference-only order.
+  - Uploads: three 2-minute Song Describer clips (`data/benchmarks/sdd`) of catalog tracks each
+    found their own track first. A warm upload of a 2-minute MP3 takes about 4 s (decoding and
+    resampling to 48 kHz); `mcrar search --like-file` takes about 30 s, mostly loading CLAP.
+- **Not in v1:** the LLM rerank refuses a reference (its prompt knows only the text), and a
+  search with a reference has no ratings (they are filed under text and filters). See §5.2.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -415,6 +457,13 @@ M3b is merged and the real catalog is tagged. Still open:
     `gpt-6-luna` if the owner wants the same model there.
   - **Unchecked providers.** JSON mode for SiliconFlow, Z.AI and Gemini is from the docs and
     hasn't been checked with a real key; the step-down covers a wrong guess.
+- **Reference song follow-ups (M10):**
+  - The LLM rerank could take the reference into account (for example its title and top tags).
+  - Ratings for reference searches would need their own key (reference plus text and filters).
+  - PLAN §6's "soundtrack cohesion" mode (near a picked track, at another intensity or scene)
+    can build on the reference term.
+  - Upload speed: about 4 s for a 2-minute MP3, mostly decoding; decoding only the three
+    windows would be faster.
 - **Per-query import polish:**
   - With GLAP as the default embedder the weak notice never shows; the button still works.
   - A search limited to local sources still offers the Jamendo import.
@@ -456,7 +505,6 @@ These can follow in any order:
 - M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
   from M7.
 - M9: game-scene tags, with a hand-labelled set that can use the rating UI.
-- M10: reference song.
 
 M11 (desktop packaging) comes last.
 

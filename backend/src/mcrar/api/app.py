@@ -19,7 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, Response
 
 from mcrar import __version__
-from mcrar.api.routes import analyze, ingest, meta, projects, ratings, search, tracks
+from mcrar.api.routes import analyze, ingest, meta, projects, ratings, reference, search, tracks
 from mcrar.api.routes import llm as llm_routes
 from mcrar.api.routes import settings as settings_routes
 from mcrar.api.security import install_security
@@ -85,6 +85,7 @@ def create_app(
         settings_routes,
         ingest,
         analyze,
+        reference,
     ):
         app.include_router(module.router)
     if (frontend_dist(settings) / "index.html").is_file():

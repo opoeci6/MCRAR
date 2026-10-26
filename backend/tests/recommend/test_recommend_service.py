@@ -187,6 +187,7 @@ def test_only_active_terms_carry_weight(repo: CatalogRepository, ids: dict[str, 
     text_only = search(service, "tense stealth level").items[0].breakdown
     assert {k: v["weight"] for k, v in text_only.items()} == {
         "semantic": 1.0,
+        "reference": 0.0,
         "tags": 0.0,
         "bpm": 0.0,
         "energy": 0.0,

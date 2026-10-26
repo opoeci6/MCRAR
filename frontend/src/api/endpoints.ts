@@ -23,6 +23,7 @@ import type {
   RatingList,
   RatingRequest,
   RatingTarget,
+  ReferenceUpload,
   ReprocessRequest,
   SearchImportRequest,
   SearchRequest,
@@ -66,6 +67,19 @@ export const rerankSearch = (body: SearchRequest, o?: CallOptions) =>
 /** Starts a job that imports Jamendo candidates for a search. Re-run the search when it is done. */
 export const importForSearch = (body: SearchImportRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/search/import', { ...o, body })
+
+// -- reference song -------------------------------------------------------------------------
+
+/**
+ * Uploads a song to search by (at most 50 MB). The backend keeps its embedding in memory, not
+ * the audio; pass the returned `upload_id` as the `reference` of a search. 413, 422 and 503
+ * carry a message for the user.
+ */
+export const uploadReference = (file: File, o?: CallOptions) => {
+  const form = new FormData()
+  form.append('file', file)
+  return request<ReferenceUpload>('POST', '/api/reference', { ...o, form })
+}
 
 // -- llm ------------------------------------------------------------------------------------
 

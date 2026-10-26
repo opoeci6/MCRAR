@@ -89,6 +89,7 @@ export const strings = {
     title: 'Why this score',
     terms: {
       semantic: 'Matches the description',
+      reference: 'Sounds like',
       tags: 'Genre and mood',
       bpm: 'Tempo',
       energy: 'Energy',

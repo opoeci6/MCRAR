@@ -1,7 +1,8 @@
-import { cleanup, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useEffect } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { clearPersistentState } from '../../app/usePersistentState'
+import { clearPersistentState, usePersistentState } from '../../app/usePersistentState'
 import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
@@ -1194,5 +1195,278 @@ describe('Search page: rerank with the LLM', () => {
     await userEvent.click(within(first).getByRole('button', { name: /good fit/i }))
     await waitFor(() => expect(bodies(mock, 'PUT /api/ratings')).toHaveLength(1))
     expect(bodies(mock, 'PUT /api/ratings')[0]).toMatchObject({ text: 'cozy town', track_id: 3, rating: 2 })
+  })
+})
+
+describe('Search page: reference song', () => {
+  const echo = (label: string, weight = 0.5) => ({ kind: 'track', track_id: 1, label, weight })
+  const UPLOADED = { upload_id: 'u1', filename: 'riff.mp3', duration_s: 30, model_id: 'clap-test' }
+  const GONE = 'This uploaded song has expired. Upload it again.'
+  const TRACK_1 = {
+    id: 1,
+    title: 'Track 1',
+    artist: 'Artist 1',
+    album: null,
+    source: 'jamendo',
+    source_url: null,
+    local_path: null,
+    duration_s: 125,
+    vocal_instrumental: null,
+    features: null,
+    tags: [],
+    license: { code: 'CC BY 4.0', url: null, risk: 'green', attribution_text: null, commercial_license_url: null },
+  }
+
+  /** Answers a search with a reference like the backend does: the echo is there, ratings are not. */
+  const byReference = (plain: unknown[], similar: unknown[], label = 'Track 1 — Artist 1') => (_url: URL, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body))
+    return body.reference ? response(similar, { reference: echo(label) }) : response(plain)
+  }
+
+  const fileInput = () => document.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement
+  const song = () => new File(['audio'], 'riff.mp3', { type: 'audio/mpeg' })
+  const chip = (label: string) => screen.getByText(`Sounds like: ${label}`)
+
+  it('finds similar tracks from a result: no text, the filters kept, a chip, no ratings or rerank', async () => {
+    const mock = setup({
+      'POST /api/search': byReference([item(1)], [item(2, { rating: null })]),
+      'GET /api/llm': LLM_READY,
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await searchFor('rain')
+    await screen.findByText('Track 1')
+    expect(screen.getByRole('button', { name: 'Rerank top 20 with LLM' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /good fit/i })).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 2')
+    expect(bodies(mock, 'POST /api/search')[1]).toEqual({
+      filters: { genres: ['rock'] },
+      reference: { track_id: 1 },
+      limit: 20,
+      offset: 0,
+      explain: true,
+    })
+    expect(chip('Track 1 — Artist 1')).toBeInTheDocument()
+    expect(box()).toHaveValue('')
+    expect(screen.getByRole('button', { name: 'Rock' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.queryByRole('button', { name: /good fit/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Rerank/ })).not.toBeInTheDocument()
+    expect(screen.getByText(/^Similar to Track 1 — Artist 1 · 1 result of 1 candidate/)).toBeInTheDocument()
+    await waitFor(() => expect(chip('Track 1 — Artist 1')).toHaveFocus())
+  })
+
+  it('uses the title alone as the label of a track without an artist', async () => {
+    setup({ 'POST /api/search': byReference([item(1, { artist: null })], [item(2)], 'Track 1') })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 2')
+    expect(chip('Track 1')).toBeInTheDocument()
+  })
+
+  it('finds similar tracks from the track drawer and closes it', async () => {
+    const mock = setup({
+      'POST /api/search': byReference([item(1)], [item(2)]),
+      'GET /api/tracks/1': TRACK_1,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Track 1' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Find similar' }))
+    await screen.findByText('Track 2')
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')[1].reference).toEqual({ track_id: 1 })
+    expect(chip('Track 1 — Artist 1')).toBeInTheDocument()
+    await waitFor(() => expect(chip('Track 1 — Artist 1')).toHaveFocus())
+  })
+
+  it('sends the reference with the next pages too', async () => {
+    const page = (from: number) => Array.from({ length: 2 }, (_, i) => item(from + i))
+    const mock = setup({
+      'POST /api/search': (_url: URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body))
+        if (!body.reference) return response([item(1)])
+        return response(page(body.offset + 10), { total_candidates: 4, reference: echo('Track 1 — Artist 1') })
+      },
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 10')
+    await userEvent.click(screen.getByRole('button', { name: 'Load more' }))
+    await screen.findByText('Track 12')
+    const sent = bodies(mock, 'POST /api/search')
+    expect(sent[2]).toMatchObject({ reference: { track_id: 1 }, offset: 2 })
+  })
+
+  it('offers an upload button and a hint while there is no reference', async () => {
+    renderWithProviders(<SearchPage />)
+    const button = screen.getByRole('button', { name: 'Upload a song' })
+    const opened = vi.fn()
+    fileInput().addEventListener('click', opened)
+    await userEvent.click(button)
+    expect(opened).toHaveBeenCalledOnce()
+    expect(fileInput().accept).toContain('.mp3')
+    expect(screen.getByText(/"Find similar" on any result works too/)).toBeInTheDocument()
+  })
+
+  it('uploads the song, then searches with it and the current text and filters', async () => {
+    const mock = setup({
+      'POST /api/reference': UPLOADED,
+      'POST /api/search': response([item(2)], { reference: { kind: 'upload', track_id: null, label: 'riff.mp3', weight: 0.5 } }),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await userEvent.type(box(), 'rain')
+    await userEvent.upload(fileInput(), song())
+    await screen.findByText('Track 2')
+
+    const [upload] = mock.mock.calls.filter(([input]) => String(input) === '/api/reference')
+    const form = upload?.[1]?.body as FormData
+    expect(form).toBeInstanceOf(FormData)
+    expect((form.get('file') as File).name).toBe('riff.mp3')
+    expect(bodies(mock, 'POST /api/search')).toEqual([
+      {
+        text: 'rain',
+        filters: { genres: ['rock'] },
+        reference: { upload_id: 'u1' },
+        reference_weight: 0.5,
+        limit: 20,
+        offset: 0,
+        explain: true,
+      },
+    ])
+    expect(chip('riff.mp3')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Upload a song' })).not.toBeInTheDocument()
+  })
+
+  it('shows a spinner while the song uploads', async () => {
+    let release: (value: unknown) => void = () => {}
+    setup({
+      'POST /api/reference': () => new Promise((resolve) => (release = resolve)),
+      'POST /api/search': response([item(2)]),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.upload(fileInput(), song())
+    expect(await screen.findByText('Uploading song')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Upload a song' })).not.toBeInTheDocument()
+    release(UPLOADED)
+    await screen.findByText('Track 2')
+    expect(screen.queryByText('Uploading song')).not.toBeInTheDocument()
+  })
+
+  it('shows the server message when the upload fails, and searches for nothing', async () => {
+    const mock = setup({
+      'POST /api/reference': jsonResponse({ detail: 'This file is not a supported audio type.' }, 422),
+      'POST /api/search': response([item(2)]),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.upload(fileInput(), song())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("Couldn't use this song")
+    expect(alert).toHaveTextContent('This file is not a supported audio type.')
+    expect(bodies(mock, 'POST /api/search')).toEqual([])
+    expect(screen.getByRole('button', { name: 'Upload a song' })).toBeEnabled()
+  })
+
+  it('removes the reference and searches again with the text and filters that are left', async () => {
+    const mock = setup({ 'POST /api/search': byReference([item(1)], [item(2)]) })
+    renderWithProviders(<SearchPage />)
+    await userEvent.click(await screen.findByRole('button', { name: 'Rock' }))
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 2')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove reference song' }))
+    await screen.findByText('Track 1')
+    const sent = bodies(mock, 'POST /api/search')
+    expect(sent).toHaveLength(3)
+    expect(sent[2]).toEqual({ filters: { genres: ['rock'] }, limit: 20, offset: 0, explain: true })
+    expect(screen.queryByText(/^Sounds like:/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload a song' })).toBeInTheDocument()
+  })
+
+  it('goes back to the empty page when removing the reference leaves nothing to search for', async () => {
+    const mock = setup({ 'POST /api/search': byReference([item(1)], [item(2)]) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 2')
+    await userEvent.click(screen.getByRole('button', { name: 'Remove reference song' }))
+    expect(screen.queryByText('Track 2')).not.toBeInTheDocument()
+    expect(screen.getByText('Try one of these')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')).toHaveLength(2)
+  })
+
+  it('shows the Text and Reference song slider only when there is both, and searches when it moves', async () => {
+    const mock = setup({ 'POST /api/search': byReference([item(1)], [item(2)]) })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await screen.findByText('Track 1')
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Find similar to Track 1' }))
+    await screen.findByText('Track 2')
+    expect(screen.queryByRole('slider')).not.toBeInTheDocument()
+
+    await userEvent.type(box(), 'cozy')
+    const slider = screen.getByRole('slider', { name: 'Text ↔ Reference song' })
+    expect(slider).toHaveValue('50')
+    expect(screen.getByText('Text')).toBeInTheDocument()
+    fireEvent.change(slider, { target: { value: '80' } })
+    await waitFor(() => expect(bodies(mock, 'POST /api/search')).toHaveLength(3))
+    expect(bodies(mock, 'POST /api/search')[2]).toMatchObject({
+      text: 'cozy',
+      reference: { track_id: 1 },
+      reference_weight: 0.8,
+    })
+    expect(screen.getByRole('slider')).toHaveValue('80')
+  })
+
+  it('clears an expired upload and says to upload it again', async () => {
+    setup({
+      'POST /api/reference': UPLOADED,
+      'POST /api/search': () => jsonResponse({ detail: GONE }, 404),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.type(box(), 'rain')
+    await userEvent.upload(fileInput(), song())
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(GONE)
+    expect(screen.queryByText(/^Sounds like:/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload a song' })).toBeInTheDocument()
+    expect(screen.queryByText("Couldn't search")).not.toBeInTheDocument()
+  })
+
+  it('still opens results saved by an older version, without a reference', async () => {
+    function Seed() {
+      const [, set] = usePersistentState<unknown>('search.results', null)
+      useEffect(() => {
+        set({
+          runId: 1,
+          request: { text: 'cozy', filters: {} },
+          items: [item(1)],
+          total: 1,
+          relaxed: [],
+          notes: [],
+          unembedded: 0,
+          model: 'clap-test',
+          elapsedMs: 5,
+        })
+      }, [set])
+      return null
+    }
+    const seeded = render(<Seed />)
+    seeded.unmount()
+
+    setup({ 'POST /api/search': byReference([item(1)], [item(2)]) })
+    renderWithProviders(<SearchPage />)
+    expect(screen.getByText('Track 1')).toBeInTheDocument()
+    expect(screen.getByText('1 result of 1 candidate · clap-test · 5 ms')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /good fit/i })).toBeInTheDocument()
+    expect(screen.queryByText(/^Sounds like:/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Upload a song' })).toBeInTheDocument()
   })
 })

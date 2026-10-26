@@ -1442,7 +1442,32 @@ def _shorten(text: str, width: int) -> str:
     return text if len(text) <= width else text[: width - 3] + "..."
 
 
+def _like_file_reference(path: Path, weight: float, load_embedder, model_id: str):  # noqa: ANN001, ANN202
+    """The reference song of ``--like-file``: ``path`` embedded with the model the catalog is
+    searched with, by the recipe that embedded the catalog's tracks."""
+    from mcrar.audio import AudioError
+    from mcrar.ml.embedders import embed_audio_source
+    from mcrar.recommend import ReferenceQuery, SearchError
+
+    if not path.is_file():
+        raise SearchError(f"audio file not found: {path}")
+    embedder = load_embedder()
+    if embedder.model_id != model_id:
+        raise SearchError(
+            f"the loaded embedder is {embedder.model_id}, "
+            f"but the catalog is searched with {model_id}"
+        )
+    try:
+        embedded = embed_audio_source(embedder, path)
+    except AudioError as exc:
+        raise SearchError(str(exc)) from None
+    return ReferenceQuery(embedded.vector, path.name, "upload", weight=weight)
+
+
 def _print_search_result(result, *, explain: bool, offset: int) -> None:  # noqa: ANN001
+    if result.reference is not None:
+        ref = result.reference
+        _line(f"Reference song: {ref.label} (reference weight {ref.weight:g})")
     rows = [("#", "Title — Artist", "Score", "BPM", "Key", "Energy", "Licence", "URL")]
     for n, item in enumerate(result.items, start=offset + 1):
         who = item.title or "(untitled)"
@@ -1503,9 +1528,28 @@ def search(
         str,
         typer.Argument(
             help="What to look for, e.g. 'tense stealth level, no vocals'. "
-            "May be empty when filters are given."
+            "May be empty when filters or a reference song are given."
         ),
     ] = "",
+    like: Annotated[
+        int | None,
+        typer.Option("--like", help="Find tracks that sound like this catalog track (its id)."),
+    ] = None,
+    like_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--like-file", help="Find tracks that sound like this audio file (WAV, FLAC, OGG, MP3)."
+        ),
+    ] = None,
+    ref_weight: Annotated[
+        float,
+        typer.Option(
+            "--ref-weight",
+            min=0.0,
+            max=1.0,
+            help="With a reference song and a text: the reference's share of the match (0-1).",
+        ),
+    ] = 0.5,
     genre: Annotated[str | None, typer.Option(help="Comma-separated genres to favour.")] = None,
     mood: Annotated[str | None, typer.Option(help="Comma-separated moods to favour.")] = None,
     bpm: Annotated[str | None, typer.Option(help="BPM range 80-100, or one value (±10).")] = None,
@@ -1534,8 +1578,10 @@ def search(
         ),
     ] = False,
 ) -> None:
-    """Search the catalog by text and filters; every result shows why it ranked where it did."""
+    """Search the catalog by text, filters and/or a reference song; every result shows why it
+    ranked where it did."""
     from contextlib import closing
+    from dataclasses import replace
 
     from mcrar.catalog.db import CATALOG_FILENAME
     from mcrar.ml import ModelError
@@ -1544,6 +1590,9 @@ def search(
 
     if instrumental and vocal:
         raise _fail("--vocal and --instrumental are mutually exclusive")
+    if like is not None and like_file is not None:
+        raise _fail("--like and --like-file are mutually exclusive")
+    has_reference = like is not None or like_file is not None
     settings = _settings()
     vocab = Vocabulary.load(settings)
     try:
@@ -1560,14 +1609,18 @@ def search(
         )
     except ValueError as exc:
         raise _fail(str(exc)) from None
-    if not text.strip() and filters == SearchFilters():
+    if not text.strip() and filters == SearchFilters() and not has_reference:
         raise _fail("give a search text or at least one filter")
     if not (settings.data_dir / CATALOG_FILENAME).is_file():
         raise _fail("the catalog is empty; add tracks first: mcrar ingest jamendo|local", 1)
 
-    def load_embedder():  # noqa: ANN202 - called only when a text embedding is needed
-        _line(f"Loading {settings.default_embedder} ...", err=True)
-        return _load_embedder(settings.default_embedder, settings)
+    models: list = []  # the embedder, loaded once for the reference file and the text
+
+    def load_embedder():  # noqa: ANN202 - called only when an embedding is needed
+        if not models:
+            _line(f"Loading {settings.default_embedder} ...", err=True)
+            models.append(_load_embedder(settings.default_embedder, settings))
+        return models[0]
 
     request = SearchRequest(
         text=text, filters=filters, limit=limit, offset=offset, explain=not no_explain
@@ -1585,7 +1638,24 @@ def search(
                 )
             ) as service,
         ):
-            result = service.search(request)
+            try:
+                if like is not None:
+                    try:
+                        reference = service.reference_for_track(like, ref_weight)
+                    except LookupError as exc:
+                        raise SearchError(str(exc.args[0])) from None
+                    request = replace(request, reference=reference)
+                elif like_file is not None:
+                    reference = _like_file_reference(
+                        like_file, ref_weight, load_embedder, service.model_id
+                    )
+                    request = replace(request, reference=reference)
+                result = service.search(request)
+            finally:
+                if models and not service.embedder_loaded:  # else the service closes it
+                    close = getattr(models[0], "close", None)
+                    if close is not None:
+                        close()
     except (SearchError, ModelError) as exc:
         raise _fail(str(exc), 1) from None
     except Exception as exc:  # never show a traceback

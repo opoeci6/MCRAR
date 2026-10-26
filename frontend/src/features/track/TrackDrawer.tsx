@@ -20,6 +20,8 @@ export interface TrackDrawerProps {
   /** The track to show, or `null` to keep the drawer closed. */
   trackId: number | null
   onClose: () => void
+  /** Offers "Find similar" (search by this track as the reference song) when given. */
+  onFindSimilar?: (track: TrackDetail) => void
 }
 
 /** How many tags of a label set are shown before "Show all". */
@@ -32,7 +34,7 @@ const REGRESSION_LABEL = 'value'
  * The side panel with everything about one track: licence and credit line, audio features, and
  * its tags grouped by label set. Loads `GET /api/tracks/{id}` when opened.
  */
-export function TrackDrawer({ trackId, onClose }: TrackDrawerProps) {
+export function TrackDrawer({ trackId, onClose, onFindSimilar }: TrackDrawerProps) {
   const track = useAsync(
     (signal) => (trackId === null ? Promise.resolve(null) : getTrack(trackId, { signal })),
     [trackId],
@@ -45,7 +47,7 @@ export function TrackDrawer({ trackId, onClose }: TrackDrawerProps) {
           {t.loadFailed}: {errorMessage(track.error)}
         </Notice>
       ) : track.data ? (
-        <TrackDetails key={track.data.id} track={track.data} />
+        <TrackDetails key={track.data.id} track={track.data} onFindSimilar={onFindSimilar} />
       ) : (
         <Spinner />
       )}
@@ -53,10 +55,16 @@ export function TrackDrawer({ trackId, onClose }: TrackDrawerProps) {
   )
 }
 
-function TrackDetails({ track }: { track: TrackDetail }) {
+function TrackDetails({
+  track,
+  onFindSimilar,
+}: {
+  track: TrackDetail
+  onFindSimilar?: (track: TrackDetail) => void
+}) {
   return (
     <div className={styles.body}>
-      <Intro track={track} />
+      <Intro track={track} onFindSimilar={onFindSimilar} />
       <LicenseSection track={track} />
       <FeaturesSection features={track.features} track={track} />
       <TagsSection tags={track.tags} />
@@ -64,7 +72,13 @@ function TrackDetails({ track }: { track: TrackDetail }) {
   )
 }
 
-function Intro({ track }: { track: TrackDetail }) {
+function Intro({
+  track,
+  onFindSimilar,
+}: {
+  track: TrackDetail
+  onFindSimilar?: (track: TrackDetail) => void
+}) {
   const player = usePlayer()
   const title = track.title || t.untitled
   const playing = player.current?.id === track.id && player.isPlaying
@@ -106,8 +120,13 @@ function Intro({ track }: { track: TrackDetail }) {
             {track.local_path}
           </p>
         ) : null}
-        <div>
+        <div className={styles.actions}>
           <AddToProjectMenu trackId={track.id} trackTitle={track.title ?? ''} />
+          {onFindSimilar ? (
+            <Button size="sm" onClick={() => onFindSimilar(track)}>
+              {t.findSimilar}
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

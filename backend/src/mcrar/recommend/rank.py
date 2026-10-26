@@ -3,6 +3,10 @@
 Each active term is in [0, 1]:
 
 - ``semantic``: min-max of the cosine over the candidate pool (1.0 when all candidates tie).
+- ``reference``: the same for the cosine to a reference song's audio embedding (M10), scaled
+  over the pool on its own. It shares the semantic weight with ``semantic``: with both active
+  and a reference share ``w`` (the request's ``reference_weight``) the semantic term has
+  ``W * (1 - w)`` and the reference term ``W * w``; a reference alone takes all of ``W``.
 - ``tags``: mean score of the requested genre/mood labels (scores come from a tag scorer, which
   standardises each label over the catalog so that genre and mood scores share one scale).
 - ``bpm``: ``exp(-((b - target) / 15) ** 2)``, where ``b`` is the best of the tempo, half of it
@@ -31,7 +35,7 @@ from mcrar.licensing import RISK_ORDER
 if TYPE_CHECKING:
     from mcrar.config import SearchWeights
 
-TERMS = ("semantic", "tags", "bpm", "energy")
+TERMS = ("semantic", "reference", "tags", "bpm", "energy")
 BPM_SCALE = 15.0
 BPM_LOW_CONFIDENCE = 0.5
 SORT_DECIMALS = 9  # scores equal to this many decimals count as ties (float noise)
@@ -69,6 +73,7 @@ class Candidate:
     artist: str | None = None
     risk: str = "unknown"  # licence risk: breaks ties, safer first
     cosine: float | None = None  # similarity to the query text (None without a text query)
+    ref_cosine: float | None = None  # similarity to the reference song (None without one)
     bpm: float | None = None
     bpm_confidence: float | None = None
     energy: float | None = None
@@ -110,11 +115,24 @@ def energy_term(energy: float | None, target: float) -> float:
     return min(max(1.0 - abs(energy - target), 0.0), 1.0)
 
 
-def effective_weights(weights: SearchWeights, active: Collection[str]) -> dict[str, float]:
+def effective_weights(
+    weights: SearchWeights, active: Collection[str], reference_weight: float = 0.5
+) -> dict[str, float]:
     """The configured weights of the active terms rescaled to sum to 1 (0 for inactive terms).
 
-    If the active terms all have weight 0 they share the weight equally."""
-    base = {name: float(getattr(weights, name)) if name in active else 0.0 for name in TERMS}
+    The reference has no weight of its own: it takes ``reference_weight`` of the semantic weight
+    (all of it without text), and the text keeps the rest. If the active terms all have weight 0
+    they share the weight equally."""
+    base = {name: 0.0 for name in TERMS}
+    for name in active:
+        if name == "reference":
+            share = reference_weight if "semantic" in active else 1.0
+            base[name] = float(weights.semantic) * share
+        elif name == "semantic":
+            share = 1.0 - reference_weight if "reference" in active else 1.0
+            base[name] = float(weights.semantic) * share
+        else:
+            base[name] = float(getattr(weights, name))
     total = sum(base.values())
     if total <= 0:
         share = 1.0 / len(active) if active else 0.0
@@ -137,36 +155,44 @@ def rank_candidates(
     weights: SearchWeights,
     semantic: bool,
     tags: bool,
+    reference: bool = False,
+    reference_weight: float = 0.5,
     bpm_target: float | None = None,
     energy_target: float | None = None,
     max_per_artist: int | None = None,
 ) -> list[Ranked]:
     """Score, order and diversify the candidates (best first).
 
-    ``semantic`` and ``tags`` tell whether the query has text / requested labels (then every
-    candidate carries ``cosine`` / ``tags``). Order: score descending, then licence risk (green
-    first), then track id. With ``max_per_artist`` an artist's tracks beyond that count are
-    demoted behind every in-cap track (keeping their relative order), so the next best tracks of
-    other artists move up but nothing is lost. Tracks without an artist are never capped.
+    ``semantic``, ``reference`` and ``tags`` tell whether the query has text / a reference song /
+    requested labels (then every candidate carries ``cosine`` / ``ref_cosine`` / ``tags``);
+    ``reference_weight`` is the reference's share of the semantic weight. Order: score
+    descending, then licence risk (green first), then track id. With ``max_per_artist`` an
+    artist's tracks beyond that count are demoted behind every in-cap track (keeping their
+    relative order), so the next best tracks of other artists move up but nothing is lost.
+    Tracks without an artist are never capped.
     """
     active = [
         name
         for name, on in (
             ("semantic", semantic),
+            ("reference", reference),
             ("tags", tags),
             ("bpm", bpm_target is not None),
             ("energy", energy_target is not None),
         )
         if on
     ]
-    weight = effective_weights(weights, active)
+    weight = effective_weights(weights, active, reference_weight)
     cosines = minmax([c.cosine or 0.0 for c in candidates]) if semantic else None
+    ref_cosines = minmax([c.ref_cosine or 0.0 for c in candidates]) if reference else None
 
     scored: list[Ranked] = []
     for i, cand in enumerate(candidates):
         raw: dict[str, float | None] = dict.fromkeys(TERMS)
         if cosines is not None:
             raw["semantic"] = float(cosines[i])
+        if ref_cosines is not None:
+            raw["reference"] = float(ref_cosines[i])
         if tags:
             raw["tags"] = float(np.mean(cand.tags)) if len(cand.tags) else 0.0
         if bpm_target is not None:

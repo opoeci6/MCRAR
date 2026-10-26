@@ -52,9 +52,15 @@ export interface SearchFilters {
   moods?: string[]
 }
 
+/** The reference song of a search: a catalog track, or an upload from POST /api/reference. */
+export type ReferenceRef = { track_id: number } | { upload_id: string }
+
 export interface SearchRequest {
   text?: string | null
   filters?: SearchFilters
+  reference?: ReferenceRef
+  /** The reference's share of the semantic score, 0 to 1 (the backend defaults to 0.5). */
+  reference_weight?: number
   limit?: number
   offset?: number
   explain?: boolean
@@ -75,7 +81,7 @@ export interface BreakdownTerm {
   contribution: number
 }
 
-/** Score terms by name (`semantic`, `tags`, `bpm`, `energy`). */
+/** Score terms by name (`semantic`, `reference`, `tags`, `bpm`, `energy`). */
 export type Breakdown = Record<string, BreakdownTerm>
 
 export interface SearchItem {
@@ -165,6 +171,22 @@ export interface RerankInfo {
   elapsed_ms: number
 }
 
+/** The reference song as the search used it (never its vector). */
+export interface SearchReference {
+  kind: 'track' | 'upload'
+  track_id: number | null
+  label: string
+  weight: number
+}
+
+/** POST /api/reference: the uploaded song, kept in memory by the backend as a vector only. */
+export interface ReferenceUpload {
+  upload_id: string
+  filename: string
+  duration_s: number
+  model_id: string
+}
+
 export interface SearchResponse {
   items: SearchItem[]
   /** Ranked candidates that `offset` and `limit` page through. */
@@ -183,6 +205,8 @@ export interface SearchResponse {
   llm?: LlmUse | null
   /** Only set by POST /api/search/rerank. */
   rerank?: RerankInfo | null
+  /** The reference song of the request; null without one. Absent from an older backend. */
+  reference?: SearchReference | null
 }
 
 // -- tracks --------------------------------------------------------------------------------
