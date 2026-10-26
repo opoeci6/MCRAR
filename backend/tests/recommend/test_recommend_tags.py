@@ -281,12 +281,12 @@ def test_a_custom_tag_scorer_replaces_the_built_in_one(
         tag_scorer=Constant(),
     )
     result = service.search(SearchRequest("epic battle", limit=3))
-    assert {label_set for label_set, _ in calls} == {"moodtheme"}  # the "epic" hint's set
+    assert {label_set for label_set, _ in calls} == {"moodtheme", "scene"}  # "epic", "battle"
     assert result.items[0].breakdown["tags"]["raw"] == 0.25  # the "epic" hint, scored by it
     assert all(t.score == 0.25 for t in result.items[0].top_tags)
     calls.clear()
-    service.search(SearchRequest("tense stealth level", limit=3))
-    assert {label_set for label_set, _ in calls} == {"genre", "moodtheme"}  # for the top tags
+    service.search(SearchRequest("tense hallway", limit=3))
+    assert {label_set for label_set, _ in calls} == {"genre", "moodtheme", "scene"}  # top tags
 
 
 def test_index_vectors_and_ids(repo: CatalogRepository, ids: dict[str, int]) -> None:

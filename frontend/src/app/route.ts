@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from 'react'
 
-export const PAGE_IDS = ['search', 'projects', 'library', 'settings'] as const
+export const PAGE_IDS = ['search', 'projects', 'library', 'label', 'settings'] as const
 export type PageId = (typeof PAGE_IDS)[number]
 export const DEFAULT_PAGE: PageId = 'search'
 

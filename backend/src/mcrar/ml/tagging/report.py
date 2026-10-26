@@ -8,6 +8,7 @@ from mcrar.config import Settings, get_settings
 from mcrar.ml.datasets.embedding import EMBEDDER
 from mcrar.ml.datasets.service import dataset_root
 from mcrar.ml.tagging.registry import read_registry, select_entry
+from mcrar.ml.tagging.scene_eval import latest_results
 
 
 def _number(value: object) -> str:
@@ -28,6 +29,8 @@ def metric_tables(registry: dict) -> str:
             if name == "genre"
             else {"macro_roc_auc": "Macro ROC-AUC", "ece": "ECE"}
             if name == "moodtheme"
+            else {}
+            if name == "scene"  # zero-shot from prompts, not evaluated on labelled data
             else {"pearson_r": "Pearson r", "mae": "MAE"}
         )
         lines.extend(
@@ -40,6 +43,9 @@ def metric_tables(registry: dict) -> str:
         )
         for entry in spec["entries"]:
             metrics = entry["metrics"]
+            if metrics is None:
+                lines.append(f"| {entry['variant']} | — | not evaluated |" + " — |" * len(columns))
+                continue
             lines.append(
                 f"| {entry['variant']} | {metrics.get('n', '—')} | {_primary(metrics)} | "
                 + " | ".join(_number(metrics.get(k)) for k in columns)
@@ -49,6 +55,99 @@ def metric_tables(registry: dict) -> str:
             lines.append("| Pending data run | — | — | " + " | ".join("—" for _ in columns) + " |")
         lines.append("")
     return "\n".join(lines)
+
+
+def _cell(value: object, *, digits: int = 2) -> str:
+    return f"{value:.{digits}f}" if isinstance(value, (int, float)) else "n/a"
+
+
+def scene_section(result: dict | None, registry: dict) -> list[str]:
+    """The "Game scenes" section from the newest ``scenes_*.json`` result (``mcrar scenes eval``),
+    or nothing when there is none."""
+    if result is None:
+        return []
+    k = result["k"]
+    info = result["labels"]
+    entries = result["entries"]
+    chosen = (
+        select_entry(registry["label_sets"]["scene"]) if "scene" in registry["label_sets"] else None
+    )
+    labellers = ", ".join(
+        f"{name} ({c['labelled']} labelled, {c['skipped']} skipped)"
+        for name, c in info["labellers"].items()
+    )
+    lines = [
+        "",
+        "## Game scenes",
+        "",
+        f"Hand labels from `mcrar scenes eval` ({result['created_at']}): {info['tracks']} labelled "
+        f"tracks, {info['with_embedding']} with a CLAP embedding. "
+        f"Labellers: {labellers or 'none'}. "
+        "A scene counts as present when at least half of a track's labellers marked it. Pool "
+        f"metrics are P@{k} and average precision on those tracks; the trained head is "
+        f"cross-validated ({result['folds']} folds, seed {result['seed']}) and the mean P@{k} "
+        f"covers the scenes with at least {result['min_positives']} positives. "
+        f"Selected entry: {chosen['id'] if chosen else 'none'}.",
+        "",
+        "| Scene | Positives | " + " | ".join(e["variant"] for e in entries) + " |",
+        "|" + "---|" * (2 + len(entries)),
+    ]
+    for scene in result["scenes"]:
+        cells = []
+        for e in entries:
+            cell = ((e["pool"] or {}).get("per_scene") or {}).get(scene)
+            cells.append(
+                "too few"
+                if cell is None or cell["p_at_k"] is None
+                else f"{_cell(cell['p_at_k'])} / {_cell(cell['ap'])}"
+            )
+        lines.append(f"| {scene} | {info['positives'][scene]} | " + " | ".join(cells) + " |")
+    lines.append(
+        "| mean P@k | | "
+        + " | ".join(_cell((e["pool"] or {}).get("mean_p_at_k")) for e in entries)
+        + " |"
+    )
+    lines += [
+        "",
+        f"Catalog top-{k} per entry: precision over the labelled tracks of the list "
+        "(labelled / unlabelled in the list). The head was trained on these labels, so its "
+        "numbers are in-sample.",
+        "",
+        "| Scene | " + " | ".join(e["variant"] for e in entries) + " |",
+        "|" + "---|" * (1 + len(entries)),
+    ]
+    for scene in result["scenes"]:
+        cells = []
+        for e in entries:
+            cell = (e["catalog"] or {}).get(scene)
+            cells.append(
+                "n/a"
+                if cell is None
+                else f"{_cell(cell['p_at_k'])} ({cell['labelled']}/{cell['unlabelled']})"
+            )
+        lines.append(f"| {scene} | " + " | ".join(cells) + " |")
+    intensity = result["intensity"]
+    lines += [
+        "",
+        "Intensity, Spearman rho against low=1, mid=2, high=3: "
+        + "; ".join(
+            f"{name} {_cell(intensity[name]['rho'])} (n={intensity[name]['n']})"
+            for name in ("energy", "arousal")
+        )
+        + ".",
+        "",
+    ]
+    agree = result["agreement"]
+    if agree is None:
+        lines.append("Agreement between labellers: not measured (needs two labellers).")
+    else:
+        a, b = agree["labellers"]
+        lines.append(
+            f"Agreement between {a} and {b} on {agree['n_tracks']} shared tracks: mean Cohen's "
+            f"kappa {_cell(agree['mean_kappa'])}; intensity exact match "
+            f"{_cell(agree['intensity']['match_rate'])} (n={agree['intensity']['n']})."
+        )
+    return lines
 
 
 def write_model_card(settings: Settings) -> None:
@@ -240,6 +339,7 @@ def write_model_card(settings: Settings) -> None:
     for name, spec in registry["label_sets"].items():
         chosen = select_entry(spec)
         lines.append(f"| {name} | {chosen['id'] if chosen else 'no entry'} |")
+    lines.extend(scene_section(latest_results(settings), registry))
     lines.extend(
         [
             "",

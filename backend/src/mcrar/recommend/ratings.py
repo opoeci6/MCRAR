@@ -8,8 +8,8 @@ how the engine understood it:
   filters are left out on purpose: the rating is about the intent in the words, so a narrower
   search for the same words still shows the earlier ratings.
 - Without text the key is ``filters:`` plus a canonical JSON of the filter fields that are set.
-  Genres and moods are label ids (synonyms are resolved before the key is built), lists are
-  sorted and the JSON has sorted keys and no spaces, so equal filters always give equal keys.
+  Genres, moods and scenes are label ids (synonyms are resolved before the key is built), lists
+  are sorted and the JSON has sorted keys and no spaces, so equal filters always give equal keys.
 
 ``filters_to_json`` / ``filters_from_json`` store a query's filters next to its ratings so the
 query can be run again (``mcrar ratings eval``). No SQL here; the repository stores the strings.
@@ -21,13 +21,13 @@ import json
 from dataclasses import fields
 from typing import Any
 
-from mcrar.recommend.query import SearchFilters
+from mcrar.recommend.query import INTENSITY_ENERGY, SearchFilters
 
 TEXT_PREFIX = "text:"
 FILTERS_PREFIX = "filters:"
 
 _DEFAULT = SearchFilters()
-_LIST_FIELDS = ("sources", "genres", "moods")
+_LIST_FIELDS = ("sources", "genres", "moods", "scenes")
 _NUMBER_FIELDS = ("bpm_min", "bpm_max", "duration_min_s", "duration_max_s")
 
 
@@ -72,7 +72,9 @@ def filters_from_json(text: str) -> SearchFilters:
     if not isinstance(data, dict) or not set(data) <= known:
         raise ValueError("filters must be a JSON object of search filter fields")
     if any(k in _LIST_FIELDS and not isinstance(v, list) for k, v in data.items()):
-        raise ValueError("sources, genres and moods must be lists")
+        raise ValueError("sources, genres, moods and scenes must be lists")
+    if data.get("intensity") not in (None, *INTENSITY_ENERGY):
+        raise ValueError("intensity must be low, mid or high")
     values = {k: tuple(v) if k in _LIST_FIELDS else v for k, v in data.items()}
     return SearchFilters(**values)
 

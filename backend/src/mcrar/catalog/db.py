@@ -218,8 +218,34 @@ _V4 = (
     + ";\n"
 )
 
+# Hand labels of game scenes (M9) and the labelling pool. ``scene_labels`` holds one row per
+# track and labeller: ``scenes_json`` is a JSON list of scene ids (an empty list with status
+# 'labelled' means "no scene fits"; a 'skipped' row carries no scenes or intensity). The pool is
+# the ordered list of tracks to label, split into part A, part B and 'both' (labelled by both
+# people so their agreement can be measured). Rows go with their track.
+_V5 = """
+CREATE TABLE scene_labels (
+    track_id INTEGER NOT NULL REFERENCES tracks (id) ON DELETE CASCADE,
+    labeller TEXT NOT NULL,
+    scenes_json TEXT NOT NULL DEFAULT '[]',
+    intensity TEXT CHECK (intensity IN ('low', 'mid', 'high')),
+    status TEXT NOT NULL CHECK (status IN ('labelled', 'skipped')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (track_id, labeller)
+);
+CREATE INDEX idx_scene_labels_labeller ON scene_labels (labeller);
+
+CREATE TABLE label_pool (
+    track_id INTEGER PRIMARY KEY REFERENCES tracks (id) ON DELETE CASCADE,
+    position INTEGER NOT NULL UNIQUE,
+    reason TEXT NOT NULL,
+    part TEXT NOT NULL CHECK (part IN ('A', 'B', 'both'))
+);
+"""
+
 # Append only; never edit a released script. Schema version == len(applied scripts).
-MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3, _V4)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3, _V4, _V5)
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

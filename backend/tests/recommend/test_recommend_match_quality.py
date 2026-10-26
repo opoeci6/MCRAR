@@ -21,7 +21,7 @@ from mcrar.recommend.service import WEAK_COSINE_DEFAULTS
 
 pytestmark = pytest.mark.usefixtures("ids")  # fills the catalog
 
-TEXT = "tense stealth level"
+TEXT = "tense hallway"  # names no genre, mood or scene, so only the text term is active
 OFF_TOPIC = "zzz quirk"  # points away from every track (all axes negative): every cosine < 0
 
 

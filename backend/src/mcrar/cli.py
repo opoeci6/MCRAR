@@ -1,4 +1,5 @@
-"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search, llm."""
+"""`mcrar` command line: config, secrets, doctor, analyze, ingest, catalog, embed, search, llm and
+the scene tagger."""
 
 from __future__ import annotations
 
@@ -1552,6 +1553,12 @@ def search(
     ] = 0.5,
     genre: Annotated[str | None, typer.Option(help="Comma-separated genres to favour.")] = None,
     mood: Annotated[str | None, typer.Option(help="Comma-separated moods to favour.")] = None,
+    scene: Annotated[
+        str | None, typer.Option(help="Comma-separated game scenes to favour.")
+    ] = None,
+    intensity: Annotated[
+        str | None, typer.Option(help="Energy to favour: low, mid or high (beats an energy word).")
+    ] = None,
     bpm: Annotated[str | None, typer.Option(help="BPM range 80-100, or one value (±10).")] = None,
     instrumental: Annotated[
         bool, typer.Option("--instrumental", help="Only instrumental tracks.")
@@ -1600,6 +1607,8 @@ def search(
             vocab,
             genres=(genre or "").split(","),
             moods=(mood or "").split(","),
+            scenes=(scene or "").split(","),
+            intensity=intensity,
             bpm=parse_range(bpm, "bpm", single_is_max=False),
             duration=parse_range(duration, "duration", single_is_max=True),
             max_risk=max_risk,
@@ -1666,6 +1675,278 @@ def search(
         typer.echo(json.dumps(result.to_dict(), indent=2))
         return
     _print_search_result(result, explain=not no_explain, offset=offset)
+
+
+# -- scenes ----------------------------------------------------------------------------------------
+
+scenes_app = typer.Typer(
+    help="Game-scene tags: zero-shot from text prompts, standardised on your catalog.",
+    no_args_is_help=True,
+)
+app.add_typer(scenes_app, name="scenes")
+
+
+@scenes_app.command("build")
+def scenes_build() -> None:
+    """Build the two zero-shot scene taggers from the catalog's CLAP embeddings.
+
+    Builds the plain and the centered variant (the centered one is selected until hand labels
+    say otherwise). Run it again after the catalog grew. It only embeds the text prompts; tag the
+    catalog with the result afterwards: mcrar tag --label-sets scene
+    """
+    from mcrar.ml import ModelError
+    from mcrar.ml.tagging.registry import read_registry, select_entry
+    from mcrar.ml.tagging.scenes import build_scene_entries, catalog_reference
+
+    settings = _settings()
+    try:
+        with _open_repo() as repo:
+            catalog_reference(repo)  # fail before loading the model when the catalog is too small
+            with _embedders(["clap"], settings) as (embedder,):
+                entries = build_scene_entries(settings, embedder, repo)
+        chosen = select_entry(read_registry(settings)["label_sets"]["scene"])
+    except (ModelError, ValueError) as exc:
+        raise _fail(str(exc), 1) from None
+    for entry in entries:
+        _line(
+            f"Built {entry['id']} (centering {entry['centering']}; "
+            f"reference: {entry['reference_data']})"
+        )
+    _line(f"Selected: {chosen['id'] if chosen else 'none'}")
+    _line("Next, tag the catalog with it: mcrar tag --label-sets scene")
+
+
+def _pool_summary_lines(pool) -> list[str]:  # noqa: ANN001 - list[PoolEntry]
+    from mcrar.ml.tagging.scene_pool import summarise_pool
+
+    summary = summarise_pool(pool)
+    lines = [f"Pool of {summary.size} tracks"]
+    lines.append("  parts: " + ", ".join(f"{p} {n}" for p, n in summary.parts.items()))
+    lines.append("  reasons:")
+    lines += [f"    {reason}: {n}" for reason, n in summary.reasons.items()]
+    return lines
+
+
+@scenes_app.command("pool")
+def scenes_pool(
+    per_scene: Annotated[
+        int, typer.Option("--per-scene", min=0, help="Top tracks per scene and zero-shot entry.")
+    ] = 10,
+    random: Annotated[
+        int, typer.Option("--random", min=0, help="Random other tracks to add.")
+    ] = 100,
+    both: Annotated[
+        int, typer.Option("--both", min=0, help="Tracks both people label (spread over the order).")
+    ] = 30,
+    seed: Annotated[
+        int, typer.Option("--seed", help="Seed of the random picks and the order.")
+    ] = 0,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace an existing pool (labels are kept).")
+    ] = False,
+) -> None:
+    """Choose the tracks to hand-label: each zero-shot entry's top tracks per scene, plus random.
+
+    The pool is shuffled, numbered, and split into parts A and B (plus the shared `both` tracks).
+    Labels belong to tracks, so they survive replacing the pool with --force.
+    """
+    from mcrar.ml.tagging.scene_pool import build_pool, save_pool
+
+    settings = _settings()
+    try:
+        with _open_repo() as repo:
+            pool = build_pool(
+                repo, settings, per_scene=per_scene, random_n=random, both_n=both, seed=seed
+            )
+            save_pool(repo, pool, force=force)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    for line in _pool_summary_lines(pool):
+        _line(line)
+    _line("Next: start the app (mcrar serve) and label in the Labelling tab.")
+
+
+def _write_json(path: Path, data: object) -> None:
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def _read_json(path: Path) -> object:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise _fail(f"cannot read {path}: {type(exc).__name__}", 1) from None
+
+
+@scenes_app.command("export-pack")
+def scenes_export_pack(
+    out: Annotated[Path, typer.Argument(help="Where to write the pack (JSON).")],
+) -> None:
+    """Write the pool as a pack to give to a collaborator (tracks named by source and id)."""
+    from mcrar.ml.tagging.scene_share import export_pack
+
+    try:
+        with _open_repo() as repo:
+            pack = export_pack(repo)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    _write_json(out, pack)
+    _line(f"Wrote {len(pack['tracks'])} tracks to {out}")
+
+
+@scenes_app.command("import-pack")
+def scenes_import_pack(
+    pack: Annotated[Path, typer.Argument(help="A pack written by mcrar scenes export-pack.")],
+    no_fetch: Annotated[
+        bool, typer.Option("--no-fetch", help="Do not fetch missing tracks; map what exists.")
+    ] = False,
+    force: Annotated[
+        bool, typer.Option("--force", help="Replace an existing pool (labels are kept).")
+    ] = False,
+) -> None:
+    """Make the pack's pool this catalog's pool, fetching missing Jamendo tracks (metadata only).
+
+    Fetching uses your own Jamendo client id (mcrar secrets set jamendo_client_id). No audio is
+    downloaded and no embedding is made: labelling only needs the tracks to stream.
+    """
+    from mcrar.ml.tagging.scene_share import import_pack
+    from mcrar.sources import JamendoError
+
+    data = _read_json(pack)
+    settings = _settings()
+
+    def open_client():  # noqa: ANN202
+        try:
+            return _jamendo_client(settings, True)
+        except (JamendoError, SecretError) as exc:
+            raise ValueError(str(exc)) from None
+
+    try:
+        with _open_repo() as repo:
+            result = import_pack(
+                repo,
+                data,
+                open_client=None if no_fetch else open_client,
+                force=force,
+                on_progress=_print_progress,
+            )
+    except (ValueError, JamendoError) as exc:
+        raise _fail(str(exc), 1) from None
+    _line(
+        f"Pool of {result.pool_size} tracks: {result.present} were already here, "
+        f"{result.fetched} fetched."
+    )
+    for item in result.missing:
+        _line(
+            f"  skipped {item['source']}:{item['source_id']} {item['title'] or ''}: "
+            f"{item['reason']}"
+        )
+    if result.missing:
+        _line(f"{len(result.missing)} track(s) of the pack are not in your pool.")
+
+
+@scenes_app.command("export-labels")
+def scenes_export_labels(
+    out: Annotated[Path, typer.Argument(help="Where to write the labels (JSON).")],
+    labeller: Annotated[
+        str | None, typer.Option("--labeller", help="Only this labeller's labels.")
+    ] = None,
+) -> None:
+    """Write the hand labels (every labeller, or one) to send to the other person."""
+    from mcrar.ml.tagging.scene_share import export_labels
+
+    try:
+        with _open_repo() as repo:
+            data = export_labels(repo, labeller)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    _write_json(out, data)
+    _line(f"Wrote {len(data['labels'])} labels to {out}")
+
+
+@scenes_app.command("import-labels")
+def scenes_import_labels(
+    file: Annotated[Path, typer.Argument(help="A file written by mcrar scenes export-labels.")],
+    as_labeller: Annotated[
+        str | None, typer.Option("--as", help="Store every label under this name instead.")
+    ] = None,
+) -> None:
+    """Add someone's labels (matched to your tracks by source and id); the newer label wins."""
+    from mcrar.catalog import open_catalog
+    from mcrar.ml.tagging.scene_share import import_labels
+    from mcrar.recommend.vocab import Vocabulary
+
+    data = _read_json(file)
+    settings = _settings()
+    try:
+        with open_catalog(settings) as repo:
+            result = import_labels(repo, data, Vocabulary.load(settings), as_labeller=as_labeller)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    _line(
+        f"Stored {result.stored} label(s) of {', '.join(result.labellers) or 'nobody'}; "
+        f"{result.older} kept because yours were newer."
+    )
+    if result.unknown:
+        shown = ", ".join(result.unknown[:10]) + (" ..." if len(result.unknown) > 10 else "")
+        _line(f"Skipped {len(result.unknown)} track(s) that are not in this catalog: {shown}")
+
+
+@scenes_app.command("eval")
+def scenes_eval(
+    k: Annotated[int, typer.Option("--k", min=1, help="List length for precision@k.")] = 10,
+    as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
+    folds: Annotated[int, typer.Option("--folds", min=2, help="Cross-validation folds.")] = 5,
+    seed: Annotated[int, typer.Option("--seed", help="Seed of the fold split.")] = 0,
+) -> None:
+    """Score every scene entry against your hand labels (and write the result under data/)."""
+    from mcrar.ml.tagging.scene_eval import evaluate_scenes, format_report, write_results
+
+    settings = _settings()
+    try:
+        with _open_repo() as repo:
+            result = evaluate_scenes(repo, settings, k=k, folds=folds, seed=seed)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    path = write_results(settings, result)
+    if as_json:
+        typer.echo(json.dumps(result, indent=2))
+        return
+    _line(format_report(result))
+    _line(f"\nWrote {path}")
+
+
+@scenes_app.command("train")
+def scenes_train(
+    folds: Annotated[int, typer.Option("--folds", min=2, help="Cross-validation folds.")] = 5,
+    seed: Annotated[int, typer.Option("--seed", help="Seed of the folds and the fit.")] = 0,
+) -> None:
+    """Fit the optional scene head on your labels and select the best entry by mean P@10.
+
+    Scenes with at least 5 positives and 5 negatives get a logistic regression; the others keep
+    the best zero-shot entry's column. The head only wins if it scores higher in cross-validation.
+    """
+    from mcrar.ml.tagging.scene_head import train_scene_head
+
+    settings = _settings()
+    try:
+        with _open_repo() as repo:
+            result = train_scene_head(settings, repo, folds=folds, seed=seed)
+    except ValueError as exc:
+        raise _fail(str(exc), 1) from None
+    _line(f"Trained on {result['n_tracks']} labelled tracks ({folds}-fold cross-validation).")
+    for variant, score in result["scores"].items():
+        mean = "n/a" if score is None else f"{score:.3f}"
+        _line(f"  {variant}: mean P@10 {mean}")
+    _line(
+        f"Trained scenes: {', '.join(result['trained']) or 'none'}; "
+        f"the rest use {result['fallback']}."
+    )
+    if result["head_won"]:
+        _line(f"The head won and is selected: {result['selected']}")
+    else:
+        _line(f"The head did not win; selected: {result['selected']}")
+    if result["selected"] != result["previous"]:
+        _line("The selection changed: tag the catalog again: mcrar tag --label-sets scene")
 
 
 # -- ratings ---------------------------------------------------------------------------------------

@@ -184,7 +184,7 @@ def test_contributions_sum_to_the_score_for_every_kind_of_query(
 
 def test_only_active_terms_carry_weight(repo: CatalogRepository, ids: dict[str, int]) -> None:
     service, _ = make_service(repo)
-    text_only = search(service, "tense stealth level").items[0].breakdown
+    text_only = search(service, "tense hallway").items[0].breakdown
     assert {k: v["weight"] for k, v in text_only.items()} == {
         "semantic": 1.0,
         "reference": 0.0,
@@ -341,7 +341,7 @@ def test_the_results_are_deterministic(repo: CatalogRepository, ids: dict[str, i
 
 def test_item_fields_and_json(repo: CatalogRepository, ids: dict[str, int]) -> None:
     service, _ = make_service(repo)
-    result = search(service, "tense stealth level", limit=50)
+    result = search(service, "tense hallway", limit=50)
     by_title = {i.title: i for i in result.items}
     quest = by_title["Epic Quest"]
     assert quest.download_url == "https://example.test/10/download"  # the licence allows it
@@ -353,7 +353,7 @@ def test_item_fields_and_json(repo: CatalogRepository, ids: dict[str, int]) -> N
     assert quest.duration_s == 240 and quest.commercial_license_url is None
     data = json.loads(json.dumps(result.to_dict()))
     assert data["model_id"] == MODEL_ID and data["unembedded_count"] == 1
-    assert data["parsed"]["semantic_text"] == "tense stealth level"
+    assert data["parsed"]["semantic_text"] == "tense hallway"
     assert data["items"][0]["breakdown"]["semantic"]["weight"] == 1.0
     assert set(data) >= {"items", "total_candidates", "parsed", "relaxed", "elapsed_ms", "notes"}
     assert result.elapsed_ms > 0
@@ -369,7 +369,7 @@ def test_explanations(repo: CatalogRepository, ids: dict[str, int]) -> None:
     )
     assert result.items[0].explanation == (
         'Close match for "tense stealth level" · 90 BPM (≤ 100 asked) · instrumental '
-        "· CC BY 3.0 (green)"
+        "· tags stealth 0.95 · CC BY 3.0 (green)"  # "stealth" is a scene hint
     )
     calm = next(i for i in search(service, "calm", limit=50).items if i.title == "Lullaby")
     assert calm.explanation == (

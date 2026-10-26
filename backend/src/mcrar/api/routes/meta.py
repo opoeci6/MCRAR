@@ -25,7 +25,7 @@ def health(state: StateDep) -> dict[str, Any]:
 
 @router.get("/api/vocab")
 def vocab(state: StateDep) -> dict[str, Any]:
-    """The genre and mood/theme labels a search can ask for, with display names and synonyms."""
+    """The genre, mood/theme and scene labels a search can ask for, with names and synonyms."""
     vocabulary = state.search.vocab
     return {
         name: [

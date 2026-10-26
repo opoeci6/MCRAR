@@ -24,6 +24,7 @@ export const strings = {
     search: 'Search',
     projects: 'Projects',
     library: 'Library',
+    label: 'Labelling',
     settings: 'Settings',
   },
   common: {

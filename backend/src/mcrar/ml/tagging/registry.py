@@ -1,4 +1,10 @@
-"""Validate content-addressed artifacts and select the best test-split entry."""
+"""Validate content-addressed artifacts and select the best test-split entry.
+
+An entry may carry ``metrics: null`` (not evaluated yet); such an entry is selected only when its
+label set has no evaluated one. The ``scene`` set has no test split: its entries may instead be
+scored by cross-validation on hand labels (``split: "hand-labels-cv"``, primary
+``mean_p_at_10``), which :func:`select_entry` prefers over everything else.
+"""
 
 from __future__ import annotations
 
@@ -13,24 +19,88 @@ from mcrar.ml.datasets.embedding import EMBEDDER
 from mcrar.ml.tagging.runtime import Tagger, load_tagger
 
 PRIMARY = {"single_label": "macro_f1", "multi_label": "macro_pr_auc", "regression": "r2"}
+# "NC" as a licence element (CC BY-NC-SA ...), not as letters inside a word such as "reference"
+_NON_COMMERCIAL = re.compile(r"\bNC\b|NON-?COMMERCIAL", re.IGNORECASE)
 
 
 def entry_id(label_set: str, variant: str, path: Path) -> str:
     return f"{label_set}-{variant}@{digest(path)[:7]}"
 
 
+# The scene set has no labelled dataset: its entries are scored on the owner's hand labels by
+# cross-validation (mean precision@10 over the scenes with enough positives).
+HAND_LABELS_SPLIT = "hand-labels-cv"
+HAND_LABELS_PRIMARY = "mean_p_at_10"
+HAND_LABELS_SETS = ("scene",)
+
+
+def _finite(metrics: dict, key: str) -> bool:
+    return isinstance(metrics.get(key), (int, float)) and math.isfinite(metrics[key])
+
+
+def _hand_label_rank(entry: dict) -> tuple[bool, float]:
+    """Preference among equal scores, larger is better: a zero-shot entry before a trained head
+    (the simpler model), and among zero-shot entries the lower centering."""
+    return entry["method"] == "zeroshot", -float(entry.get("centering", 0.0))
+
+
 def select_entry(label_set: dict) -> dict | None:
-    """The entry with the best finite test-split primary metric (ties: the larger id)."""
+    """The entry with the best finite primary metric.
+
+    Entries scored on hand labels (``split == "hand-labels-cv"``, the ``scene`` set only) come
+    first: the best ``mean_p_at_10`` wins, ties go to the simpler entry (zero-shot before head,
+    then the lower ``centering``, then the larger id). Otherwise the best test-split primary
+    metric wins (ties: the larger id).
+
+    Entries without metrics (``metrics: null``, e.g. the zero-shot scene taggers before any
+    labels exist) only count when no entry has any: then an entry marked ``"prefer": true`` wins,
+    else the newest (by ``created_at``, then id).
+    """
     metric = PRIMARY[label_set["kind"]]
+    hand = [
+        e
+        for e in label_set["entries"]
+        if (m := e["metrics"]) is not None
+        and m.get("split") == HAND_LABELS_SPLIT
+        and m.get("primary") == HAND_LABELS_PRIMARY
+        and _finite(m, HAND_LABELS_PRIMARY)
+    ]
+    if hand:
+        return max(
+            hand, key=lambda e: (e["metrics"][HAND_LABELS_PRIMARY], *_hand_label_rank(e), e["id"])
+        )
     candidates = [
         e
         for e in label_set["entries"]
-        if e["metrics"].get("split") == "test"
-        and e["metrics"].get("primary") == metric
-        and isinstance(e["metrics"].get(metric), (int, float))
-        and math.isfinite(e["metrics"][metric])
+        if (m := e["metrics"]) is not None
+        and m.get("split") == "test"
+        and m.get("primary") == metric
+        and _finite(m, metric)
     ]
-    return max(candidates, key=lambda e: (e["metrics"][metric], e["id"])) if candidates else None
+    if candidates:
+        return max(candidates, key=lambda e: (e["metrics"][metric], e["id"]))
+    unevaluated = [e for e in label_set["entries"] if e["metrics"] is None]
+    return (
+        max(unevaluated, key=lambda e: (bool(e.get("prefer")), e.get("created_at", ""), e["id"]))
+        if unevaluated
+        else None
+    )
+
+
+def _check_metrics(name: str, primary: str, m: object) -> None:
+    """Metrics must be test-split ones with a finite primary; the scene set may instead carry
+    cross-validated hand-label metrics (no other set may use that split)."""
+    if isinstance(m, dict) and name in HAND_LABELS_SETS and m.get("split") == HAND_LABELS_SPLIT:
+        primary = HAND_LABELS_PRIMARY
+        if m.get("primary") != primary:
+            raise ValueError(f"hand-label metrics need the {primary} primary")
+    elif not isinstance(m, dict) or m.get("split") != "test" or m.get("primary") != primary:
+        raise ValueError(
+            "selection requires test-split metrics"
+            + (" (or hand-labels-cv metrics)" if name in HAND_LABELS_SETS else "")
+        )
+    if not _finite(m, primary):
+        raise ValueError("primary metric must be finite")
 
 
 def validate_registry(registry: dict, models: Path | None = None) -> None:
@@ -83,18 +153,15 @@ def validate_registry(registry: dict, models: Path | None = None) -> None:
                 raise ValueError("artifact path must match its content-addressed entry id")
             m = entry["metrics"]
             primary = PRIMARY[spec["kind"]]
-            if m.get("split") != "test" or m.get("primary") != primary:
-                raise ValueError("selection requires test-split metrics")
-            if not isinstance(m.get(primary), (int, float)) or not math.isfinite(m[primary]):
-                raise ValueError("primary metric must be finite")
+            if m is not None:  # null: not evaluated (no labelled data yet)
+                _check_metrics(name, primary, m)
             if entry["commercial_ok"] and (
                 name in {"valence", "arousal"}
                 or (
                     name == "moodtheme"
                     and (entry["method"], entry["variant"]) != ("zeroshot", "zeroshot-unsupervised")
                 )
-                or "NC" in entry["data_license"].upper()
-                or "NON-COMMERCIAL" in entry["data_license"].upper()
+                or _NON_COMMERCIAL.search(entry["data_license"])
             ):
                 raise ValueError("non-commercial fitted parameters cannot be commercial-safe")
             if models is not None:

@@ -1,4 +1,4 @@
-import type { Risk, SearchFilters, Source, Vocal } from '../../api/types'
+import type { Intensity, Risk, SearchFilters, Source, Vocal } from '../../api/types'
 import { searchStrings } from './strings'
 
 export type DurationPreset = 'any' | 'jingle' | 'short' | 'bgm' | 'custom'
@@ -12,6 +12,10 @@ export interface FilterState {
   /** Label ids from `GET /api/vocab`. */
   genres: string[]
   moods: string[]
+  /** Game scene ids from `GET /api/vocab`. */
+  scenes: string[]
+  /** Sets the energy target; empty means any. */
+  intensity: '' | Intensity
   bpmMin: string
   bpmMax: string
   vocal: '' | Vocal
@@ -26,6 +30,8 @@ export const DEFAULT_FILTERS: FilterState = {
   maxRisk: '',
   genres: [],
   moods: [],
+  scenes: [],
+  intensity: '',
   bpmMin: '',
   bpmMax: '',
   vocal: '',
@@ -69,6 +75,8 @@ export function toApiFilters(f: FilterState): SearchFilters {
   if (maxRisk) out.max_risk = maxRisk
   if (f.genres.length > 0) out.genres = f.genres
   if (f.moods.length > 0) out.moods = f.moods
+  if (f.scenes.length > 0) out.scenes = f.scenes
+  if (f.intensity) out.intensity = f.intensity
   const bpmMin = parseNumber(f.bpmMin)
   const bpmMax = parseNumber(f.bpmMax)
   if (bpmMin !== undefined) out.bpm_min = bpmMin
@@ -103,6 +111,8 @@ export function activeFilterCount(f: FilterState): number {
     has('max_risk'),
     has('genres'),
     has('moods'),
+    has('scenes'),
+    has('intensity'),
     has('bpm_min', 'bpm_max'),
     has('vocal'),
     has('duration_min_s', 'duration_max_s'),

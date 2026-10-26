@@ -21,13 +21,14 @@ Last updated: 2026-10-26.
 | M6 UI | Done (2026-10-15) | `dev` | React UI served by `mcrar serve` at `/`; result ratings; see §3.9 |
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
-| M8, M9, M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
+| M8, M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after M10 (2026-10-26):
-- Backend, default env: 1,731 passed, 30 skipped.
+Test suite on `dev`, counted after the M9 code (2026-10-26):
+- Backend, default env: 1,904 passed, 30 skipped.
 - Without the `ml` extra (as CI runs it; last counted after M7): 1,596 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 295 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 328 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -417,12 +418,53 @@ Details are in `docs/llm.md`.
 - **Not in v1:** the LLM rerank refuses a reference (its prompt knows only the text), and a
   search with a reference has no ratings (they are filed under text and filters). See §5.2.
 
+### 3.13 Game-scene tags (M9, code 2026-10-26; results wait for the labels)
+- **Owner's choices:** 14 scenes (PLAN §6's 11 plus cutscene, chase and ambient); intensity
+  Low/Mid/High drives the existing energy target (0.25 / 0.5 / 0.8) for now, and the labels
+  record intensity so DSP energy and the arousal head can be compared; the collaborator
+  (NineJZ356) labels part of the pool.
+- **Zero-shot, standardised on the catalog.** `prompts/scene.toml` (game-music phrasings,
+  templates such as "video game music for {label}"), embedded with CLAP and z-scored against the
+  catalog's own CLAP vectors (the FMA reference is not on this machine any more, and the catalog
+  is the domain that matters). Entries carry `metrics: null` until labels exist.
+- **Two variants, because of a dry run.** With the plain prompts the 14 top-10 lists shared most
+  of their tracks (83 distinct tracks; the same cinematic pieces topped combat, boss, stealth,
+  defeat and credits): the shared "game music" direction dominated. Subtracting 0.75 × the mean
+  label vector gave 124 distinct tracks, and proxies improved (share of a scene's top 10 with an
+  expected mood: stealth 0.4 → 0.9, defeat 0.2 → 0.7). The proxies are weak (the mood head lives
+  in the same CLAP space), so both variants are kept: `scene-zeroshot-catalog@540a9cd` (plain) and
+  `scene-zeroshot-catalog-centered@be97137` (selected until the labels decide).
+- **Labelling pool:** each variant's top 10 per scene plus 100 seeded random tracks, 269 in all
+  (part A 120, part B 119, 30 labelled by both for agreement). Every track in either variant's
+  top 10 is labelled, so P@10 has full coverage; the random part gives a head negatives.
+- **Evaluation and the head (`mcrar scenes eval` / `train`).** Per-scene P@10 over the catalog
+  and on the labelled pool; a hybrid logistic-regression head (trained columns where a scene has
+  ≥ 5 positives, zero-shot columns otherwise — zero-shot scoring is linear in the CLAP vector, so
+  both fit one artifact) is selected only if its cross-validated mean P@10 beats zero-shot (ties
+  go to the simpler entry). Also Spearman ρ of energy and arousal against the intensity labels,
+  and Cohen's κ per scene between the two labellers. Results feed the model card's "Game scenes"
+  section.
+- **Search:** scenes are soft labels like moods (the tag term); the rule parser reads scene words
+  ("boss fight" → boss + combat, "stealth level" → stealth, "victory jingle" → victory and ≤ 20 s);
+  the LLM parse fills scenes too. A UI intensity overrides energy words in the text.
+- **Labelling tab:** one track at a time, no model scores shown, keyboard shortcuts, jump to
+  30 % / 60 %, Back and a pool list for revisiting, export of one's labels. Labels move between
+  catalogs by Jamendo id (`mcrar scenes export-pack / import-pack / export-labels /
+  import-labels`; the collaborator's import fetches only metadata with their own key).
+- **Checked end to end** on catalog copies: real build and tagging (11 s and a few seconds),
+  pool 269; labelling by keyboard and mouse, Skip, Back with the label prefilled, jump to 30 % on
+  real audio; labels exported and imported into another copy, and a pack imported with identical
+  positions and parts; a search with Stealth + Low intensity scored the stealth tag and energy
+  0.25. Then the same build, tags and pool on the real catalog (backup `data/catalog.pre-m9.db`).
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
 |---|---|---|
 | Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures), schema v4 (ratings table; names and credit lines decoded, applied 2026-10-15) |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
+| Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
+| Labelling pack | `data/scene-pack.json` | The 269-track pool for the collaborator (Jamendo ids, titles, parts; no keys) |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
@@ -457,6 +499,11 @@ M3b is merged and the real catalog is tagged. Still open:
     `gpt-6-luna` if the owner wants the same model there.
   - **Unchecked providers.** JSON mode for SiliconFlow, Z.AI and Gemini is from the docs and
     hasn't been checked with a real key; the step-down covers a wrong guess.
+- **M9 to finish (after the labels):** both labellers label their part (about 150 tracks each,
+  `docs/labelling.md`); `mcrar scenes import-labels` the collaborator's file; `mcrar scenes eval`
+  and `mcrar scenes train`; re-tag if the selection changed; regenerate the model card; fill in
+  §3.13's results. Then decide whether intensity should follow the arousal head instead of DSP
+  energy (the eval reports both correlations).
 - **Reference song follow-ups (M10):**
   - The LLM rerank could take the reference into account (for example its title and top tags).
   - Ratings for reference searches would need their own key (reference plus text and filters).
@@ -504,7 +551,6 @@ M3b is merged and the real catalog is tagged. Still open:
 These can follow in any order:
 - M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
   from M7.
-- M9: game-scene tags, with a hand-labelled set that can use the rating UI.
 
 M11 (desktop packaging) comes last.
 

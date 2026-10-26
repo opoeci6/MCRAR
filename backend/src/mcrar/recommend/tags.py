@@ -12,8 +12,9 @@ with values in [0, 1].
   ``sigmoid(1.7 * (p - mean) / std)``. The statistics are cached with a cheap signature of the
   head's rows, so tagging more tracks refreshes them. It never touches the embedder.
 - :class:`ZeroShotTagScorer` is the fallback until a track is tagged: the cosine between the
-  track's embedding and the text embedding of ``"<display name> music"``, standardised over the
-  whole catalog and squashed with a sigmoid, so a score does not depend on the query's pool.
+  track's embedding and the text embedding of ``"<display name> music"`` (``"video game music for
+  <display name>"`` for the scene set), standardised over the whole catalog and squashed with a
+  sigmoid, so a score does not depend on the query's pool.
 - :class:`CompositeTagScorer` uses stored rows for the tracks that have them and zero-shot for
   the rest.
 
@@ -37,6 +38,7 @@ if TYPE_CHECKING:
     from mcrar.config import Settings
 
 PROMPT = "{} music"  # text prompt per label, filled with the label's display name
+PROMPTS = {"scene": "video game music for {}"}  # label sets that need a phrase of their own
 SLOPE = 1.7  # sigmoid slope on the z-score of a track's cosine
 MIN_STD = 1e-9  # a smaller spread counts as none: every track scores 0.5
 
@@ -235,8 +237,9 @@ class ZeroShotTagScorer:
     def _label_vectors(self, label_set: str, labels: Sequence[str]) -> np.ndarray:
         missing = [label for label in labels if (label_set, label) not in self._text]
         if missing:
+            template = PROMPTS.get(label_set, PROMPT)
             prompts = [
-                PROMPT.format(self._vocab.display_name(label_set, label)) for label in missing
+                template.format(self._vocab.display_name(label_set, label)) for label in missing
             ]
             embedded = np.asarray(self._embed_text(prompts), dtype=np.float32)
             norms = np.maximum(np.linalg.norm(embedded, axis=1, keepdims=True), 1e-12)

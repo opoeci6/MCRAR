@@ -5,8 +5,8 @@ then the LLM is asked for search parameters and its validated reply is merged in
 result. A request without text never calls the LLM. The merge only adds: the UI and rule filters
 win, the licence and sources are never touched, and the LLM's vocal and duration filters apply
 only where nothing was set (both stay relaxable like any other filter). What the LLM adds is an
-English ``semantic_text`` to embed (so non-English queries work), genre and mood hints, an energy
-or tempo preference and Jamendo keywords for importing (``search_terms``).
+English ``semantic_text`` to embed (so non-English queries work), genre, mood and scene hints, an
+energy or tempo preference and Jamendo keywords for importing (``search_terms``).
 
 Any LLM failure falls back to the rule result with a note (``parse_with_info`` also returns an
 :class:`~mcrar.recommend.results.LLMUse` that says so). Replies are validated and clamped locally;
@@ -43,13 +43,13 @@ from mcrar.recommend.parser import RuleParser, _seconds
 from mcrar.recommend.query import ParsedQuery, SearchFilters, SearchRequest, Vocal
 from mcrar.recommend.ratings import filters_to_json
 from mcrar.recommend.results import LLMUse
-from mcrar.recommend.vocab import GENRE, MOODTHEME, Vocabulary
+from mcrar.recommend.vocab import GENRE, MOODTHEME, SCENE, Vocabulary
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 CACHE_SIZE = 256
 FAILURE_TTL_S = 60.0
 MAX_TOKENS = 600  # reasoning models get twice this (see token_budget)
-MAX_PICKS = 3  # genres, moods
+MAX_PICKS = 3  # genres, moods, scenes
 MAX_SEARCH_TERMS = 5
 MAX_TERM_CHARS = 40
 MAX_TEXT_CHARS = 300
@@ -60,7 +60,8 @@ You turn a music search for a game/media music library into search parameters.
 - semantic_text: an English description of how the music sounds, written for a text-to-audio \
 model. Translate other languages. Leave out constraints such as licence, BPM numbers and \
 duration. At most 25 words.
-- genres, moods: at most 3 of each, only from the allowed values. Use [] when none fits.
+- genres, moods, scenes: at most 3 of each, only from the allowed values. scenes say where in a \
+game the music plays (combat, boss, menu, stealth, ...). Use [] when none fits.
 - energy: 0 (calm) to 1 (intense), only if the search implies it, else null.
 - bpm_target: only if a tempo is implied, else null.
 - vocal: "vocal" or "instrumental" only if the user asks for or excludes vocals, else null.
@@ -88,6 +89,10 @@ def reply_schema(vocab: Vocabulary) -> dict[str, Any]:
                 "type": "array",
                 "items": {"type": "string", "enum": list(vocab.labels(MOODTHEME))},
             },
+            "scenes": {
+                "type": "array",
+                "items": {"type": "string", "enum": list(vocab.labels(SCENE))},
+            },
             "energy": number_or_null,
             "bpm_target": number_or_null,
             "vocal": {"type": ["string", "null"], "enum": ["vocal", "instrumental", None]},
@@ -99,6 +104,7 @@ def reply_schema(vocab: Vocabulary) -> dict[str, Any]:
             "semantic_text",
             "genres",
             "moods",
+            "scenes",
             "energy",
             "bpm_target",
             "vocal",
@@ -132,6 +138,7 @@ class _RawReply(BaseModel):
     semantic_text: str = ""
     genres: list[str] = []
     moods: list[str] = []
+    scenes: list[str] = []
     energy: float | None = None
     bpm_target: float | None = None
     vocal: Literal["vocal", "instrumental"] | None = None
@@ -144,7 +151,7 @@ class _RawReply(BaseModel):
     def _text(cls, value: object) -> str:
         return value if isinstance(value, str) else ""
 
-    @field_validator("genres", "moods", "search_terms", mode="before")
+    @field_validator("genres", "moods", "scenes", "search_terms", mode="before")
     @classmethod
     def _strings(cls, value: object) -> list[str]:
         if isinstance(value, str):
@@ -170,6 +177,7 @@ class ParseReply:
     semantic_text: str | None
     genres: tuple[str, ...]
     moods: tuple[str, ...]
+    scenes: tuple[str, ...]
     energy: float | None
     bpm_target: float | None
     vocal: Vocal | None
@@ -209,6 +217,7 @@ def validate_reply(data: dict[str, Any], vocab: Vocabulary) -> ParseReply:
         semantic_text=text or None,
         genres=_labels(raw.genres, vocab.labels(GENRE)),
         moods=_labels(raw.moods, vocab.labels(MOODTHEME)),
+        scenes=_labels(raw.scenes, vocab.labels(SCENE)),
         energy=energy,
         bpm_target=bpm,
         vocal=raw.vocal,
@@ -237,6 +246,8 @@ def _filter_summary(filters: SearchFilters, vocab: Vocabulary) -> str:
         parts.append("genres " + ", ".join(vocab.display_name(GENRE, g) for g in filters.genres))
     if filters.moods:
         parts.append("moods " + ", ".join(vocab.display_name(MOODTHEME, m) for m in filters.moods))
+    if filters.scenes:
+        parts.append("scenes " + ", ".join(vocab.display_name(SCENE, s) for s in filters.scenes))
     return "; ".join(parts) or "none"
 
 
@@ -270,6 +281,9 @@ def merge(rules: ParsedQuery, reply: ParseReply, vocab: Vocabulary) -> ParsedQue
         notes.append(f"genre: {_names(vocab, GENRE, reply.genres)} (LLM)")
     if reply.moods:
         notes.append(f"mood: {_names(vocab, MOODTHEME, reply.moods)} (LLM)")
+    scene_hints = tuple(dict.fromkeys((*prefs.scene_hints, *reply.scenes)))
+    if reply.scenes:
+        notes.append(f"scene: {_names(vocab, SCENE, reply.scenes)} (LLM)")
 
     energy = prefs.energy_target
     if energy is None and reply.energy is not None:
@@ -310,6 +324,7 @@ def merge(rules: ParsedQuery, reply: ParseReply, vocab: Vocabulary) -> ParsedQue
             bpm_target=bpm_target,
             genre_hints=genre_hints,
             mood_hints=mood_hints,
+            scene_hints=scene_hints,
         ),
         notes=notes,
         source="llm",

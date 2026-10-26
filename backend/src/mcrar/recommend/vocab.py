@@ -1,8 +1,10 @@
-"""The tag vocabulary: genre and mood/theme labels with display names and synonyms.
+"""The tag vocabulary: genre, mood/theme and game-scene labels with display names and synonyms.
 
-The label ids are the ones the tagging models (M3b) predict. When ``models/registry.json``
-exists its label sets win (schema in ``docs/handover/M3b-tagging.md`` section 4.1); a missing or
-unreadable registry silently falls back to the built-in lists, which hold the same ids.
+The label ids are the ones the tagging models (M3b; the zero-shot ``scene`` set of M9) predict.
+When ``models/registry.json`` exists its label sets win (schema in
+``docs/handover/M3b-tagging.md`` section 4.1); a missing or unreadable registry, or one without
+a given set (``scene`` until it is built), silently falls back to the built-in lists, which hold
+the same ids.
 Matching is on whole words, case-insensitive, with ``-`` and a space interchangeable.
 """
 
@@ -20,7 +22,8 @@ if TYPE_CHECKING:
 
 GENRE = "genre"
 MOODTHEME = "moodtheme"
-LABEL_SETS = (GENRE, MOODTHEME)
+SCENE = "scene"
+LABEL_SETS = (GENRE, MOODTHEME, SCENE)
 
 # FMA top-level genres.
 DEFAULT_GENRES = (
@@ -35,6 +38,29 @@ DEFAULT_MOODTHEMES = (
     "motivational movie nature party positive powerful relaxing retro romantic sad sexy slow soft "
     "soundscape space sport summer trailer travel upbeat uplifting"
 ).split()
+
+# Game scenes: where in a game a piece of music plays (zero-shot from prompts, see
+# ``mcrar.ml.tagging.scenes``). The labels and display names below are also the registry's.
+DEFAULT_SCENES = (
+    "combat boss exploration menu town puzzle stealth horror victory defeat credits cutscene "
+    "chase ambient"
+).split()
+DEFAULT_SCENE_DISPLAY = {
+    "combat": "Combat",
+    "boss": "Boss fight",
+    "exploration": "Exploration",
+    "menu": "Menu / title",
+    "town": "Town / shop",
+    "puzzle": "Puzzle",
+    "stealth": "Stealth",
+    "horror": "Horror",
+    "victory": "Victory",
+    "defeat": "Defeat / game over",
+    "credits": "Credits",
+    "cutscene": "Cutscene / emotional",
+    "chase": "Chase / escape",
+    "ambient": "Ambient / background",
+}
 
 DEFAULT_DISPLAY = {
     "hip-hop": "Hip-Hop",
@@ -54,13 +80,38 @@ SYNONYMS: dict[str, tuple[tuple[str, str], ...]] = {
     "edm": ((GENRE, "electronic"),),
     "electronica": ((GENRE, "electronic"),),
     "spooky": ((MOODTHEME, "dark"),),
-    "creepy": ((MOODTHEME, "dark"),),
-    "scary": ((MOODTHEME, "dark"),),
+    "creepy": ((MOODTHEME, "dark"), (SCENE, "horror")),
+    "scary": ((MOODTHEME, "dark"), (SCENE, "horror")),
+    "haunted": ((SCENE, "horror"),),
     "chill": ((MOODTHEME, "relaxing"),),
     "chiptune": ((GENRE, "electronic"), (MOODTHEME, "game")),
     "8-bit": ((GENRE, "electronic"), (MOODTHEME, "game")),
     "8 bit": ((GENRE, "electronic"), (MOODTHEME, "game")),
     "sci-fi": ((MOODTHEME, "space"),),
+    # game scenes
+    "battle": ((SCENE, "combat"),),
+    "fight": ((SCENE, "combat"),),
+    "fighting": ((SCENE, "combat"),),
+    "boss battle": ((SCENE, "boss"),),
+    "boss": ((SCENE, "boss"),),
+    "title screen": ((SCENE, "menu"),),
+    "main menu": ((SCENE, "menu"),),
+    "shop": ((SCENE, "town"),),
+    "village": ((SCENE, "town"),),
+    "sneak": ((SCENE, "stealth"),),
+    "sneaking": ((SCENE, "stealth"),),
+    "triumph": ((SCENE, "victory"),),
+    "win": ((SCENE, "victory"),),
+    "winning": ((SCENE, "victory"),),
+    "game over": ((SCENE, "defeat"),),
+    "losing": ((SCENE, "defeat"),),
+    "end credits": ((SCENE, "credits"),),
+    "cut scene": ((SCENE, "cutscene"),),
+    "escape": ((SCENE, "chase"),),
+    "escape sequence": ((SCENE, "chase"),),
+    "idle": ((SCENE, "ambient"),),
+    "explore": ((SCENE, "exploration"),),
+    "exploring": ((SCENE, "exploration"),),
 }
 
 _ID = re.compile(r"[a-z0-9-]+")
@@ -89,7 +140,7 @@ class LabelSet:
 
 
 class Vocabulary:
-    """Genre and mood/theme labels, with synonym matching over free text."""
+    """Genre, mood/theme and scene labels, with synonym matching over free text."""
 
     def __init__(self, label_sets: Mapping[str, LabelSet]) -> None:
         self._sets = dict(label_sets)
@@ -121,6 +172,7 @@ class Vocabulary:
             {
                 GENRE: LabelSet(GENRE, tuple(DEFAULT_GENRES), {}),
                 MOODTHEME: LabelSet(MOODTHEME, tuple(DEFAULT_MOODTHEMES), {}),
+                SCENE: LabelSet(SCENE, tuple(DEFAULT_SCENES), DEFAULT_SCENE_DISPLAY),
             }
         )
 
@@ -196,6 +248,17 @@ class Vocabulary:
                 out[set_name].append(label)
         return {name: tuple(labels) for name, labels in out.items()}
 
+    def _exact(self, label_set: str, name: str) -> str | None:
+        """The label whose id or display name is ``name`` (so "Boss fight" is just ``boss``, not
+        also the ``combat`` that its word "fight" is a synonym of)."""
+        if label_set not in self._sets:
+            return None
+        wanted = name.strip().lower()
+        for label in self._sets[label_set].labels:
+            if wanted in (label, self.display_name(label_set, label).lower()):
+                return label
+        return None
+
     def resolve(self, label_set: str, names: Sequence[str]) -> tuple[str, ...]:
         """Map user-given names (ids, display names, synonyms) to label ids of one set.
 
@@ -206,7 +269,8 @@ class Vocabulary:
             name = name.strip()
             if not name:
                 continue
-            labels = self.match(name).get(label_set, ())
+            exact = self._exact(label_set, name)
+            labels = (exact,) if exact else self.match(name).get(label_set, ())
             if not labels:
                 valid = ", ".join(self.labels(label_set))
                 raise ValueError(f"unknown {label_set} label '{name}'; choose from: {valid}")

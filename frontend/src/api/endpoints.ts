@@ -3,7 +3,7 @@
  * caller can cancel a request when its component unmounts (`useAsync` does this for you).
  *
  * Audio and downloads are not fetched in JS: use `trackStreamUrl` as an <audio> src and the
- * `*CreditsUrl` helpers as the href of an <a download>.
+ * `*CreditsUrl` and `labelsExportUrl` helpers as the href of an <a download>.
  */
 import { request } from './client'
 import type {
@@ -13,11 +13,15 @@ import type {
   JamendoIngestRequest,
   Job,
   JobDetail,
+  LabelPart,
+  LabelPool,
+  LabelProgress,
   LlmModelList,
   LlmStatus,
   LlmTestRequest,
   LlmTestResult,
   LocalIngestRequest,
+  NextLabel,
   Project,
   ProjectDetail,
   RatingList,
@@ -25,6 +29,8 @@ import type {
   RatingTarget,
   ReferenceUpload,
   ReprocessRequest,
+  SceneLabel,
+  SceneLabelRequest,
   SearchImportRequest,
   SearchRequest,
   SearchResponse,
@@ -157,6 +163,42 @@ export const deleteRating = (body: RatingTarget, o?: CallOptions) =>
 
 export const listRatings = (params: { limit?: number; offset?: number } = {}, o?: CallOptions) =>
   request<RatingList>('GET', '/api/ratings', { ...o, query: { ...params } })
+
+// -- scene labels --------------------------------------------------------------------------
+
+/**
+ * The first pool track of the part that the labeller has not labelled or skipped yet, after the
+ * position `after` when given. 409 when there is no labelling pool yet.
+ */
+export const getNextLabel = (
+  labeller: string,
+  part: LabelPart,
+  after?: number,
+  o?: CallOptions,
+) => request<NextLabel>('GET', '/api/labels/next', { ...o, query: { labeller, part, after } })
+
+/** The pool of the part in order, with the labeller's status per track. 409 without a pool. */
+export const getLabelPool = (labeller: string, part: LabelPart, o?: CallOptions) =>
+  request<LabelPool>('GET', '/api/labels/pool', { ...o, query: { labeller, part } })
+
+/** How much of each part the labeller has done. 409 without a pool. */
+export const getLabelProgress = (labeller: string, o?: CallOptions) =>
+  request<LabelProgress>('GET', '/api/labels/progress', { ...o, query: { labeller } })
+
+/** The labeller's label of a track; 404 when there is none. */
+export const getLabel = (trackId: number, labeller: string, o?: CallOptions) =>
+  request<SceneLabel>('GET', `/api/labels/${id(trackId)}`, { ...o, query: { labeller } })
+
+/** Stores or replaces the label (`labelled` with no scenes means "none of these"). */
+export const putLabel = (trackId: number, body: SceneLabelRequest, o?: CallOptions) =>
+  request<SceneLabel>('PUT', `/api/labels/${id(trackId)}`, { ...o, body })
+
+export const deleteLabel = (trackId: number, labeller: string, o?: CallOptions) =>
+  request<void>('DELETE', `/api/labels/${id(trackId)}`, { ...o, query: { labeller } })
+
+/** Download link for the labeller's labels file (the one `mcrar scenes import-labels` reads). */
+export const labelsExportUrl = (labeller: string) =>
+  `/api/labels/export?labeller=${id(labeller)}`
 
 // -- settings and secrets ------------------------------------------------------------------
 

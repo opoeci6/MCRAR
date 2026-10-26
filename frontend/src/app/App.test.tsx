@@ -16,13 +16,19 @@ function goTo(hash: string) {
 }
 
 describe('App shell', () => {
-  it('shows the search page by default, with the four tabs', async () => {
+  it('shows the search page by default, with the five tabs', async () => {
     stubApi({ 'GET /api/health': HEALTH })
     render(<App />)
     expect(screen.getByRole('heading', { level: 1, name: 'Search' })).toBeInTheDocument()
     const nav = screen.getByRole('navigation', { name: 'Main' })
     const tabs = within(nav).getAllByRole('link')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Search', 'Projects', 'Library', 'Settings'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'Search',
+      'Projects',
+      'Library',
+      'Labelling',
+      'Settings',
+    ])
     expect(within(nav).getByRole('link', { name: 'Search' })).toHaveAttribute('aria-current', 'page')
     expect(await screen.findByText('Backend online')).toBeInTheDocument()
   })
@@ -37,6 +43,9 @@ describe('App shell', () => {
 
     goTo('#/library')
     expect(screen.getByRole('heading', { level: 1, name: 'Library' })).toBeInTheDocument()
+    goTo('#/label')
+    expect(screen.getByRole('heading', { level: 1, name: 'Labelling' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Labelling' })).toHaveAttribute('aria-current', 'page')
     goTo('#/settings')
     expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument()
     goTo('#/unknown')

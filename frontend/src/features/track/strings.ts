@@ -45,6 +45,7 @@ export const trackFeatureStrings = {
     sets: {
       genre: 'Genre',
       moodtheme: 'Mood and theme',
+      scene: 'Game scenes',
       valence: 'Positivity (valence)',
       arousal: 'Intensity (arousal)',
     } as Record<string, string>,

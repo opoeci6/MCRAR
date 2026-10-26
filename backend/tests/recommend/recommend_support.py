@@ -372,6 +372,7 @@ def tone_wav_bytes(name: str, seconds: float = 3.0, sr: int = 22050) -> bytes:
 
 QUERY_TEXTS = {
     "tense stealth level": axis("stealth"),
+    "tense hallway": axis("stealth"),  # like it, but names no label (no tag hints)
     "happy upbeat tune": axis("happy"),
     "epic battle": axis("epic"),
     "calm ambient pad": axis("calm"),
@@ -385,6 +386,10 @@ QUERY_TEXTS = {
     "Dark music": axis("dark"),
     "Happy music": axis("happy"),
     "Epic music": axis("epic"),
+    # zero-shot scene prompts ("video game music for <display>"), see ZeroShotTagScorer
+    "video game music for Stealth": axis("stealth"),
+    "video game music for Combat": axis("epic"),
+    "video game music for Boss fight": axis("epic"),
 }
 
 
@@ -538,6 +543,7 @@ def parse_reply(**fields: Any) -> dict[str, Any]:
         "semantic_text": "",
         "genres": [],
         "moods": [],
+        "scenes": [],
         "energy": None,
         "bpm_target": None,
         "vocal": None,

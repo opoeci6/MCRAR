@@ -25,8 +25,11 @@ export interface VocabLabel {
   synonyms: string[]
 }
 
-/** Label sets by name (`genre`, `moodtheme`). */
+/** Label sets by name (`genre`, `moodtheme`, `scene`; `scene` is absent from an older backend). */
 export type Vocab = Record<string, VocabLabel[]>
+
+/** How intense a track feels, for the search filter and for a hand label. */
+export type Intensity = 'low' | 'mid' | 'high'
 
 export interface Stats {
   tracks: number
@@ -50,6 +53,10 @@ export interface SearchFilters {
   sources?: string[] | null
   genres?: string[]
   moods?: string[]
+  /** Game scene ids from the vocabulary (a soft preference, like moods). */
+  scenes?: string[]
+  /** Sets the energy target; wins over energy words in the text. */
+  intensity?: Intensity | null
 }
 
 /** The reference song of a search: a catalog track, or an upload from POST /api/reference. */
@@ -307,6 +314,83 @@ export interface ShortlistEntry {
 
 export interface ProjectDetail extends Project {
   items: ShortlistEntry[]
+}
+
+// -- scene labels --------------------------------------------------------------------------
+
+export type LabelStatus = 'labelled' | 'skipped'
+/** Which tracks of the labelling pool a labeller works on (`A` and `B` include the shared ones). */
+export type LabelPart = 'all' | 'A' | 'B'
+/** The part a pool track belongs to. */
+export type PoolPart = 'A' | 'B' | 'both'
+
+/** One labeller's label of one track. `labelled` with no scenes means "none of these". */
+export interface SceneLabel {
+  track_id: number
+  labeller: string
+  scenes: string[]
+  intensity: Intensity | null
+  status: LabelStatus
+  created_at: string
+  updated_at: string
+}
+
+/** The body of PUT /api/labels/{track_id}. */
+export interface SceneLabelRequest {
+  labeller: string
+  scenes: string[]
+  intensity: Intensity | null
+  status: LabelStatus
+}
+
+/** A pool track with what the player needs (a `PlayableTrack` fits it as is). */
+export interface LabelTrack {
+  id: number
+  title: string | null
+  artist: string | null
+  duration_s: number | null
+  source: string
+  risk: Risk
+  license_code: string | null
+  license_url: string | null
+  commercial_license_url: string | null
+  attribution: string | null
+  stream_url: string
+}
+
+/** GET /api/labels/next: the next track to label, or `{ track: null }` when the part is done. */
+export type NextLabel =
+  | { track: null }
+  | { track: LabelTrack; position: number; part: PoolPart; label: SceneLabel | null }
+
+export interface PoolEntry {
+  position: number
+  part: PoolPart
+  track_id: number
+  title: string | null
+  artist: string | null
+  /** The labeller's status for this track; `null` while it has not been labelled or skipped. */
+  status: LabelStatus | null
+}
+
+export interface LabelPool {
+  items: PoolEntry[]
+  total: number
+}
+
+export interface PartProgress {
+  total: number
+  labelled: number
+  skipped: number
+}
+
+export interface LabelProgress {
+  pool_size: number
+  parts: Record<PoolPart, PartProgress>
+  labelled: number
+  skipped: number
+  /** Every name that has labels in this catalog. */
+  labellers: string[]
 }
 
 // -- ratings -------------------------------------------------------------------------------
