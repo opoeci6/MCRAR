@@ -209,7 +209,7 @@
 
 .row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-3);
@@ -228,11 +228,29 @@
   min-width: 0;
 }
 
+/* The title is a button that opens the track details. */
 .trackTitle {
+  display: block;
+  max-width: 100%;
+  padding: 0;
   overflow: hidden;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
   font-weight: 600;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: transparent;
   text-overflow: ellipsis;
+  text-underline-offset: 3px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.trackTitle:hover {
+  color: var(--color-accent);
+  text-decoration-color: currentcolor;
 }
 
 .trackArtist {
@@ -250,6 +268,14 @@
   font-variant-numeric: tabular-nums;
 }
 
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  grid-column: 2 / -1;
+}
+
 .note {
   display: flex;
   flex-direction: column;
@@ -259,19 +285,65 @@
 
 .noteInput {
   width: 100%;
+  max-height: 240px;
   padding: var(--space-2) var(--space-3);
+  overflow-y: auto;
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text);
   font-size: var(--text-sm);
-  resize: vertical;
+  resize: none;
+}
+
+/* The note as text: line breaks stay, a click opens the field. */
+.noteRead {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  cursor: text;
+}
+
+.timestamp {
+  padding: 0 2px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.timestamp:hover {
+  background: var(--color-accent-soft);
+}
+
+.noteBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .noteStatus {
   min-height: 1.2em;
   font-size: var(--text-xs);
   color: var(--color-success);
+}
+
+.noteStatus[data-status='saving'] {
+  color: var(--color-text-muted);
+}
+
+.noteStatus[data-status='failed'] {
+  color: var(--risk-red-fg);
 }
 
 /* Credits */

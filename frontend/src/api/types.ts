@@ -306,8 +306,19 @@ export interface Project {
   item_count: number
 }
 
+/** A track on a shortlist: the summary plus what a row needs for links, download and credit. */
+export interface ShortlistTrack extends TrackSummary {
+  source_id: string
+  source_url: string | null
+  /** Null unless the source allows downloading. */
+  download_url: string | null
+  license_url: string | null
+  commercial_license_url: string | null
+  attribution_text: string | null
+}
+
 export interface ShortlistEntry {
-  track: TrackSummary
+  track: ShortlistTrack
   note: string | null
   added_at: string
 }

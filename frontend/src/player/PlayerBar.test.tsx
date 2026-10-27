@@ -127,4 +127,98 @@ describe('PlayerBar', () => {
     await act(async () => {})
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+  describe('starting at a position', () => {
+    function StartAt({ at }: { at: number }) {
+      const player = usePlayer()
+      return <button onClick={() => player.play(TRACK, { startAt: at })}>{`Play at ${at}`}</button>
+    }
+
+    it('waits for the metadata of a new track before it jumps', async () => {
+      renderWithProviders(<StartAt at={42} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Play at 42' }))
+      const audio = audioElement()
+      expect(audio.getAttribute('src')).toBe('/api/tracks/7/stream')
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+      expect(audio.currentTime).toBe(0)
+
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(42)
+      // Applied once: a later seek is not overridden by it.
+      audio.currentTime = 10
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(10)
+    })
+
+    it('lets a seek made while the track still loads replace the start position', async () => {
+      function SeekTo() {
+        const player = usePlayer()
+        return <button onClick={() => player.seek(5)}>Seek to 5</button>
+      }
+      renderWithProviders(
+        <>
+          <StartAt at={42} />
+          <SeekTo />
+        </>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Play at 42' }))
+      const audio = audioElement()
+      await userEvent.click(screen.getByRole('button', { name: 'Seek to 5' }))
+      expect(audio.currentTime).toBe(0)
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(5)
+    })
+
+    it('seeks and plays at once when the track is already loaded, also when paused', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(
+        <>
+          <Launcher />
+          <StartAt at={30} />
+        </>,
+      )
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      const audio = audioElement()
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      await user.click(await screen.findByRole('button', { name: 'Pause' }))
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getByRole('button', { name: 'Play at 30' }))
+      expect(audio.currentTime).toBe(30)
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
+
+      // Playing: a jump does not pause it (a plain play() would).
+      await user.click(screen.getByRole('button', { name: 'Play at 30' }))
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not carry the position over to the next track', async () => {
+      const user = userEvent.setup()
+      function Two() {
+        const player = usePlayer()
+        return (
+          <>
+            <button onClick={() => player.play(TRACK, { startAt: 42 })}>first</button>
+            <button onClick={() => player.play({ ...TRACK, id: 9 })}>second</button>
+          </>
+        )
+      }
+      renderWithProviders(<Two />)
+      await user.click(screen.getByRole('button', { name: 'first' }))
+      await user.click(screen.getByRole('button', { name: 'second' }))
+      const audio = audioElement()
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(0)
+    })
+  })
 })

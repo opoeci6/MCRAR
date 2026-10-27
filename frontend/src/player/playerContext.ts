@@ -16,6 +16,11 @@ export interface PlayableTrack {
   duration_s?: number | null
 }
 
+export interface PlayOptions {
+  /** Start at this many seconds instead of the beginning (or the current position). */
+  startAt?: number
+}
+
 export interface PlayerApi {
   current: PlayableTrack | null
   isPlaying: boolean
@@ -23,8 +28,11 @@ export interface PlayerApi {
   isLoading: boolean
   /** 0 to 1. */
   volume: number
-  /** Plays the track from the start; the track that is already loaded is toggled instead. */
-  play: (track: PlayableTrack) => void
+  /**
+   * Plays the track from the start; the track that is already loaded is toggled instead. With
+   * `startAt` the track always plays, from that position (also while it is still loading).
+   */
+  play: (track: PlayableTrack, options?: PlayOptions) => void
   /** Pauses or resumes the current track (does nothing when there is none). */
   toggle: () => void
   pause: () => void

@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { clearPersistentState, usePersistentState } from '../../app/usePersistentState'
 import { FakeEventSource } from '../../test/eventSource'
@@ -1512,5 +1512,110 @@ describe('Search page: reference song', () => {
     expect(screen.getByRole('button', { name: /good fit/i })).toBeInTheDocument()
     expect(screen.queryByText(/^Sounds like:/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Upload a song' })).toBeInTheDocument()
+  })
+})
+
+describe('Search page: ?similar= from the Projects page', () => {
+  const TRACK_1 = {
+    id: 1,
+    title: 'Track 1',
+    artist: 'Artist 1',
+    album: null,
+    source: 'jamendo',
+    source_url: null,
+    local_path: null,
+    duration_s: 125,
+    vocal_instrumental: null,
+    features: null,
+    tags: [],
+    license: { code: 'CC BY 4.0', url: null, risk: 'green', attribution_text: null, commercial_license_url: null },
+  }
+  const SIMILAR = response([item(2)], {
+    reference: { kind: 'track', track_id: 1, label: 'Track 1 — Artist 1', weight: 0.5 },
+  })
+
+  /** The page as the router shows it: the param is in the hash, and a button changes it. */
+  function Host({ initial }: { initial: string }) {
+    const [query, setQuery] = useState(initial)
+    return (
+      <>
+        <button onClick={() => setQuery('')}>param gone</button>
+        <button onClick={() => setQuery('similar=1')}>param back</button>
+        <SearchPage subpath={[]} params={new URLSearchParams(query)} />
+      </>
+    )
+  }
+
+  beforeEach(() => {
+    window.location.hash = '#/search?similar=1'
+  })
+
+  it('searches by the track once: reference chip, no text, and the param leaves the address', async () => {
+    const mock = setup({ 'POST /api/search': SIMILAR, 'GET /api/tracks/1': TRACK_1 })
+    const push = vi.spyOn(window.history, 'pushState')
+    const replace = vi.spyOn(window.history, 'replaceState')
+    const length = window.history.length
+    renderWithProviders(<Host initial="similar=1" />)
+
+    expect(await screen.findByText('Track 2')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search')).toEqual([
+      { filters: {}, reference: { track_id: 1 }, limit: 20, offset: 0, explain: true },
+    ])
+    expect(screen.getByText('Sounds like: Track 1 — Artist 1')).toBeInTheDocument()
+    expect(box()).toHaveValue('')
+    expect(screen.getByText(/^Similar to Track 1 — Artist 1 · /)).toBeInTheDocument()
+
+    expect(window.location.hash).toBe('#/search')
+    expect(replace).toHaveBeenCalled()
+    expect(push).not.toHaveBeenCalled()
+    expect(window.history.length).toBe(length)
+  })
+
+  it('does not search again on a re-render, and runs again when the param comes back', async () => {
+    const mock = setup({ 'POST /api/search': SIMILAR, 'GET /api/tracks/1': TRACK_1 })
+    renderWithProviders(<Host initial="similar=1" />)
+    await screen.findByText('Track 2')
+
+    await userEvent.type(box(), 'x')
+    expect(bodies(mock, 'POST /api/search')).toHaveLength(1)
+
+    // Visiting #/search without the param does nothing.
+    await userEvent.click(screen.getByRole('button', { name: 'param gone' }))
+    expect(bodies(mock, 'POST /api/search')).toHaveLength(1)
+
+    await userEvent.click(screen.getByRole('button', { name: 'param back' }))
+    await waitFor(() => expect(bodies(mock, 'POST /api/search')).toHaveLength(2))
+    expect(bodies(mock, 'POST /api/search')[1].reference).toEqual({ track_id: 1 })
+  })
+
+  it('does nothing without the param', async () => {
+    window.location.hash = '#/search'
+    const mock = setup({ 'POST /api/search': SIMILAR, 'GET /api/tracks/1': TRACK_1 })
+    renderWithProviders(<Host initial="" />)
+    await screen.findByRole('textbox', { name: 'Describe the music you need' })
+    expect(bodies(mock, 'POST /api/search')).toEqual([])
+    expect(mock.mock.calls.some(([input]) => String(input).startsWith('/api/tracks/'))).toBe(false)
+  })
+
+  it('shows the error of an unknown track and does not search', async () => {
+    window.location.hash = '#/search?similar=99'
+    const mock = setup({
+      'POST /api/search': SIMILAR,
+      'GET /api/tracks/99': jsonResponse({ detail: 'no track with id 99' }, 404),
+    })
+    renderWithProviders(<Host initial="similar=99" />)
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't find similar tracks: no track with id 99")
+    expect(bodies(mock, 'POST /api/search')).toEqual([])
+    expect(window.location.hash).toBe('#/search')
+    expect(screen.queryByText(/^Sounds like:/)).not.toBeInTheDocument()
+  })
+
+  it('shows an error for a param that is not a track id, without asking the backend', async () => {
+    window.location.hash = '#/search?similar=abc'
+    const mock = setup({ 'POST /api/search': SIMILAR })
+    renderWithProviders(<Host initial="similar=abc" />)
+    expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't find similar tracks")
+    expect(bodies(mock, 'POST /api/search')).toEqual([])
+    expect(mock.mock.calls.some(([input]) => String(input).startsWith('/api/tracks/'))).toBe(false)
   })
 })

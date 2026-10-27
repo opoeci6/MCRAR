@@ -125,6 +125,8 @@ export const searchStrings = {
     failed: "Couldn't search",
     ratingFailed: "Couldn't save the rating",
     loadMoreFailed: "Couldn't load more results",
+    similarFailed: "Couldn't find similar tracks",
+    similarUnknown: 'That is not a track id',
   },
   row: {
     untitled: 'Untitled',
@@ -139,11 +141,7 @@ export const searchStrings = {
     tag: (display: string, percent: number) => `${display} ${percent}%`,
     isNew: 'New',
     newHint: 'Added from Jamendo for this search',
-    findSimilar: 'Find similar',
-    findSimilarTo: (title: string) => `Find similar to ${title}`,
     why: 'Why this result',
     llmPrefix: 'LLM:',
-    download: 'Download',
-    downloadHint: 'Opens the download page and saves the licence file',
   },
 }
