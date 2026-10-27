@@ -31,6 +31,7 @@ function item(id: number, overrides: Record<string, unknown> = {}) {
     download_url: null,
     duration_s: 125,
     bpm: 98.2,
+    bpm_confidence: 0.7,
     key: 'C',
     mode: 'major',
     energy: 0.6,
@@ -250,12 +251,59 @@ describe('Search page: filters', () => {
   it('shows a scene tag of a result by its display name', async () => {
     setup({
       'POST /api/search': response([
-        item(1, { top_tags: [{ label_set: 'scene', label: 'combat', display: 'Combat', score: 0.9 }] }),
+        item(1, { top_tags: [{ label_set: 'scene', label: 'combat', display: 'Combat', score: 0.995 }] }),
       ]),
     })
     renderWithProviders(<SearchPage />)
     await searchFor('x')
-    expect(await screen.findByText('Combat 90%')).toBeInTheDocument()
+    expect(await screen.findByText('Combat · strong')).toBeInTheDocument()
+  })
+
+  it('marks only a strong tag, shows no percentages, and explains the comparison', async () => {
+    setup({
+      'POST /api/search': response([
+        item(1, {
+          top_tags: [
+            { label_set: 'genre', label: 'trailer', display: 'Trailer', score: 0.998 },
+            { label_set: 'genre', label: 'rock', display: 'Rock', score: 0.994 },
+            { label_set: 'genre', label: 'jazz', display: 'Jazz', score: 0.995 },
+          ],
+        }),
+      ]),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    const row = await screen.findByRole('article', { name: 'Track 1' })
+    const tags = within(row).getByRole('list', { name: 'Top tags' })
+    expect(within(tags).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Trailer · strong',
+      'Rock',
+      'Jazz · strong',
+    ])
+    expect(tags).toHaveAttribute('title', 'Compared with the rest of your catalog')
+    expect(tags).toHaveAccessibleDescription('Compared with the rest of your catalog')
+  })
+
+  it('shows both readings of an uncertain tempo, with an explanation', async () => {
+    setup({
+      'POST /api/search': response([
+        item(1, { bpm: 175.2, bpm_confidence: 0.2 }),
+        item(2, { bpm: 75, bpm_confidence: 0.3 }),
+        item(3, { bpm: 113, bpm_confidence: 0.4 }),
+        item(4, { bpm: 170, bpm_confidence: null }),
+      ]),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('x')
+    const hint = 'Tempo uncertain: it may be half or double'
+    const one = within(await screen.findByRole('article', { name: 'Track 1' })).getByText('88 / 175 BPM')
+    expect(one).toHaveAccessibleDescription(hint)
+    expect(one).toHaveAttribute('title', hint)
+    const two = within(screen.getByRole('article', { name: 'Track 2' })).getByText('75 / 150 BPM')
+    expect(two).toHaveAccessibleDescription(hint)
+    const three = within(screen.getByRole('article', { name: 'Track 3' })).getByText('113 BPM')
+    expect(three).not.toHaveAttribute('title')
+    expect(within(screen.getByRole('article', { name: 'Track 4' })).getByText('170 BPM')).toBeInTheDocument()
   })
 
   it('does not send a search when a range is back to front', async () => {
@@ -309,7 +357,7 @@ describe('Search page: results', () => {
     expect(within(row).getByText('98 BPM')).toBeInTheDocument()
     expect(within(row).getByText('C major')).toBeInTheDocument()
     expect(within(row).getByRole('img', { name: 'Energy 60%' })).toBeInTheDocument()
-    expect(within(row).getByText('Rock 83%')).toBeInTheDocument()
+    expect(within(row).getByText('Rock')).toBeInTheDocument()
     expect(within(row).getByText('Because track 1 fits')).toBeInTheDocument()
     expect(within(row).getByText('Safe')).toBeInTheDocument()
   })

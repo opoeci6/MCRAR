@@ -22,14 +22,14 @@ Last updated: 2026-10-26.
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
 | M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
-| QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14 |
+| QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
 | M8, M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after QoL batch 1 (2026-10-27):
-- Backend, default env: 1,925 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 1,922 passed, 31 skipped.
+Test suite on `dev`, counted after the fixes of 2026-10-27 (§3.15):
+- Backend, default env: 1,927 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 1,924 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 405 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 423 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -430,8 +430,11 @@ Details are in `docs/llm.md`.
   - Adding the text "sad" showed the slider; moving it to "Reference song" reordered the list
     towards the reference-only order.
   - Uploads: three 2-minute Song Describer clips (`data/benchmarks/sdd`) of catalog tracks each
-    found their own track first. A warm upload of a 2-minute MP3 takes about 4 s (decoding and
-    resampling to 48 kHz); `mcrar search --like-file` takes about 30 s, mostly loading CLAP.
+    found their own track first. Measured again 2026-10-27: an upload of a 2-minute MP3 takes about
+    0.42 s end to end once the model is loaded (decoding and resampling about 0.28 s, CLAP about
+    0.15 s); the first upload after a model switch waits for the load (7.7 s). The earlier "about
+    4 s" was such a first upload. `mcrar search --like-file` takes about 30 s, mostly loading
+    CLAP.
 - **Not in v1:** the LLM rerank refuses a reference (its prompt knows only the text), and a
   search with a reference has no ratings (they are filed under text and filters). See §5.2.
 
@@ -516,11 +519,32 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
   - the source labels, the model switch status line and toast, and Repeat (loop, pressed,
     stored).
 
+### 3.15 Fixes while waiting for the labels (2026-10-27)
+- **Tempo.**
+  - The slow-classical problem was the display, not the ranking. All 13 classical tracks shown
+    at 150 BPM or more have tempo confidence 0.05–0.33. The rank term and the filter already
+    accept ×½ and ×2 below 0.5, so "slow" already matched them at half tempo.
+  - Rows and the drawer now show both readings of an uncertain tempo, where the other reading
+    lies in 70–180: "71 / 141 BPM" from 140 BPM up, "75 / 150 BPM" under 90. The tooltip says
+    "Tempo uncertain: it may be half or double".
+  - 666 of the 1,054 tracks are below 0.5. Most sit in 90–140 BPM and keep one number.
+  - Search items carry `bpm_confidence`. `BPM_LOW_CONFIDENCE` is defined once, in
+    `catalog/repository.py`.
+- **Tag chips.**
+  - Rows show "Soft · strong" or just "Soft", explained as "Compared with the rest of your
+    catalog"; the drawer's percentages are captioned "Model probability" (owner's choice).
+  - A row shows a track's five highest standardised scores. Over 8 searches (800 chips) on the
+    owner's catalog, 98 % reached 0.9, 54 % reached 0.98 and 29 % reached 0.995. So "strong"
+    starts at 0.995 (about z ≥ 3.1), not the planned 0.9.
+- **Reference uploads were not slow** (re-measured in §3.12), so the planned window-only
+  decoding was dropped: it would save at most about 0.2 s and change the catalog vectors.
+- **Torch caches** are redirected into `.cache/` (§5.2).
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures; `scene` zero-shot tags since 2026-10-26), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Labelling pool 269 tracks; the owner had labelled 100 of part A's 120 by 2026-10-27 (80 A, 20 shared) |
+| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures; `scene` zero-shot tags since 2026-10-26), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Labelling pool 269 tracks; part A as the labelling page shows it is 150 tracks (120 A plus the 30 shared); the owner had labelled 124 of them by 2026-10-27 |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
 | Labelling pack | `data/scene-pack.json` | The 269-track pool for the collaborator (Jamendo ids, titles, parts; no keys) |
@@ -571,8 +595,6 @@ M3b is merged and the real catalog is tagged. Still open:
   - Ratings for reference searches would need their own key (reference plus text and filters).
   - PLAN §6's "soundtrack cohesion" mode (near a picked track, at another intensity or scene)
     can build on the reference term.
-  - Upload speed: about 4 s for a 2-minute MP3, mostly decoding; decoding only the three
-    windows would be faster.
 - **Per-query import polish:**
   - With GLAP as the default embedder the weak notice never shows; the button still works.
   - A search limited to local sources still offers the Jamendo import.
@@ -588,18 +610,15 @@ M3b is merged and the real catalog is tagged. Still open:
   - Duplicate project names return 422, not 409.
   - On Windows, stopping `uv run mcrar serve` by killing its parent can leave the Python child
     running; use Ctrl+C.
-- **Torch temp files.** torch writes a small kernel cache (about 250 KB) to the system temp
-  folder; it could be redirected into `.cache/`.
+- **Torch temp files.** `PYTORCH_KERNEL_CACHE_PATH` and `TORCHINDUCTOR_CACHE_DIR` now point
+  into `.cache/` (2026-10-27). No run could be made to write a kernel cache file to check it in
+  practice. The old `%TEMP%\torch` and `%TEMP%\torchinductor_Admin` folders can be deleted by
+  hand. `%APPDATA%\NVIDIA\ComputeCache` (1.1 GB) is the GPU driver's cache, shared with other
+  programs; it was left alone.
 - **Starlette warning:** a deprecation warning about `httpx` in tests (harmless).
 - **Disk:** the extra CLAP checkpoints in `.cache/huggingface` and `data/catalog.pre-tag.db`
   can be deleted (§4).
-- **BPM on slow classical.** Octave folding into 70–180 gives some slow classical pieces 160–174
-  BPM (seen in a calm classical search). Low tempo confidence should widen the BPM match (×½), as
-  PLAN §7 says.
 - **UI follow-ups:**
-  - **Tag scores display.** Top-tag chips show standardised scores as percentages (e.g.
-    "Trailer 94%"). They are relative strengths, not probabilities, so a label such as "strong /
-    typical" may read better.
   - **Add-to-project menu.** It makes one request per project to find which projects already
     hold a track; a "projects containing track" endpoint would be cleaner if there are many
     projects.

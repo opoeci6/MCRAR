@@ -30,6 +30,7 @@ class SearchItem:
     download_url: str | None  # only when the licence/source allows downloading
     duration_s: float | None
     bpm: float | None
+    bpm_confidence: float | None  # 0-1; below BPM_LOW_CONFIDENCE the tempo may be half or double
     key: str | None
     mode: str | None
     energy: float | None

@@ -34,6 +34,8 @@ $env:npm_config_update_notifier = 'false'
 # ML and tooling caches.
 $env:HF_HOME = Join-Path $McrarRoot '.cache\huggingface'
 $env:TORCH_HOME = Join-Path $McrarRoot '.cache\torch'
+$env:PYTORCH_KERNEL_CACHE_PATH = Join-Path $McrarRoot '.cache\torch\kernels'
+$env:TORCHINDUCTOR_CACHE_DIR = Join-Path $McrarRoot '.cache\torchinductor'
 $env:NUMBA_CACHE_DIR = Join-Path $McrarRoot '.cache\numba'
 $env:MPLCONFIGDIR = Join-Path $McrarRoot '.cache\matplotlib'
 $env:XDG_CACHE_HOME = Join-Path $McrarRoot '.cache'

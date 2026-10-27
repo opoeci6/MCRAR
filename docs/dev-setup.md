@@ -104,7 +104,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\with-env.ps1 uv --ve
 | uv cache | `.cache/uv/` | `UV_CACHE_DIR` |
 | npm cache | `.cache/npm/` | `npm_config_cache` |
 | Frontend modules | `frontend/node_modules/` | `npm ci` |
-| Model weights and other caches | `.cache/huggingface/`, `.cache/torch/`, `.cache/numba/`, `.cache/matplotlib/` | `HF_HOME`, `TORCH_HOME`, `NUMBA_CACHE_DIR`, `MPLCONFIGDIR`, `XDG_CACHE_HOME` |
+| Model weights and other caches | `.cache/huggingface/`, `.cache/torch/`, `.cache/torch/kernels/`, `.cache/torchinductor/`, `.cache/numba/`, `.cache/matplotlib/` | `HF_HOME`, `TORCH_HOME`, `PYTORCH_KERNEL_CACHE_PATH` (torch's NVRTC kernel cache, otherwise `%TEMP%\torch\kernels`), `TORCHINDUCTOR_CACHE_DIR`, `NUMBA_CACHE_DIR`, `MPLCONFIGDIR`, `XDG_CACHE_HOME` |
 | Datasets, catalog DB, benchmark results | `data/` | config paths are repo-relative |
 | Trained tag heads + registry (committed) | `models/heads/`, `models/registry.json` | everything else under `models/` is ignored |
 | API keys (dev) | `.secrets/secrets.toml` | `SecretStore` `file` backend |

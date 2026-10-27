@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { RatingValue, SearchItem } from '../../api/types'
 import { AddToProjectMenu } from '../../features/projects/AddToProjectMenu'
+import { TempoValue } from '../../features/track/TempoValue'
 import { TrackActions } from '../../features/track/TrackActions'
 import { sourceLabel } from '../../features/track/sourceLabel'
 import { formatTime } from '../../lib/format'
@@ -11,6 +12,7 @@ import { LicenseBadge } from '../../ui/LicenseBadge'
 import { RatingControl } from '../../ui/RatingControl'
 import { ScoreBreakdown } from '../../ui/ScoreBreakdown'
 import { searchStrings } from './strings'
+import { STRONG_TAG_SCORE } from './tags'
 import styles from './ResultRow.module.css'
 
 const r = searchStrings.row
@@ -32,6 +34,7 @@ export interface ResultRowProps {
 export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate, onFindSimilar }: ResultRowProps) {
   const player = usePlayer()
   const whyId = useId()
+  const tagsHintId = useId()
   const [whyOpen, setWhyOpen] = useState(false)
   const title = item.title || r.untitled
   const playing = player.current?.id === item.track_id && player.isPlaying
@@ -84,7 +87,7 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
         <div className={styles.facts}>
           <span>{formatTime(item.duration_s)}</span>
           <span>{sourceLabel(item.source)}</span>
-          {item.bpm == null ? null : <span>{r.bpm(item.bpm)}</span>}
+          {item.bpm == null ? null : <TempoValue bpm={item.bpm} confidence={item.bpm_confidence} />}
           {key ? <span>{key}</span> : null}
           {energy == null ? null : (
             <span className={styles.energy} role="img" aria-label={r.energy(energy)}>
@@ -97,13 +100,18 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
         </div>
 
         {item.top_tags.length > 0 ? (
-          <ul className={styles.tags} aria-label={r.topTags}>
-            {item.top_tags.map((tag) => (
-              <li key={`${tag.label_set}:${tag.label}`} className={styles.tag}>
-                {r.tag(tag.display, percent(tag.score))}
-              </li>
-            ))}
-          </ul>
+          <>
+            <span id={tagsHintId} hidden>
+              {r.tagsHint}
+            </span>
+            <ul className={styles.tags} aria-label={r.topTags} aria-describedby={tagsHintId} title={r.tagsHint}>
+              {item.top_tags.map((tag) => (
+                <li key={`${tag.label_set}:${tag.label}`} className={styles.tag}>
+                  {tag.score >= STRONG_TAG_SCORE ? r.tagStrong(tag.display) : r.tag(tag.display)}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : null}
 
         {item.llm_explanation ? (

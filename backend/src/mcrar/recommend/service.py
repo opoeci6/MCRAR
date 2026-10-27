@@ -542,6 +542,7 @@ class SearchService:
             download_url=track.download_url if track.audiodownload_allowed else None,
             duration_s=track.duration_s,
             bpm=feats.get("bpm"),
+            bpm_confidence=feats.get("bpm_confidence"),
             key=feats.get("key"),
             mode=feats.get("mode"),
             energy=feats.get("energy"),

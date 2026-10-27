@@ -40,6 +40,8 @@ def test_required_variables_present() -> None:
         "npm_config_update_notifier",
         "HF_HOME",
         "TORCH_HOME",
+        "PYTORCH_KERNEL_CACHE_PATH",
+        "TORCHINDUCTOR_CACHE_DIR",
         "NUMBA_CACHE_DIR",
         "MPLCONFIGDIR",
         "XDG_CACHE_HOME",

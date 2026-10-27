@@ -34,6 +34,8 @@ export const trackFeatureStrings = {
     bpm: 'Tempo',
     bpmValue: (bpm: string) => `${bpm} BPM`,
     confidence: (percent: number) => `${percent}% confidence`,
+    /** Shown on a tempo with two readings ("88 / 175 BPM"). */
+    tempoUncertain: 'Tempo uncertain: it may be half or double',
     key: 'Key',
     loudness: 'Loudness',
     loudnessValue: (lufs: string) => `${lufs} LUFS`,
@@ -46,6 +48,8 @@ export const trackFeatureStrings = {
   },
   tags: {
     heading: 'Tags',
+    /** The drawer's percentages are the model's raw probability (a row's chips are relative). */
+    probabilityCaption: 'Model probability',
     none: 'This track has no tags yet.',
     sets: {
       genre: 'Genre',

@@ -63,6 +63,16 @@ def test_download_url_only_when_the_track_allows_it(tmp_path: Path) -> None:
         assert by_title["Boss Fight"]["download_url"] is None
 
 
+def test_items_include_the_tempo_confidence(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        items = client.post("/api/search", json={"text": "epic battle", "limit": 50}).json()[
+            "items"
+        ]
+        by_title = {i["title"]: i for i in items}
+        assert by_title["Boss Fight"]["bpm"] == 150.0
+        assert by_title["Boss Fight"]["bpm_confidence"] == 0.9
+
+
 def test_filter_only_search_works_without_torch(tmp_path: Path) -> None:
     body = {"filters": {"max_risk": "green", "vocal": "instrumental"}, "limit": 50}
     with make_client(tmp_path, torch=False) as client:

@@ -113,6 +113,8 @@ export interface SearchItem {
   download_url: string | null
   duration_s: number | null
   bpm: number | null
+  /** 0 to 1, or `null` when unknown. Below 0.5 the tempo may be half or double. */
+  bpm_confidence: number | null
   key: string | null
   mode: string | null
   energy: number | null
