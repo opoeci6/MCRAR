@@ -4,6 +4,7 @@ import { errorMessage, useAsync } from '../../api/useAsync'
 import type { Risk, Source, TrackSummary } from '../../api/types'
 import { usePersistentState } from '../../app/usePersistentState'
 import { AddToProjectMenu } from '../../features/projects/AddToProjectMenu'
+import { sourceLabel } from '../../features/track/sourceLabel'
 import { TrackDrawer } from '../../features/track/TrackDrawer'
 import { formatTime } from '../../lib/format'
 import { usePlayer } from '../../player/playerContext'
@@ -181,7 +182,7 @@ function TrackRow({ track, onOpen }: { track: TrackSummary; onOpen: (id: number)
         </button>
       </td>
       <td>{track.artist || t.tracks.unknownArtist}</td>
-      <td>{track.source}</td>
+      <td>{sourceLabel(track.source)}</td>
       <td className={styles.number}>{formatTime(track.duration_s)}</td>
       <td>
         <LicenseBadge risk={track.risk} code={track.license_code} />

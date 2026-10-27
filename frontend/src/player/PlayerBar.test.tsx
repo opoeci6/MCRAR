@@ -1,6 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { usePlayer } from './playerContext'
 import type { PlayableTrack } from './playerContext'
@@ -126,5 +126,167 @@ describe('PlayerBar', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Play it' }))
     await act(async () => {})
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+  describe('starting at a position', () => {
+    function StartAt({ at }: { at: number }) {
+      const player = usePlayer()
+      return <button onClick={() => player.play(TRACK, { startAt: at })}>{`Play at ${at}`}</button>
+    }
+
+    it('waits for the metadata of a new track before it jumps', async () => {
+      renderWithProviders(<StartAt at={42} />)
+      await userEvent.click(screen.getByRole('button', { name: 'Play at 42' }))
+      const audio = audioElement()
+      expect(audio.getAttribute('src')).toBe('/api/tracks/7/stream')
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+      expect(audio.currentTime).toBe(0)
+
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(42)
+      // Applied once: a later seek is not overridden by it.
+      audio.currentTime = 10
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(10)
+    })
+
+    it('lets a seek made while the track still loads replace the start position', async () => {
+      function SeekTo() {
+        const player = usePlayer()
+        return <button onClick={() => player.seek(5)}>Seek to 5</button>
+      }
+      renderWithProviders(
+        <>
+          <StartAt at={42} />
+          <SeekTo />
+        </>,
+      )
+      await userEvent.click(screen.getByRole('button', { name: 'Play at 42' }))
+      const audio = audioElement()
+      await userEvent.click(screen.getByRole('button', { name: 'Seek to 5' }))
+      expect(audio.currentTime).toBe(0)
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(5)
+    })
+
+    it('seeks and plays at once when the track is already loaded, also when paused', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(
+        <>
+          <Launcher />
+          <StartAt at={30} />
+        </>,
+      )
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      const audio = audioElement()
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      await user.click(await screen.findByRole('button', { name: 'Pause' }))
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1)
+
+      await user.click(screen.getByRole('button', { name: 'Play at 30' }))
+      expect(audio.currentTime).toBe(30)
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
+
+      // Playing: a jump does not pause it (a plain play() would).
+      await user.click(screen.getByRole('button', { name: 'Play at 30' }))
+      expect(HTMLMediaElement.prototype.pause).toHaveBeenCalledTimes(1)
+      expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(2)
+    })
+
+    it('does not carry the position over to the next track', async () => {
+      const user = userEvent.setup()
+      function Two() {
+        const player = usePlayer()
+        return (
+          <>
+            <button onClick={() => player.play(TRACK, { startAt: 42 })}>first</button>
+            <button onClick={() => player.play({ ...TRACK, id: 9 })}>second</button>
+          </>
+        )
+      }
+      renderWithProviders(<Two />)
+      await user.click(screen.getByRole('button', { name: 'first' }))
+      await user.click(screen.getByRole('button', { name: 'second' }))
+      const audio = audioElement()
+      act(() => {
+        audio.dispatchEvent(new Event('loadedmetadata'))
+      })
+      expect(audio.currentTime).toBe(0)
+    })
+  })
+
+  describe('repeat', () => {
+    const repeatButton = () => screen.getByRole('button', { name: 'Repeat' })
+
+    beforeEach(() => {
+      window.localStorage.clear()
+    })
+
+    it('is off by default and loops the audio natively once switched on', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+      expect(audioElement().loop).toBe(false)
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+      expect(audioElement().loop).toBe(true)
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+      expect(audioElement().loop).toBe(false)
+    })
+
+    it('remembers the choice in localStorage and restores it on mount', async () => {
+      const user = userEvent.setup()
+      const first = renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      await user.click(repeatButton())
+      expect(window.localStorage.getItem('mcrar.player.loop')).toBe('1')
+      first.unmount()
+
+      renderWithProviders(<Launcher />)
+      expect(audioElement().loop).toBe(true)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+
+      await user.click(repeatButton())
+      expect(window.localStorage.getItem('mcrar.player.loop')).toBe('0')
+    })
+
+    it('shows not playing when a track ends without repeat', async () => {
+      renderWithProviders(<Launcher />)
+      await userEvent.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(await screen.findByRole('button', { name: 'Pause' })).toBeInTheDocument()
+      act(() => {
+        audioElement().dispatchEvent(new Event('ended'))
+      })
+      expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
+    })
+
+    it('keeps working when localStorage throws', async () => {
+      const user = userEvent.setup()
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('full', 'QuotaExceededError')
+      })
+      renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+      expect(audioElement().loop).toBe(true)
+    })
   })
 })

@@ -10,8 +10,11 @@ through :func:`get_state`.
 ``reload_settings`` swaps the settings at run time (the settings page): it tells the pool and
 rebuilds the search service when the default embedder, the search settings or the LLM settings
 changed, because those decide which models and stored tags may be used, how results rank and
-whether the LLM parses queries. The :class:`~mcrar.llm.client.LLMClient` reads the API key from
-the secret store on every call, so a key saved on the settings page needs no reload.
+whether the LLM parses queries. A changed default embedder also unloads the other models (VRAM)
+and loads the new default in the background; with a job running the unloading waits until the
+job ends (``release_models``, the job manager's ``on_idle`` hook). The
+:class:`~mcrar.llm.client.LLMClient` reads the API key from the secret store on every call, so a
+key saved on the settings page needs no reload.
 """
 
 from __future__ import annotations
@@ -121,7 +124,7 @@ class AppState:
         self.stream_urls = StreamUrlCache()
         self.references = ReferenceStore()
         self.torch_available: Callable[[], bool] = deps.torch_available or torch_installed
-        self.jobs = JobManager()
+        self.jobs = JobManager(on_idle=self.release_models)
         self._lock = threading.Lock()
         self._llm_factory = deps.llm_provider_factory
         try:
@@ -160,7 +163,12 @@ class AppState:
         return dict(self.stored_tags.allowed_versions or {})
 
     def reload_settings(self, new_settings: Settings) -> None:
-        """Use ``new_settings`` from now on (used by the settings routes)."""
+        """Use ``new_settings`` from now on (used by the settings routes).
+
+        When the default embedder changed, the models that are no longer needed are unloaded (the
+        VRAM comes back) and the new default loads in the background. While an ingest job runs
+        nothing is unloaded (the job may hold a model); :meth:`release_models` runs when it ends.
+        """
         with self._lock:
             old = self.settings
             self.settings = new_settings
@@ -175,6 +183,21 @@ class AppState:
                 self.llm = self._build_llm(new_settings)
                 self.stored_tags, self.search = self._build_search(new_settings)
                 old_search.close()
+            switched = new_settings.default_embedder != old.default_embedder
+        if switched:
+            # Outside the state lock: unloading waits for an embedding that is still running.
+            self.release_models()
+            if self.torch_available():
+                self.warm(name="mcrar-switch")
+
+    def release_models(self) -> None:
+        """Unload every model but the current default, unless an ingest job runs.
+
+        Called when the default changes and when a job ends (it may have loaded CLAP for
+        tagging). It is a no-op while a job runs, and no job can start while it unloads, so a
+        model a job holds is never taken away; the job's own end calls it again.
+        """
+        self.jobs.run_if_idle(lambda: self.pool.release(keep={self.settings.default_embedder}))
 
     # -- Jamendo -------------------------------------------------------------------------------
 
@@ -185,8 +208,9 @@ class AppState:
 
     # -- models and lifecycle ---------------------------------------------------------------
 
-    def warm(self) -> threading.Thread:
-        """Load the default embedder in the background (``mcrar serve --warm``)."""
+    def warm(self, *, name: str = "mcrar-warm") -> threading.Thread:
+        """Load the default embedder in the background (``mcrar serve --warm``, and after the
+        default changed)."""
 
         def load() -> None:
             try:
@@ -194,7 +218,7 @@ class AppState:
             except ModelUnavailableError as exc:
                 log.warning("warm-up skipped: %s", exc)
 
-        thread = threading.Thread(target=load, name="mcrar-warm", daemon=True)
+        thread = threading.Thread(target=load, name=name, daemon=True)
         thread.start()
         return thread
 

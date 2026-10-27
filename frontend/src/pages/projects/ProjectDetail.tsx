@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import {
   deleteProject,
@@ -12,6 +12,7 @@ import type { ProjectDetail as ProjectDetailData, ShortlistEntry } from '../../a
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { navigate } from '../../app/route'
 import { useToast } from '../../app/toastContext'
+import { TrackDrawer } from '../../features/track/TrackDrawer'
 import { cx } from '../../lib/cx'
 import { strings } from '../../strings'
 import { Button } from '../../ui/Button'
@@ -73,9 +74,18 @@ function ProjectView({
   const [name, setName] = useState(initial.name)
   const [items, setItems] = useState(initial.items)
   const [removed, setRemoved] = useState<ShortlistEntry | null>(null)
+  const [drawerId, setDrawerId] = useState<number | null>(null)
+  // Tracks being removed or removed: a note still waiting to be saved must not put them back.
+  const gone = useRef(new Set<number>())
   const projectId = initial.id
 
+  const findSimilar = (trackId: number) => {
+    setDrawerId(null)
+    navigate('search', [], { similar: String(trackId) })
+  }
+
   const saveNote = async (trackId: number, note: string) => {
+    if (gone.current.has(trackId)) return
     try {
       // Leaving the note out clears it, so an empty note is sent as none.
       const entry = await putProjectItem(projectId, trackId, note === '' ? undefined : note)
@@ -87,9 +97,11 @@ function ProjectView({
   }
 
   const remove = async (entry: ShortlistEntry) => {
+    gone.current.add(entry.track.id)
     try {
       await deleteProjectItem(projectId, entry.track.id)
     } catch (error) {
+      gone.current.delete(entry.track.id)
       toast.error(errorMessage(error))
       return
     }
@@ -102,6 +114,7 @@ function ProjectView({
     if (!removed) return
     try {
       const entry = await putProjectItem(projectId, removed.track.id, removed.note)
+      gone.current.delete(removed.track.id)
       setItems((current) => [...current, entry])
       setRemoved(null)
       toast.info(t.restored(removed.track.title || t.untitled))
@@ -166,10 +179,21 @@ function ProjectView({
         <EmptyState title={t.emptyShortlistTitle} description={t.emptyShortlistBody} />
       ) : (
         <>
-          <Shortlist items={items} onSaveNote={saveNote} onRemove={(entry) => void remove(entry)} />
+          <Shortlist
+            items={items}
+            onSaveNote={saveNote}
+            onRemove={(entry) => void remove(entry)}
+            onOpen={setDrawerId}
+            onFindSimilar={findSimilar}
+          />
           <CreditsPanel key={items.map((item) => item.track.id).join(',')} projectId={projectId} />
         </>
       )}
+      <TrackDrawer
+        trackId={drawerId}
+        onClose={() => setDrawerId(null)}
+        onFindSimilar={(track) => findSimilar(track.id)}
+      />
     </div>
   )
 }

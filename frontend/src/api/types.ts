@@ -12,11 +12,23 @@ export type RatingValue = 0 | 1 | 2
 
 // -- meta ----------------------------------------------------------------------------------
 
+export interface HealthModel {
+  key: string
+  state: 'loading' | 'ready' | 'error'
+  device: string | null
+  dtype: string | null
+  error?: string
+}
+
 export interface Health {
   status: string
   version: string
   catalog: { tracks: number }
   models_loaded: string[]
+  /** The models that are loaded, loading or failed (a default that was never used is absent). */
+  models: HealthModel[]
+  /** Null without a CUDA GPU. */
+  gpu: { vram_allocated_mb: number; vram_reserved_mb: number } | null
 }
 
 export interface VocabLabel {
@@ -306,8 +318,19 @@ export interface Project {
   item_count: number
 }
 
+/** A track on a shortlist: the summary plus what a row needs for links, download and credit. */
+export interface ShortlistTrack extends TrackSummary {
+  source_id: string
+  source_url: string | null
+  /** Null unless the source allows downloading. */
+  download_url: string | null
+  license_url: string | null
+  commercial_license_url: string | null
+  attribution_text: string | null
+}
+
 export interface ShortlistEntry {
-  track: TrackSummary
+  track: ShortlistTrack
   note: string | null
   added_at: string
 }

@@ -111,6 +111,7 @@ describe('Library catalog overview and tracks', () => {
     renderWithProviders(<LibraryPage />)
     const table = await screen.findByRole('table', { name: 'Tracks in the catalog' })
     expect(within(table).getByRole('button', { name: 'Show details of Song' })).toBeInTheDocument()
+    expect(within(table).getByRole('cell', { name: 'Jamendo' })).toBeInTheDocument()
     expect(screen.getByText('1 to 1 of 120')).toBeInTheDocument()
 
     const urls = () => api.mock.calls.map(([input]) => String(input)).filter((u) => u.startsWith('/api/tracks'))

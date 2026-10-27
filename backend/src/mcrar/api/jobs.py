@@ -17,6 +17,9 @@ Design
   it while cleaning up).
 - Nothing secret is stored: callers pass parameters without secrets, and every message that
   reaches an event, a report or the error field has URLs and ``client_id`` values removed.
+- ``on_idle`` (optional) is called in the worker thread after a job has ended (its final status
+  is set). :meth:`JobManager.run_if_idle` runs an action only while no job runs and holds off
+  :meth:`JobManager.start` meanwhile; the server uses both to free the models a job left loaded.
 - The last ``keep`` finished jobs are remembered. :meth:`JobManager.close` cancels the running job
   and waits a bounded time for it.
 
@@ -216,9 +219,16 @@ class ProgressSink:
 
 
 class JobManager:
-    def __init__(self, *, keep: int = KEEP_JOBS, close_timeout_s: float = CLOSE_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        *,
+        keep: int = KEEP_JOBS,
+        close_timeout_s: float = CLOSE_TIMEOUT_S,
+        on_idle: Callable[[], None] | None = None,
+    ) -> None:
         self._keep = keep
         self._close_timeout_s = close_timeout_s
+        self._on_idle = on_idle
         self._lock = threading.Lock()
         self._jobs: dict[str, Job] = {}  # oldest first
         self._current: Job | None = None
@@ -263,6 +273,22 @@ class JobManager:
             job.finish("done", None if report is None else report_to_dict(report))
         with self._lock:
             self._prune()
+        if self._on_idle is not None:  # the job is over: the owner may free what it held
+            try:
+                self._on_idle()
+            except Exception as exc:  # never let a hook error escape the worker thread
+                log.warning("on_idle hook failed (%s)", type(exc).__name__)
+
+    def run_if_idle(self, action: Callable[[], None]) -> bool:
+        """Run ``action`` unless a job runs; no job can start while it runs (the lock is held).
+
+        Returns whether it ran. Keep ``action`` short and never start a job from it.
+        """
+        with self._lock:
+            if self._current is not None and self._current.status == "running":
+                return False
+            action()
+            return True
 
     def _prune(self) -> None:
         """Forget the oldest finished jobs beyond ``keep`` (the lock is held)."""

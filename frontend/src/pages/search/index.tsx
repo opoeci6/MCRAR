@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import {
   deleteRating,
   getLlmStatus,
+  getTrack,
   getVocab,
   putRating,
   rerankSearch,
@@ -22,7 +23,8 @@ import type {
 } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { usePersistentState } from '../../app/usePersistentState'
-import { hrefFor } from '../../app/route'
+import { hrefFor, parseHash } from '../../app/route'
+import type { PageProps } from '../../app/route'
 import { useToast } from '../../app/toastContext'
 import { InlineJobProgress } from '../../features/jobs/InlineJobProgress'
 import { StartError } from '../../features/jobs/StartError'
@@ -183,7 +185,21 @@ function problemFor(error: unknown): Problem | null {
   return { kind: 'failed', message: errorMessage(error) }
 }
 
-export default function SearchPage() {
+/** Takes `similar` out of the hash (`#/search?similar=7` is `#/search`) without a history entry. */
+function clearSimilarParam() {
+  const route = parseHash(window.location.hash)
+  if (route.page !== 'search' || !route.params.has('similar')) return
+  route.params.delete('similar')
+  const { pathname, search } = window.location
+  const hash = hrefFor('search', route.subpath, Object.fromEntries(route.params))
+  window.history.replaceState(window.history.state, '', `${pathname}${search}${hash}`)
+}
+
+/**
+ * `#/search?similar=<track id>` (the Projects page's "Find similar") starts a search by that
+ * track once, like "Find similar" on a result. The page itself ignores the other params.
+ */
+export default function SearchPage({ params }: Partial<PageProps> = {}) {
   const toast = useToast()
   const [text, setText] = usePersistentState('search.text', '')
   const [filters, setFilters] = usePersistentState<FilterState>('search.filters', DEFAULT_FILTERS)
@@ -425,6 +441,51 @@ export default function SearchPage() {
     }
   }, [busy, reference])
 
+  // The track of `?similar=` arrives later, when the form may have changed: use the newest
+  // `findSimilar`.
+  const findSimilarRef = useRef(findSimilar)
+  useEffect(() => {
+    findSimilarRef.current = findSimilar
+  })
+  const mounted = useRef(false)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  // The value of `?similar=` that has been started, so that a re-render or a Strict Mode second
+  // run does not search twice; reset when the param is gone, so the same track can come again.
+  const startedSimilar = useRef<string | null>(null)
+  const similarRun = useRef(0)
+  const similarParam = params?.get('similar') ?? null
+  useEffect(() => {
+    if (similarParam === null) {
+      startedSimilar.current = null
+      return
+    }
+    if (startedSimilar.current === similarParam) return
+    startedSimilar.current = similarParam
+    // Out of the address first: Back and a reload must not search again.
+    clearSimilarParam()
+    similarRun.current += 1
+    const run = similarRun.current
+    const trackId = Number(similarParam)
+    const lookup = Number.isInteger(trackId) && trackId > 0
+      ? getTrack(trackId)
+      : Promise.reject(new Error(s.errors.similarUnknown))
+    lookup.then(
+      (track) => {
+        if (!mounted.current || run !== similarRun.current) return
+        findSimilarRef.current(track.id, track.title || s.row.untitled, track.artist)
+      },
+      (caught: unknown) => {
+        if (!mounted.current || run !== similarRun.current) return
+        toast.error(`${s.errors.similarFailed}: ${errorMessage(caught)}`)
+      },
+    )
+  }, [similarParam, toast])
+
   const rate = (item: SearchItem, next: RatingValue | null) => {
     if (!results) return
     const { runId, request } = results
@@ -466,7 +527,7 @@ export default function SearchPage() {
             className={styles.queryField}
             label={s.query.label}
             hideLabel
-            placeholder={s.query.placeholder}
+            placeholder={reference ? s.query.placeholderWithReference : s.query.placeholder}
             value={text}
             error={inputError ?? (problem?.kind === 'invalid' ? problem.message : undefined)}
             onChange={(event) => setText(event.target.value)}

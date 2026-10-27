@@ -30,6 +30,11 @@ class ClapEmbedder(TorchEmbedder):
         self._extractor = ClapFeatureExtractor.from_pretrained(folder)
         self._tokenizer = AutoTokenizer.from_pretrained(folder)
 
+    def close(self) -> None:
+        self._extractor = None  # the processors hold no weights; dropped with the model anyway
+        self._tokenizer = None
+        super().close()
+
     def encode_audio(self, batch: torch.Tensor) -> torch.Tensor:
         # The feature extractor crops longer clips at random ("rand_trunc"); crop the centre
         # instead so that embedding the same clip twice gives the same vector.

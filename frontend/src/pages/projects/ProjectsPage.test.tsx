@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHashRoute } from '../../app/route'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
@@ -16,7 +16,13 @@ const PROJECTS = [
   { id: 2, name: 'Trailer', created_at: '2026-10-02T12:00:00Z', item_count: 0 },
 ]
 
-function entry(id: number, title: string, risk: string, note: string | null = null) {
+function entry(
+  id: number,
+  title: string,
+  risk: string,
+  note: string | null = null,
+  extra: Record<string, unknown> = {},
+) {
   return {
     track: {
       id,
@@ -26,6 +32,13 @@ function entry(id: number, title: string, risk: string, note: string | null = nu
       duration_s: 187,
       risk,
       license_code: risk === 'red' ? 'CC BY-NC 4.0' : 'CC BY 4.0',
+      source_id: `jam-${id}`,
+      source_url: null,
+      download_url: null,
+      license_url: 'https://example.org/by',
+      commercial_license_url: null,
+      attribution_text: `${title} by Artist ${id}`,
+      ...extra,
     },
     note,
     added_at: '2026-10-05T12:00:00Z',
@@ -42,6 +55,18 @@ const DETAIL = { ...PROJECTS[0], items: ITEMS }
 // No restricted track, so no licence warning (which is an alert too).
 const SAFE_DETAIL = { ...PROJECTS[0], items: ITEMS.slice(0, 2) }
 const NO_CONTENT = () => new Response(null, { status: 204 })
+
+/** The shortlist row of a track. */
+const rowOf = (title: string) => screen.getByText(title).closest('li') as HTMLElement
+
+/** Opens the note field of a track: "Add note" when empty, a click on the text otherwise. */
+async function openNote(user: ReturnType<typeof userEvent.setup>, title: string) {
+  const row = (await screen.findByText(title)).closest('li') as HTMLElement
+  const add = within(row).queryByRole('button', { name: 'Add note' })
+  if (add) await user.click(add)
+  else await user.click(within(row).getByTitle(/^Saves as you type/))
+  return within(row).getByRole('textbox', { name: `Note for ${title}` }) as HTMLTextAreaElement
+}
 
 function calls(api: ReturnType<typeof stubApi>, method: string) {
   return api.mock.calls.filter(([, init]) => init?.method === method)
@@ -299,9 +324,7 @@ describe('Projects page', () => {
       expect(within(row).getByText('Artist 11')).toBeInTheDocument()
       expect(within(row).getByText('3:07')).toBeInTheDocument()
       expect(within(row).getByText(/CC BY 4.0/)).toBeInTheDocument()
-      expect(within(row).getByRole('textbox', { name: 'Note for Forest Walk' })).toHaveValue(
-        'Level 2 intro',
-      )
+      expect(within(row).getByText('Level 2 intro')).toBeInTheDocument()
       const red = (screen.getByText('Dark Alley')).closest('li') as HTMLElement
       expect(within(red).getByText('Restricted')).toBeInTheDocument()
     })
@@ -324,7 +347,7 @@ describe('Projects page', () => {
       })
       renderWithProviders(<Routed />)
 
-      const field = await screen.findByRole('textbox', { name: 'Note for Rainy Window' })
+      const field = await openNote(user, 'Rainy Window')
       await user.type(field, 'Menu music')
       expect(calls(api, 'PUT')).toHaveLength(0)
       await user.tab()
@@ -344,7 +367,7 @@ describe('Projects page', () => {
       })
       renderWithProviders(<Routed />)
 
-      const field = await screen.findByRole('textbox', { name: 'Note for Rainy Window' })
+      const field = await openNote(user, 'Rainy Window')
       await user.type(field, 'x{Control>}{Enter}{/Control}')
       expect(await screen.findByText('Saved')).toBeInTheDocument()
       await user.tab()
@@ -355,7 +378,8 @@ describe('Projects page', () => {
       const user = userEvent.setup()
       const api = stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DETAIL })
       renderWithProviders(<Routed />)
-      const field = await screen.findByRole('textbox', { name: 'Note for Forest Walk' })
+      const field = await openNote(user, 'Forest Walk')
+      expect(field).toHaveValue('Level 2 intro')
       await user.click(field)
       await user.tab()
       expect(calls(api, 'PUT')).toHaveLength(0)
@@ -370,7 +394,7 @@ describe('Projects page', () => {
       })
       renderWithProviders(<Routed />)
 
-      const field = await screen.findByRole('textbox', { name: 'Note for Forest Walk' })
+      const field = await openNote(user, 'Forest Walk')
       expect(field).toHaveAttribute('maxlength', '2000')
       await user.clear(field)
       await user.tab()
@@ -388,11 +412,14 @@ describe('Projects page', () => {
       })
       renderWithProviders(<Routed />)
 
-      await user.type(await screen.findByRole('textbox', { name: 'Note for Rainy Window' }), 'x')
+      await user.type(await openNote(user, 'Rainy Window'), 'x')
       await user.tab()
 
       expect(await screen.findByRole('alert')).toHaveTextContent('database is locked')
+      expect(await screen.findByText("Couldn't save")).toBeInTheDocument()
       expect(screen.queryByText('Saved')).not.toBeInTheDocument()
+      // The text is still there to read and to save again.
+      expect(screen.getByText('x')).toBeInTheDocument()
     })
 
     it('removes a track at once and can undo it with its note', async () => {
@@ -405,15 +432,17 @@ describe('Projects page', () => {
       })
       renderWithProviders(<Routed />)
 
-      await user.click(await screen.findByRole('button', { name: 'Remove Forest Walk from the project' }))
+      const remove = await screen.findByRole('button', { name: 'Remove Forest Walk from the project' })
+      expect(remove).toHaveTextContent('Remove')
+      await user.click(remove)
 
       expect(await screen.findByText('Removed "Forest Walk" from the shortlist.')).toBeInTheDocument()
-      expect(screen.queryByRole('textbox', { name: 'Note for Forest Walk' })).not.toBeInTheDocument()
+      expect(screen.queryByText('Level 2 intro')).not.toBeInTheDocument()
       expect(calls(api, 'DELETE')[0]?.[0]).toBe('/api/projects/1/items/11')
       expect(screen.getByText(/1 safe/)).toBeInTheDocument()
 
       await user.click(screen.getByRole('button', { name: 'Undo' }))
-      expect(await screen.findByRole('textbox', { name: 'Note for Forest Walk' })).toBeInTheDocument()
+      expect(await screen.findByText('Level 2 intro')).toBeInTheDocument()
       expect(calls(api, 'PUT')[0]?.[1]?.body).toBe('{"note":"Level 2 intro"}')
       expect(screen.queryByText('Removed "Forest Walk" from the shortlist.')).not.toBeInTheDocument()
     })
@@ -429,6 +458,145 @@ describe('Projects page', () => {
       await user.click(await screen.findByRole('button', { name: 'Remove Rainy Window from the project' }))
       expect(await screen.findByRole('alert')).toHaveTextContent('nope')
       expect(screen.getByText('Rainy Window')).toBeInTheDocument()
+    })
+  })
+
+  describe('a shortlist row', () => {
+    const DOWNLOADABLE = {
+      ...DETAIL,
+      items: [
+        entry(10, 'Rainy Window', 'green', null, {
+          download_url: 'https://example.org/dl/10',
+          license_url: 'https://example.org/by',
+          commercial_license_url: 'https://example.org/buy',
+        }),
+        entry(11, 'Forest Walk', 'green'),
+      ],
+    }
+    const TRACK_10 = {
+      ...DOWNLOADABLE.items[0]?.track,
+      album: null,
+      release_date: null,
+      image_url: null,
+      vocal_instrumental: null,
+      local_path: null,
+      stream_url: '/api/tracks/10/stream',
+      features: null,
+      tags: [],
+      license: {
+        code: 'CC BY 4.0',
+        url: 'https://example.org/by',
+        family: null,
+        risk: 'green',
+        commercial_ok: null,
+        derivatives_ok: null,
+        share_alike: null,
+        attribution_required: null,
+        attribution_text: 'Rainy Window by Artist 10',
+        commercial_license_url: null,
+      },
+    }
+
+    beforeEach(() => {
+      window.location.hash = '#/projects/1'
+    })
+
+    it('opens the track details from the title, with Find similar in them', async () => {
+      const user = userEvent.setup()
+      stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': DOWNLOADABLE,
+        'GET /api/tracks/10': TRACK_10,
+      })
+      renderWithProviders(<Routed />)
+
+      await user.click(await screen.findByRole('button', { name: 'Rainy Window' }))
+      const dialog = await screen.findByRole('dialog')
+      expect(await within(dialog).findByText('Audio features')).toBeInTheDocument()
+
+      await user.click(within(dialog).getByRole('button', { name: 'Find similar' }))
+      expect(window.location.hash).toBe('#/search?similar=10')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('names the source of each track, and shows an unknown source as it is', async () => {
+      stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': {
+          ...DETAIL,
+          items: [
+            entry(10, 'Rainy Window', 'green'),
+            entry(11, 'Forest Walk', 'green', null, { source: 'local' }),
+            entry(12, 'Dark Alley', 'green', null, { source: 'spotify' }),
+          ],
+        },
+      })
+      renderWithProviders(<Routed />)
+
+      await screen.findByText('Rainy Window')
+      expect(within(rowOf('Rainy Window')).getByText('Jamendo')).toBeInTheDocument()
+      expect(within(rowOf('Forest Walk')).getByText('Local')).toBeInTheDocument()
+      expect(within(rowOf('Dark Alley')).getByText('spotify')).toBeInTheDocument()
+    })
+
+    it('opens the licence details from the badge', async () => {
+      const user = userEvent.setup()
+      stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DOWNLOADABLE })
+      renderWithProviders(<Routed />)
+
+      await screen.findByText('Rainy Window')
+      const row = rowOf('Rainy Window')
+      expect(screen.queryByText('Rainy Window by Artist 10')).not.toBeInTheDocument()
+      await user.click(within(row).getByRole('button', { name: /^Licence/ }))
+
+      expect(screen.getByText('Rainy Window by Artist 10')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /Read the licence/ })).toHaveAttribute(
+        'href',
+        'https://example.org/by',
+      )
+      expect(screen.getByRole('link', { name: /Buy a commercial licence/ })).toHaveAttribute(
+        'href',
+        'https://example.org/buy',
+      )
+    })
+
+    it('shows Download only for a track with a download_url, and opens it with the licence file', async () => {
+      const user = userEvent.setup()
+      stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DOWNLOADABLE })
+      const open = vi.fn()
+      vi.stubGlobal('open', open)
+      const clicked: string[] = []
+      vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+        clicked.push(this.getAttribute('href') ?? '')
+      })
+      renderWithProviders(<Routed />)
+
+      await screen.findByText('Rainy Window')
+      expect(within(rowOf('Forest Walk')).queryByRole('button', { name: /^Download/ })).not.toBeInTheDocument()
+      await user.click(within(rowOf('Rainy Window')).getByRole('button', { name: /^Download/ }))
+      expect(open).toHaveBeenCalledWith('https://example.org/dl/10', '_blank', 'noopener')
+      expect(clicked).toEqual(['/api/tracks/10/credits?format=txt'])
+    })
+
+    it('goes to the search for tracks like this one', async () => {
+      const user = userEvent.setup()
+      stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DOWNLOADABLE })
+      renderWithProviders(<Routed />)
+
+      await screen.findByText('Forest Walk')
+      await user.click(within(rowOf('Forest Walk')).getByRole('button', { name: 'Find similar to Forest Walk' }))
+      expect(window.location.hash).toBe('#/search?similar=11')
+    })
+
+    it('gives the player the licence details, so its badge opens them too', async () => {
+      const user = userEvent.setup()
+      stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DOWNLOADABLE })
+      renderWithProviders(<Routed />)
+
+      await user.click(await screen.findByRole('button', { name: 'Play Rainy Window' }))
+      const bar = await screen.findByRole('region', { name: 'Audio player' })
+      await user.click(within(bar).getByRole('button', { name: /^Licence/ }))
+      expect(screen.getByText('Rainy Window by Artist 10')).toBeInTheDocument()
     })
   })
 

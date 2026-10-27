@@ -3,8 +3,9 @@ import type { ReactNode } from 'react'
 import { trackStreamUrl } from '../api/endpoints'
 import { useToast } from '../app/toastContext'
 import { strings } from '../strings'
+import { readLoop, writeLoop } from './loopPreference'
 import { PlayerContext, PlayerTimeContext } from './playerContext'
-import type { PlayableTrack, PlayerApi, PlayerTime } from './playerContext'
+import type { PlayableTrack, PlayerApi, PlayerTime, PlayOptions } from './playerContext'
 
 /**
  * Owns the one `<audio>` element of the app. The source is the backend's stream URL, which
@@ -19,9 +20,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [volume, setVolumeState] = useState(1)
+  const [loop, setLoopState] = useState(readLoop)
   const [time, setTime] = useState<PlayerTime>({ currentTime: 0, duration: 0 })
   const currentRef = useRef<PlayableTrack | null>(null)
   const errorShown = useRef(false)
+  // A position to jump to once the audio knows its length: a seek before that may be dropped.
+  const pendingSeek = useRef<number | null>(null)
 
   const fail = useCallback(() => {
     setIsPlaying(false)
@@ -45,22 +49,45 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [fail],
   )
 
+  const seek = useCallback((seconds: number) => {
+    const audio = audioRef.current
+    if (!audio || !Number.isFinite(seconds)) return
+    const target = Math.max(0, seconds)
+    if (pendingSeek.current !== null) {
+      // Still loading: the newest position wins and is applied with the metadata.
+      pendingSeek.current = target
+      setTime((previous) => ({ ...previous, currentTime: target }))
+      return
+    }
+    audio.currentTime = target
+    setTime((previous) => ({ ...previous, currentTime: audio.currentTime }))
+  }, [])
+
   const play = useCallback(
-    (track: PlayableTrack) => {
+    (track: PlayableTrack, { startAt }: PlayOptions = {}) => {
       const audio = audioRef.current
       if (!audio) return
+      const jump = startAt !== undefined && Number.isFinite(startAt)
       if (currentRef.current?.id === track.id) {
-        if (audio.paused) start(audio)
+        if (jump) {
+          seek(startAt)
+          if (audio.paused) start(audio)
+        } else if (audio.paused) start(audio)
         else audio.pause()
         return
       }
       currentRef.current = track
       setCurrent(track)
       setTime({ currentTime: 0, duration: track.duration_s ?? 0 })
+      pendingSeek.current = null
       audio.src = trackStreamUrl(track.id)
+      if (jump) {
+        pendingSeek.current = Math.max(0, startAt)
+        setTime((previous) => ({ ...previous, currentTime: Math.max(0, startAt) }))
+      }
       start(audio)
     },
-    [start],
+    [seek, start],
   )
 
   const toggle = useCallback(() => {
@@ -72,22 +99,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const pause = useCallback(() => audioRef.current?.pause(), [])
 
-  const seek = useCallback((seconds: number) => {
-    const audio = audioRef.current
-    if (!audio || !Number.isFinite(seconds)) return
-    audio.currentTime = Math.max(0, seconds)
-    setTime((previous) => ({ ...previous, currentTime: audio.currentTime }))
-  }, [])
-
   const setVolume = useCallback((next: number) => {
     const clamped = Math.min(1, Math.max(0, next))
     if (audioRef.current) audioRef.current.volume = clamped
     setVolumeState(clamped)
   }, [])
 
+  const setLoop = useCallback((next: boolean) => {
+    setLoopState(next)
+    writeLoop(next)
+  }, [])
+
   const api = useMemo<PlayerApi>(
-    () => ({ current, isPlaying, isLoading, volume, play, toggle, pause, seek, setVolume }),
-    [current, isPlaying, isLoading, volume, play, toggle, pause, seek, setVolume],
+    () => ({ current, isPlaying, isLoading, volume, loop, play, toggle, pause, seek, setVolume, setLoop }),
+    [current, isPlaying, isLoading, volume, loop, play, toggle, pause, seek, setVolume, setLoop],
   )
 
   const readTime = (audio: HTMLAudioElement) =>
@@ -102,6 +127,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       <audio
         ref={audioRef}
         preload="none"
+        loop={loop}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}
@@ -111,6 +137,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         }}
         onCanPlay={() => setIsLoading(false)}
         onWaiting={() => setIsLoading(true)}
+        onLoadedMetadata={(event) => {
+          if (pendingSeek.current === null) return
+          event.currentTarget.currentTime = pendingSeek.current
+          pendingSeek.current = null
+          readTime(event.currentTarget)
+        }}
         onTimeUpdate={(event) => readTime(event.currentTarget)}
         onDurationChange={(event) => readTime(event.currentTarget)}
         onError={fail}

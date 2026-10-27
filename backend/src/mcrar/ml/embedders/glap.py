@@ -46,6 +46,16 @@ class GlapEmbedder(TorchEmbedder):
         else:
             front_end.float()
 
+    def close(self) -> None:
+        # The tokenizer came from the remote model and the hook sits on its front end: let go of
+        # both so that nothing but ``module`` can keep the weights alive.
+        hook = getattr(self, "_hook", None)
+        if hook is not None:
+            hook.remove()
+        self._hook = None
+        self._tokenizer = None
+        super().close()
+
     def encode_audio(self, batch: torch.Tensor) -> torch.Tensor:
         return self.module.encode_audio(batch)
 

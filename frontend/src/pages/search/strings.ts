@@ -1,10 +1,14 @@
+import { trackFeatureStrings } from '../../features/track/strings'
+
 /** Text of the Search page. Add this page's strings here, not in src/strings.ts. */
 export const searchStrings = {
   title: 'Search',
   description: 'Describe the music you need, or filter by genre, mood and licence.',
   query: {
     label: 'Describe the music you need',
-    placeholder: 'tense stealth level, no vocals',
+    placeholder: 'Describe the music, e.g. tense stealth level, no vocals',
+    /** With a reference song, words steer the search instead of replacing it. */
+    placeholderWithReference: 'Optional: steer it with words, e.g. calmer, no vocals',
     submit: 'Search',
     searching: 'Searching',
     examplesHeading: 'Try one of these',
@@ -66,7 +70,7 @@ export const searchStrings = {
     durationMax: 'Max seconds',
     durationOrder: 'Min seconds must not exceed max seconds.',
     source: 'Source',
-    sourceOptions: { '': 'Any', jamendo: 'Jamendo', local: 'Local' } as Record<string, string>,
+    sourceOptions: { '': 'Any', ...trackFeatureStrings.sourceNames } as Record<string, string>,
   },
   results: {
     heading: 'Results',
@@ -125,6 +129,8 @@ export const searchStrings = {
     failed: "Couldn't search",
     ratingFailed: "Couldn't save the rating",
     loadMoreFailed: "Couldn't load more results",
+    similarFailed: "Couldn't find similar tracks",
+    similarUnknown: 'That is not a track id',
   },
   row: {
     untitled: 'Untitled',
@@ -139,11 +145,7 @@ export const searchStrings = {
     tag: (display: string, percent: number) => `${display} ${percent}%`,
     isNew: 'New',
     newHint: 'Added from Jamendo for this search',
-    findSimilar: 'Find similar',
-    findSimilarTo: (title: string) => `Find similar to ${title}`,
     why: 'Why this result',
     llmPrefix: 'LLM:',
-    download: 'Download',
-    downloadHint: 'Opens the download page and saves the licence file',
   },
 }

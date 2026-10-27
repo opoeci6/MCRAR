@@ -71,6 +71,11 @@
   accent-color: var(--color-accent);
 }
 
+/* Keeps its size when the seek bar is squeezed. */
+.repeat {
+  flex: none;
+}
+
 .volume {
   grid-area: volume;
   flex: 0 0 140px;

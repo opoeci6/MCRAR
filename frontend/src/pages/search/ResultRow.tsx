@@ -1,6 +1,8 @@
 import { useId, useState } from 'react'
 import type { RatingValue, SearchItem } from '../../api/types'
 import { AddToProjectMenu } from '../../features/projects/AddToProjectMenu'
+import { TrackActions } from '../../features/track/TrackActions'
+import { sourceLabel } from '../../features/track/sourceLabel'
 import { formatTime } from '../../lib/format'
 import { usePlayer } from '../../player/playerContext'
 import { Button, IconButton } from '../../ui/Button'
@@ -8,8 +10,6 @@ import { ChevronDownIcon, PauseIcon, PlayIcon } from '../../ui/icons'
 import { LicenseBadge } from '../../ui/LicenseBadge'
 import { RatingControl } from '../../ui/RatingControl'
 import { ScoreBreakdown } from '../../ui/ScoreBreakdown'
-import { strings } from '../../strings'
-import { downloadTrack } from './download'
 import { searchStrings } from './strings'
 import styles from './ResultRow.module.css'
 
@@ -83,6 +83,7 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
 
         <div className={styles.facts}>
           <span>{formatTime(item.duration_s)}</span>
+          <span>{sourceLabel(item.source)}</span>
           {item.bpm == null ? null : <span>{r.bpm(item.bpm)}</span>}
           {key ? <span>{key}</span> : null}
           {energy == null ? null : (
@@ -117,19 +118,12 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
             <RatingControl value={item.rating} onChange={(value) => onRate(item, value)} />
           ) : null}
           <AddToProjectMenu trackId={item.track_id} trackTitle={item.title ?? ''} />
-          {item.download_url ? (
-            <Button
-              size="sm"
-              title={r.downloadHint}
-              onClick={() => downloadTrack(item.track_id, item.download_url as string)}
-            >
-              {r.download}
-              <span className="sr-only"> {strings.common.opensInNewTab}</span>
-            </Button>
-          ) : null}
-          <Button size="sm" aria-label={r.findSimilarTo(title)} onClick={() => onFindSimilar(item)}>
-            {r.findSimilar}
-          </Button>
+          <TrackActions
+            trackId={item.track_id}
+            title={title}
+            downloadUrl={item.download_url}
+            onFindSimilar={() => onFindSimilar(item)}
+          />
           <Button
             size="sm"
             variant="ghost"

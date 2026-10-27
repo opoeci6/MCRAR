@@ -1,7 +1,7 @@
 import { formatTime } from '../lib/format'
 import { strings } from '../strings'
 import { IconButton } from '../ui/Button'
-import { PauseIcon, PlayIcon, VolumeIcon } from '../ui/icons'
+import { PauseIcon, PlayIcon, RepeatIcon, VolumeIcon } from '../ui/icons'
 import { LicenseBadge } from '../ui/LicenseBadge'
 import { Spinner } from '../ui/Spinner'
 import { usePlayer, usePlayerTime } from './playerContext'
@@ -9,7 +9,7 @@ import styles from './PlayerBar.module.css'
 
 /** The fixed bar at the bottom. Shows nothing until a track has been played. */
 export function PlayerBar() {
-  const { current, isPlaying, isLoading, volume, toggle, seek, setVolume } = usePlayer()
+  const { current, isPlaying, isLoading, volume, loop, toggle, seek, setVolume, setLoop } = usePlayer()
   const { currentTime, duration } = usePlayerTime()
   if (!current) return null
 
@@ -63,6 +63,15 @@ export function PlayerBar() {
         />
         <span className={styles.time}>{formatTime(seekable ? duration : null)}</span>
         {isLoading ? <Spinner size={14} label={strings.player.loading} /> : null}
+        <IconButton
+          label={strings.player.repeat}
+          size="sm"
+          className={styles.repeat}
+          aria-pressed={loop}
+          onClick={() => setLoop(!loop)}
+        >
+          <RepeatIcon />
+        </IconButton>
       </div>
 
       <div className={styles.volume}>
