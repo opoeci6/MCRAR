@@ -12,11 +12,23 @@ export type RatingValue = 0 | 1 | 2
 
 // -- meta ----------------------------------------------------------------------------------
 
+export interface HealthModel {
+  key: string
+  state: 'loading' | 'ready' | 'error'
+  device: string | null
+  dtype: string | null
+  error?: string
+}
+
 export interface Health {
   status: string
   version: string
   catalog: { tracks: number }
   models_loaded: string[]
+  /** The models that are loaded, loading or failed (a default that was never used is absent). */
+  models: HealthModel[]
+  /** Null without a CUDA GPU. */
+  gpu: { vram_allocated_mb: number; vram_reserved_mb: number } | null
 }
 
 export interface VocabLabel {

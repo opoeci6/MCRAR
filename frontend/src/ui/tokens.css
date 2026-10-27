@@ -49,6 +49,8 @@
   --color-border-strong: #808899;
   --color-text: #1a1d24;
   --color-text-muted: #596071;
+  /* Lighter than muted, so an example in an empty field never passes for typed text. */
+  --color-text-placeholder: #858c9b;
   --color-accent: #3451c7;
   --color-accent-hover: #2a43a8;
   --color-accent-contrast: #ffffff;
@@ -102,6 +104,7 @@
     --color-border-strong: #6c7589;
     --color-text: #e9ebf1;
     --color-text-muted: #a2aabb;
+    --color-text-placeholder: #7b8396;
     --color-accent: #8ea3f7;
     --color-accent-hover: #a9b9fa;
     --color-accent-contrast: #0e1222;

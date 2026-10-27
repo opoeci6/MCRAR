@@ -527,7 +527,7 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
             className={styles.queryField}
             label={s.query.label}
             hideLabel
-            placeholder={s.query.placeholder}
+            placeholder={reference ? s.query.placeholderWithReference : s.query.placeholder}
             value={text}
             error={inputError ?? (problem?.kind === 'invalid' ? problem.message : undefined)}
             onChange={(event) => setText(event.target.value)}

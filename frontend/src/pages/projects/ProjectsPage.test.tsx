@@ -519,6 +519,26 @@ describe('Projects page', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
 
+    it('names the source of each track, and shows an unknown source as it is', async () => {
+      stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': {
+          ...DETAIL,
+          items: [
+            entry(10, 'Rainy Window', 'green'),
+            entry(11, 'Forest Walk', 'green', null, { source: 'local' }),
+            entry(12, 'Dark Alley', 'green', null, { source: 'spotify' }),
+          ],
+        },
+      })
+      renderWithProviders(<Routed />)
+
+      await screen.findByText('Rainy Window')
+      expect(within(rowOf('Rainy Window')).getByText('Jamendo')).toBeInTheDocument()
+      expect(within(rowOf('Forest Walk')).getByText('Local')).toBeInTheDocument()
+      expect(within(rowOf('Dark Alley')).getByText('spotify')).toBeInTheDocument()
+    })
+
     it('opens the licence details from the badge', async () => {
       const user = userEvent.setup()
       stubApi({ 'GET /api/projects': PROJECTS, 'GET /api/projects/1': DOWNLOADABLE })

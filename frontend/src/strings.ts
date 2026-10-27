@@ -108,6 +108,7 @@ export const strings = {
     seek: 'Seek',
     seekValue: (current: string, total: string) => `${current} of ${total}`,
     volume: 'Volume',
+    repeat: 'Repeat',
     error: "Couldn't play this track",
     unknownTitle: 'Untitled',
     unknownArtist: 'Unknown artist',

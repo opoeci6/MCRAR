@@ -2,6 +2,7 @@ import { useId, useState } from 'react'
 import type { RatingValue, SearchItem } from '../../api/types'
 import { AddToProjectMenu } from '../../features/projects/AddToProjectMenu'
 import { TrackActions } from '../../features/track/TrackActions'
+import { sourceLabel } from '../../features/track/sourceLabel'
 import { formatTime } from '../../lib/format'
 import { usePlayer } from '../../player/playerContext'
 import { Button, IconButton } from '../../ui/Button'
@@ -82,6 +83,7 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
 
         <div className={styles.facts}>
           <span>{formatTime(item.duration_s)}</span>
+          <span>{sourceLabel(item.source)}</span>
           {item.bpm == null ? null : <span>{r.bpm(item.bpm)}</span>}
           {key ? <span>{key}</span> : null}
           {energy == null ? null : (

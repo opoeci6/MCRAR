@@ -305,6 +305,7 @@ describe('Search page: results', () => {
     const row = await screen.findByRole('article', { name: 'Track 1' })
     expect(within(row).getByText('by Artist 1')).toBeInTheDocument()
     expect(within(row).getByText('2:05')).toBeInTheDocument()
+    expect(within(row).getByText('Jamendo')).toBeInTheDocument()
     expect(within(row).getByText('98 BPM')).toBeInTheDocument()
     expect(within(row).getByText('C major')).toBeInTheDocument()
     expect(within(row).getByRole('img', { name: 'Energy 60%' })).toBeInTheDocument()
@@ -1563,6 +1564,8 @@ describe('Search page: ?similar= from the Projects page', () => {
     ])
     expect(screen.getByText('Sounds like: Track 1 — Artist 1')).toBeInTheDocument()
     expect(box()).toHaveValue('')
+    // The empty box says that words now steer the reference search.
+    expect(box()).toHaveAttribute('placeholder', expect.stringMatching(/^Optional: steer it/))
     expect(screen.getByText(/^Similar to Track 1 — Artist 1 · /)).toBeInTheDocument()
 
     expect(window.location.hash).toBe('#/search')
@@ -1593,6 +1596,7 @@ describe('Search page: ?similar= from the Projects page', () => {
     const mock = setup({ 'POST /api/search': SIMILAR, 'GET /api/tracks/1': TRACK_1 })
     renderWithProviders(<Host initial="" />)
     await screen.findByRole('textbox', { name: 'Describe the music you need' })
+    expect(box()).toHaveAttribute('placeholder', expect.stringMatching(/^Describe the music, e\.g\./))
     expect(bodies(mock, 'POST /api/search')).toEqual([])
     expect(mock.mock.calls.some(([input]) => String(input).startsWith('/api/tracks/'))).toBe(false)
   })

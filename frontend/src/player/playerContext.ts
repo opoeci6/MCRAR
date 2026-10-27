@@ -28,6 +28,8 @@ export interface PlayerApi {
   isLoading: boolean
   /** 0 to 1. */
   volume: number
+  /** Repeat the current track (the audio loops natively). Remembered across reloads. */
+  loop: boolean
   /**
    * Plays the track from the start; the track that is already loaded is toggled instead. With
    * `startAt` the track always plays, from that position (also while it is still loading).
@@ -39,6 +41,7 @@ export interface PlayerApi {
   /** Jumps to a position in seconds. */
   seek: (seconds: number) => void
   setVolume: (volume: number) => void
+  setLoop: (next: boolean) => void
 }
 
 export interface PlayerTime {

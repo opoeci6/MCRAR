@@ -96,3 +96,9 @@ export const TrashIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M2.5 4.5h11M6.2 4.5V3a.8.8 0 0 1 .8-.8h2a.8.8 0 0 1 .8.8v1.5M4 4.5l.6 8.2a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8.2M6.7 7.2v3.6M9.3 7.2v3.6" />
   </Icon>
 )
+
+export const RepeatIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M3 7.5V7a2 2 0 0 1 2-2h8M11 2.8L13.2 5 11 7.2M13 8.5V9a2 2 0 0 1-2 2H3M5 13.2L2.8 11 5 8.8" />
+  </Icon>
+)

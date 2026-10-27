@@ -1,6 +1,6 @@
 import { act, fireEvent, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderWithProviders } from '../test/render'
 import { usePlayer } from './playerContext'
 import type { PlayableTrack } from './playerContext'
@@ -219,6 +219,74 @@ describe('PlayerBar', () => {
         audio.dispatchEvent(new Event('loadedmetadata'))
       })
       expect(audio.currentTime).toBe(0)
+    })
+  })
+
+  describe('repeat', () => {
+    const repeatButton = () => screen.getByRole('button', { name: 'Repeat' })
+
+    beforeEach(() => {
+      window.localStorage.clear()
+    })
+
+    it('is off by default and loops the audio natively once switched on', async () => {
+      const user = userEvent.setup()
+      renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+      expect(audioElement().loop).toBe(false)
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+      expect(audioElement().loop).toBe(true)
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+      expect(audioElement().loop).toBe(false)
+    })
+
+    it('remembers the choice in localStorage and restores it on mount', async () => {
+      const user = userEvent.setup()
+      const first = renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      await user.click(repeatButton())
+      expect(window.localStorage.getItem('mcrar.player.loop')).toBe('1')
+      first.unmount()
+
+      renderWithProviders(<Launcher />)
+      expect(audioElement().loop).toBe(true)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+
+      await user.click(repeatButton())
+      expect(window.localStorage.getItem('mcrar.player.loop')).toBe('0')
+    })
+
+    it('shows not playing when a track ends without repeat', async () => {
+      renderWithProviders(<Launcher />)
+      await userEvent.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(await screen.findByRole('button', { name: 'Pause' })).toBeInTheDocument()
+      act(() => {
+        audioElement().dispatchEvent(new Event('ended'))
+      })
+      expect(await screen.findByRole('button', { name: 'Play' })).toBeInTheDocument()
+    })
+
+    it('keeps working when localStorage throws', async () => {
+      const user = userEvent.setup()
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError')
+      })
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('full', 'QuotaExceededError')
+      })
+      renderWithProviders(<Launcher />)
+      await user.click(screen.getByRole('button', { name: 'Play it' }))
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'false')
+
+      await user.click(repeatButton())
+      expect(repeatButton()).toHaveAttribute('aria-pressed', 'true')
+      expect(audioElement().loop).toBe(true)
     })
   })
 })

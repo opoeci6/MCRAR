@@ -14,6 +14,15 @@ export const settingsStrings = {
     commercial: 'commercial use OK',
     research: 'research only',
     save: 'Save model',
+    saved: 'Model saved',
+    status: {
+      absent: 'Not loaded yet. It loads with the first search.',
+      loading: (name: string) => `Loading ${name}…`,
+      ready: (device: string | null, dtype: string | null) =>
+        device ? `Ready on ${device}${dtype ? ` (${dtype})` : ''}` : 'Ready',
+      vram: (megabytes: number) => `${megabytes} MB VRAM in use`,
+      errorTitle: "The model didn't load",
+    },
   },
 
   llm: {

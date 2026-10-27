@@ -14,6 +14,8 @@ export const trackFeatureStrings = {
   downloadHint: 'Opens the download page and saves the licence file',
   openOnJamendo: 'Open on Jamendo',
   openSource: 'Open the source page',
+  /** The one place a source's display name lives (search filter, rows, library). */
+  sourceNames: { jamendo: 'Jamendo', local: 'Local' } as Record<string, string>,
   localFile: 'Local file',
   licence: {
     heading: 'Licence',

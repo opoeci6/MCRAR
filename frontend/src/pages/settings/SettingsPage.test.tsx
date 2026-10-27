@@ -1,7 +1,7 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
-import type { LlmPreset, SettingsView } from '../../api/types'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { Health, HealthModel, LlmPreset, SettingsView } from '../../api/types'
 import { BackendStatusContext } from '../../app/backendStatus'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
@@ -129,6 +129,189 @@ describe('Settings: model', () => {
     await user.click(screen.getByRole('button', { name: 'Save model' }))
     await waitFor(() => expect(putBodies(api, '/api/settings')).toEqual([{ default_embedder: 'muq-mulan' }]))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled())
+  })
+})
+
+describe('Settings: model status', () => {
+  const CLAP_NAME = 'clap (laion/clap)'
+  const ABSENT = 'Not loaded yet. It loads with the first search.'
+
+  const loadedModel = (overrides: Partial<HealthModel> = {}): HealthModel => ({
+    key: 'clap',
+    state: 'ready',
+    device: 'cuda',
+    dtype: 'float16',
+    ...overrides,
+  })
+
+  function health(models: HealthModel[], gpu: Health['gpu'] = null): Health {
+    return {
+      status: 'ok',
+      version: '1.2.3',
+      catalog: { tracks: 1 },
+      models_loaded: models.filter((model) => model.state === 'ready').map((model) => model.key),
+      models,
+      gpu,
+    }
+  }
+
+  /** Renders the page with the shell's last health answer, as the backend status provider gives it. */
+  function renderWith(shared: Health | null, extra: Routes = {}) {
+    const api = stubApi(routes(extra))
+    const rendered = renderWithProviders(
+      <BackendStatusContext.Provider value={{ state: shared ? 'online' : 'checking', health: shared }}>
+        <SettingsPage />
+      </BackendStatusContext.Provider>,
+    )
+    return { api, ...rendered }
+  }
+
+  const healthCalls = (api: ReturnType<typeof stubApi>) =>
+    api.mock.calls.filter(([input]) => String(input) === '/api/health').length
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('says nothing about the model while the health is unknown', async () => {
+    renderWith(null)
+    await screen.findByLabelText('Default embedder')
+    expect(screen.queryByText(ABSENT)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Ready/)).not.toBeInTheDocument()
+  })
+
+  it('says the default model is not loaded yet when health does not list it', async () => {
+    renderWith(health([loadedModel({ key: 'muq-mulan' })]))
+    expect(await screen.findByText(ABSENT)).toBeInTheDocument()
+  })
+
+  it('shows the device and precision of a ready model, with VRAM only when there is a GPU', async () => {
+    const view = renderWith(health([loadedModel()], { vram_allocated_mb: 1234.4, vram_reserved_mb: 2000 }))
+    const status = await screen.findByRole('status')
+    expect(status).toHaveTextContent('Ready on cuda (float16) · 1234 MB VRAM in use')
+    expect(status).toHaveAttribute('aria-live', 'polite')
+    view.unmount()
+
+    renderWith(health([loadedModel({ device: 'cpu', dtype: 'float32' })]))
+    const cpu = await screen.findByRole('status')
+    expect(cpu).toHaveTextContent('Ready on cpu (float32)')
+    expect(cpu).not.toHaveTextContent('VRAM')
+  })
+
+  it('shows the error of a model that failed to load', async () => {
+    renderWith(health([loadedModel({ state: 'error', device: null, dtype: null, error: 'out of memory' })]))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent("The model didn't load")
+    expect(alert).toHaveTextContent('out of memory')
+  })
+
+  it('shows a model that is loading, polls every second and stops once it is ready', async () => {
+    vi.useFakeTimers()
+    const answers = [
+      health([loadedModel({ state: 'loading', device: null, dtype: null })]),
+      health([loadedModel({ state: 'loading', device: null, dtype: null })]),
+      health([loadedModel()], { vram_allocated_mb: 900, vram_reserved_mb: 1000 }),
+    ]
+    const { api } = renderWith(answers[0]!, {
+      'GET /api/health': () => (answers.length > 1 ? answers.shift() : answers[0]),
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(`Loading ${CLAP_NAME}…`)
+    expect(healthCalls(api)).toBe(1)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(healthCalls(api)).toBe(2)
+    expect(screen.getByRole('status')).toHaveTextContent(`Loading ${CLAP_NAME}…`)
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Ready on cuda (float16) · 900 MB VRAM in use')
+    const settled = healthCalls(api)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(healthCalls(api)).toBe(settled)
+  })
+
+  it('stops polling when the page goes away', async () => {
+    vi.useFakeTimers()
+    const loading = health([loadedModel({ state: 'loading', device: null, dtype: null })])
+    const { api, unmount } = renderWith(loading, { 'GET /api/health': loading })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    const before = healthCalls(api)
+    expect(before).toBeGreaterThan(1)
+    unmount()
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(healthCalls(api)).toBe(before)
+  })
+
+  it('keeps showing the loading state, without an error, when a poll fails', async () => {
+    vi.useFakeTimers()
+    const loading = health([loadedModel({ state: 'loading', device: null, dtype: null })])
+    renderWith(loading, { 'GET /api/health': jsonResponse({ detail: 'down' }, 500) })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent(`Loading ${CLAP_NAME}…`)
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('toasts "Model saved" and follows the new default until it is ready', async () => {
+    vi.useFakeTimers()
+    const open = view()
+    const MUQ_NAME = 'muq-mulan (OpenMuQ/MuQ-MuLan)'
+    const answers = [
+      health([loadedModel()]),
+      health([loadedModel({ key: 'muq-mulan', state: 'loading', device: null, dtype: null })]),
+      health([loadedModel({ key: 'muq-mulan', device: 'cpu', dtype: 'float32' })]),
+    ]
+    const { api } = renderWith(health([loadedModel()]), {
+      'GET /api/settings': open,
+      'PUT /api/settings': { ...open, editable: { ...open.editable, default_embedder: 'muq-mulan' } },
+      'GET /api/health': () => (answers.length > 1 ? answers.shift() : answers[0]),
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Ready on cuda (float16)')
+    expect(healthCalls(api)).toBe(0)
+
+    fireEvent.change(screen.getByLabelText('Default embedder'), { target: { value: 'muq-mulan' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save model' }))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    expect(putBodies(api, '/api/settings')).toEqual([{ default_embedder: 'muq-mulan' }])
+    expect(screen.getByText('Model saved')).toBeInTheDocument()
+    // The new default is not in health yet: it is on its way, not "not loaded".
+    expect(screen.getByText(`Loading ${MUQ_NAME}…`)).toBeInTheDocument()
+    expect(screen.queryByText(ABSENT)).not.toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000)
+    })
+    expect(healthCalls(api)).toBeGreaterThan(0)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+    expect(screen.getByText('Ready on cpu (float32)')).toBeInTheDocument()
+    const settled = healthCalls(api)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    expect(healthCalls(api)).toBe(settled)
   })
 })
 
@@ -716,7 +899,7 @@ describe('Settings: about', () => {
       <BackendStatusContext.Provider
         value={{
           state: 'online',
-          health: { status: 'ok', version: '1.2.3', catalog: { tracks: 1 }, models_loaded: [] },
+          health: { status: 'ok', version: '1.2.3', catalog: { tracks: 1 }, models_loaded: [], models: [], gpu: null },
         }}
       >
         <SettingsPage />

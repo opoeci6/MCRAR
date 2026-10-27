@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { trackStreamUrl } from '../api/endpoints'
 import { useToast } from '../app/toastContext'
 import { strings } from '../strings'
+import { readLoop, writeLoop } from './loopPreference'
 import { PlayerContext, PlayerTimeContext } from './playerContext'
 import type { PlayableTrack, PlayerApi, PlayerTime, PlayOptions } from './playerContext'
 
@@ -19,6 +20,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [volume, setVolumeState] = useState(1)
+  const [loop, setLoopState] = useState(readLoop)
   const [time, setTime] = useState<PlayerTime>({ currentTime: 0, duration: 0 })
   const currentRef = useRef<PlayableTrack | null>(null)
   const errorShown = useRef(false)
@@ -103,9 +105,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setVolumeState(clamped)
   }, [])
 
+  const setLoop = useCallback((next: boolean) => {
+    setLoopState(next)
+    writeLoop(next)
+  }, [])
+
   const api = useMemo<PlayerApi>(
-    () => ({ current, isPlaying, isLoading, volume, play, toggle, pause, seek, setVolume }),
-    [current, isPlaying, isLoading, volume, play, toggle, pause, seek, setVolume],
+    () => ({ current, isPlaying, isLoading, volume, loop, play, toggle, pause, seek, setVolume, setLoop }),
+    [current, isPlaying, isLoading, volume, loop, play, toggle, pause, seek, setVolume, setLoop],
   )
 
   const readTime = (audio: HTMLAudioElement) =>
@@ -120,6 +127,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       <audio
         ref={audioRef}
         preload="none"
+        loop={loop}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onEnded={() => setIsPlaying(false)}

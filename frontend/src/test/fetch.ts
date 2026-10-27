@@ -34,4 +34,6 @@ export const HEALTH = {
   version: '0.1.0',
   catalog: { tracks: 42 },
   models_loaded: [],
+  models: [],
+  gpu: null,
 }

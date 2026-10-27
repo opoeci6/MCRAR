@@ -1,4 +1,5 @@
 import type { ShortlistEntry } from '../../api/types'
+import { sourceLabel } from '../../features/track/sourceLabel'
 import { TrackActions } from '../../features/track/TrackActions'
 import { usePlayer } from '../../player/playerContext'
 import type { PlayableTrack } from '../../player/playerContext'
@@ -62,7 +63,10 @@ export function Shortlist({ items, onSaveNote, onRemove, onOpen, onFindSimilar }
               >
                 {title}
               </button>
-              <div className={styles.trackArtist}>{track.artist || t.unknownArtist}</div>
+              <div className={styles.trackArtist}>
+                <span>{track.artist || t.unknownArtist}</span>
+                <span className={styles.trackSource}>{sourceLabel(track.source)}</span>
+              </div>
             </div>
             <LicenseBadge
               risk={track.risk}
