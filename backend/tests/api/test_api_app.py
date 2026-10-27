@@ -13,7 +13,10 @@ from mcrar import __version__
 from mcrar.api import app as app_module
 
 
-def test_health_reports_catalog_and_loaded_models(tmp_path: Path) -> None:
+def test_health_reports_catalog_and_loaded_models(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delitem(sys.modules, "torch", raising=False)  # health reads the GPU only then
     with make_client(tmp_path) as client:
         body = client.get("/api/health").json()
         assert body == {
@@ -21,9 +24,13 @@ def test_health_reports_catalog_and_loaded_models(tmp_path: Path) -> None:
             "version": __version__,
             "catalog": {"tracks": 21},
             "models_loaded": [],
+            "models": [],
+            "gpu": None,
         }
         client.post("/api/search", json={"text": "tense stealth level"})
-        assert client.get("/api/health").json()["models_loaded"] == ["clap"]
+        body = client.get("/api/health").json()
+        assert body["models_loaded"] == ["clap"]
+        assert body["models"] == [{"key": "clap", "state": "ready", "device": None, "dtype": None}]
 
 
 def test_there_is_no_import_time_app() -> None:

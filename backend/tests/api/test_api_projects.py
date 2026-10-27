@@ -79,6 +79,12 @@ def test_items_put_update_list_delete(tmp_path: Path) -> None:
             "duration_s",
             "risk",
             "license_code",
+            "source_id",
+            "source_url",
+            "download_url",
+            "license_url",
+            "commercial_license_url",
+            "attribution_text",
         }
         client.put(f"/api/projects/{pid}/items/{b}")  # no body: no note
         again = client.put(f"/api/projects/{pid}/items/{a}", json={"note": "intro v2"}).json()
@@ -88,6 +94,40 @@ def test_items_put_update_list_delete(tmp_path: Path) -> None:
         assert client.delete(f"/api/projects/{pid}/items/{a}").status_code == 204
         assert client.delete(f"/api/projects/{pid}/items/{a}").status_code == 404
         assert [i["track"]["id"] for i in client.get(f"/api/projects/{pid}/items").json()] == [b]
+
+
+def test_entries_carry_the_links_and_credits_of_the_track(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        pid = _new(client)
+        quest, boss = client.ids["Epic Quest"], client.ids["Boss Fight"]
+        put = client.put(f"/api/projects/{pid}/items/{quest}").json()["track"]
+        client.put(f"/api/projects/{pid}/items/{boss}")
+        listed = client.get(f"/api/projects/{pid}/items").json()
+        detail = client.get(f"/api/projects/{pid}").json()["items"]
+        by_title = {i["track"]["title"]: i["track"] for i in listed}
+        assert [i["track"] for i in detail] == [i["track"] for i in listed]
+        assert by_title["Epic Quest"] == put
+        # the same values as the track page, with the download link only when it is allowed
+        for title, track_id in (("Epic Quest", quest), ("Boss Fight", boss)):
+            page = client.get(f"/api/tracks/{track_id}").json()
+            track = by_title[title]
+            for field in (
+                "source_id",
+                "source_url",
+                "download_url",
+                "license_url",
+                "commercial_license_url",
+                "attribution_text",
+            ):
+                assert track[field] == page[field], field
+        epic, fight = by_title["Epic Quest"], by_title["Boss Fight"]
+        assert epic["download_url"] == "https://example.test/10/download"
+        assert fight["download_url"] is None
+        assert epic["source_url"] == "https://example.test/10" and epic["source_id"] == "10"
+        assert epic["license_url"] == "https://creativecommons.org/licenses/by/3.0/"
+        assert epic["attribution_text"] == "Epic Quest by Gus"
+        assert fight["attribution_text"] == "Boss Fight by Gus"
+        assert epic["commercial_license_url"] is None
 
 
 def test_item_errors(tmp_path: Path) -> None:

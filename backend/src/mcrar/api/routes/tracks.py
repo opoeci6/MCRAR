@@ -46,6 +46,19 @@ def track_summary(track: StoredTrack) -> dict[str, Any]:
     }
 
 
+def track_links(track: StoredTrack) -> dict[str, Any]:
+    """Where the track lives and what its licence asks for: the fields a result row, a track page
+    and a shortlist entry share. ``download_url`` is only given when the source allows it."""
+    return {
+        "source_id": track.source_id,
+        "source_url": track.source_url,
+        "download_url": track.download_url if track.audiodownload_allowed else None,
+        "license_url": track.license_url,
+        "commercial_license_url": track.commercial_license_url,
+        "attribution_text": track.attribution_text,
+    }
+
+
 @router.get("/api/tracks")
 def list_tracks(
     state: StateDep,
@@ -83,15 +96,13 @@ def track_detail(track_id: int, state: StateDep) -> dict[str, Any]:
     ]
     return {
         **track_summary(track),
-        "source_id": track.source_id,
+        **track_links(track),
         "album": track.album,
         "release_date": track.release_date,
-        "source_url": track.source_url,
         "image_url": track.image_url,
         "vocal_instrumental": track.vocal_instrumental,
         "local_path": track.local_path if track.source == "local" else None,
         "stream_url": f"/api/tracks/{track.id}/stream",
-        "download_url": track.download_url if track.audiodownload_allowed else None,
         "features": state.repo.get_features(track_id),
         "tags": tags,
         "license": {

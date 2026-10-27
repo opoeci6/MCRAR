@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from fastapi import APIRouter
@@ -12,14 +13,36 @@ from mcrar.recommend.vocab import LABEL_SETS
 
 router = APIRouter()
 
+_MB = 1024 * 1024
+
+
+def _gpu() -> dict[str, int] | None:
+    """CUDA memory in MB, only when torch is already imported (health never imports it)."""
+    torch = sys.modules.get("torch")
+    if torch is None:
+        return None
+    try:
+        if not torch.cuda.is_available():
+            return None
+        return {
+            "vram_allocated_mb": int(torch.cuda.memory_allocated() // _MB),
+            "vram_reserved_mb": int(torch.cuda.memory_reserved() // _MB),
+        }
+    except Exception:  # a broken driver must not break the polled health check
+        return None
+
 
 @router.get("/api/health")
 def health(state: StateDep) -> dict[str, Any]:
+    """Status, catalog size, ``models_loaded`` (ready keys), ``models`` (``key``, ``state``
+    loading/ready/error, ``device``, ``dtype``, ``error``) and ``gpu`` (VRAM or ``None``)."""
     return {
         "status": "ok",
         "version": __version__,
         "catalog": {"tracks": state.repo.stats()["tracks"]},
         "models_loaded": state.pool.loaded_keys(),
+        "models": state.pool.status(),
+        "gpu": _gpu(),
     }
 
 

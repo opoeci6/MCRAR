@@ -14,7 +14,7 @@ from fastapi import APIRouter, Query, Response
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 from mcrar.api.routes._files import credits_download, safe_stem
-from mcrar.api.routes.tracks import track_summary
+from mcrar.api.routes.tracks import track_links, track_summary
 from mcrar.api.state import AppState, StateDep
 from mcrar.catalog import Project, ShortlistEntry
 from mcrar.licensing import project_credits
@@ -54,7 +54,7 @@ def _project_json(project: Project, item_count: int) -> dict[str, Any]:
 
 def _entry_json(entry: ShortlistEntry) -> dict[str, Any]:
     return {
-        "track": track_summary(entry.track),
+        "track": {**track_summary(entry.track), **track_links(entry.track)},
         "note": entry.note,
         "added_at": entry.added_at,
     }
