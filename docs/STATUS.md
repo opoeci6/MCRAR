@@ -63,6 +63,17 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   `MCRAR_MODELS_DIR` at them (put the commands in a script file; inline quoting in the agent's
   shell has dropped variables before). On the real data, take a dated backup first
   (`data/catalog.pre-<milestone>.db`). Browser checks run `mcrar serve --port 8010` on the copies.
+- **Working while the owner uses the app.** The owner's `mcrar serve` (port 8000) serves this
+  checkout's `frontend/dist`, `config/settings.toml` and `data/`.
+  - Don't run `npm run build` while they use the app. Test builds go to a scratch folder
+    (`vite build --outDir <scratch>/home/frontend/dist`).
+  - Test servers get their own home:
+    `scripts/with-env.sh env MCRAR_HOME=<scratch>/home MCRAR_MODELS_DIR=… MCRAR_CACHE_DIR=… MCRAR_SECRETS_DIR=… uv run … mcrar serve --port 8010`.
+    The override must come after `with-env`, because `dev-env.sh` sets `MCRAR_HOME` to the repo.
+    Copy `config/settings.toml` into the scratch home, so a model switch there doesn't change
+    the real file. The secrets folder is read-only and is needed for Jamendo streaming.
+  - After merging frontend changes, run `npm run build`, or the owner keeps seeing the old UI;
+    a page reload is enough. Backend changes need a server restart.
 
 ## 3. Decisions and the reasons for them
 
@@ -240,7 +251,7 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   - English only, with all text in `strings.ts` modules so a translation can be added later
   - result ratings as a real user feature, stored locally
 - **Stack.** React 19 with no UI kit, router or data-fetching library.
-  - Pages are hash tabs: Search, Projects, Library, Settings.
+  - Pages are hash tabs: Search, Projects, Library, Labelling (M9) and Settings.
   - There is one typed API client in `frontend/src/api/`.
   - Styling is CSS Modules with design tokens on `:root`, redefined for dark mode.
   - Tests use vitest, jsdom and Testing Library.
@@ -509,7 +520,7 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures), schema v4 (ratings table; names and credit lines decoded, applied 2026-10-15) |
+| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures; `scene` zero-shot tags since 2026-10-26), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Labelling pool 269 tracks; the owner had labelled 100 of part A's 120 by 2026-10-27 (80 A, 20 shared) |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
 | Labelling pack | `data/scene-pack.json` | The 269-track pool for the collaborator (Jamendo ids, titles, parts; no keys) |
@@ -595,6 +606,16 @@ M3b is merged and the real catalog is tagged. Still open:
   - **Narrow windows.** Below about 900 px the header scrolls sideways; the UI is desktop-first.
   - **Cancelled imports.** Tracks whose metadata was saved before a cancel stay in the catalog
     without analysis or embedding; "Re-embed missing tracks" completes them.
+- **QoL batch 1 follow-ups (2026-10-27):**
+  - **Rapid switching.** If the default is switched again while the previous new default is
+    still loading, that model finishes loading and stays in VRAM until the next switch or the
+    end of the next job.
+  - **CLAP reloads after each job.** When the default isn't CLAP, every job ends by releasing
+    the CLAP it loaded for tagging, so the next import reloads it (about 4 s).
+  - **A job that takes its model before it starts** could lose it to a release, and would fail
+    with a 503-style error. No route does this today: they all call `pool.get` inside the job.
+  - **Narrow windows.** The search hint with a reference ("Optional: steer it with words, …")
+    is cut off below about 600 px.
 
 ### 5.3 Next milestone (waiting for the owner's go)
 These can follow in any order:
