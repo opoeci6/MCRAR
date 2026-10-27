@@ -546,8 +546,6 @@ M3b is merged and the real catalog is tagged. Still open:
   - **Tag scores display.** Top-tag chips show standardised scores as percentages (e.g.
     "Trailer 94%"). They are relative strengths, not probabilities, so a label such as "strong /
     typical" may read better.
-  - **Shortlist badges.** The shortlist's licence badges show risk and code only; the items
-    endpoint has no attribution.
   - **Add-to-project menu.** It makes one request per project to find which projects already
     hold a track; a "projects containing track" endpoint would be cleaner if there are many
     projects.
@@ -559,6 +557,46 @@ M3b is merged and the real catalog is tagged. Still open:
 These can follow in any order:
 - M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
   from M7.
+- **QoL batch 1 (planned 2026-10-27, not started; implement only on the owner's go).** The
+  owner's list from labelling, with their choices:
+  1. **Shortlist entry like a result row.**
+     - `_entry_json` (`api/routes/projects.py`) returns `source_url`, `download_url` (gated by
+       `audiodownload_allowed`), `license_url`, `commercial_license_url` and `attribution_text`.
+       The full `StoredTrack` is already loaded, so only the serializer changes.
+     - The title opens `TrackDrawer`, as in Search (owner's choice; in Search the source link
+       lives in the drawer).
+     - Add Download (reuse `downloadTrack`) and Find similar. Find similar goes through a new
+       `#/search?similar=<id>` entry point: SearchPage reads no route params today.
+     - The shared actions move into `features/track/TrackActions.tsx`.
+  2. **Clickable licence badge in Projects.** Pass the attribution and URLs to `LicenseBadge`
+     so it opens the popover, as in Search. This replaces the old "Shortlist badges" follow-up.
+  3. **Remove.** A labelled "Remove" button with a trash icon in the action group, instead of
+     the bare "×" (owner's choice). The Undo notice stays.
+  4. **Notes** (owner chose all three):
+     - collapsed to "Add note" until used, then an auto-growing box;
+     - autosave about 800 ms after typing stops, with Saving / Saved / Couldn't save and
+       serialised writes;
+     - timestamp tools: "Insert current time" from the player, and `mm:ss` tokens that seek
+       the player when clicked.
+  5. **Source label** ("Jamendo" / "Local") on result rows and shortlist entries, from one
+     helper so M8 can add Spotify.
+  6. **Model switch.**
+     - **Feedback.** Today there is none: the save is silent and the new model loads lazily on
+       the next search. Add a toast, then a "Loading … → Ready on cuda" line, using a background
+       load of the new default and per-model state in `/api/health`.
+     - **VRAM (checked 2026-10-27): not released.** `ModelPool.update_settings` keeps every
+       loaded model and `LockedEmbedder.close()` is a no-op; only shutdown unloads. Add
+       `ModelPool.release(keep)`:
+       - it drops the entry first, then `unload()`s under the model lock;
+       - it keeps the default, and keeps `clap` while an ingest or tagging job runs.
+
+       `/api/health` should report allocated and reserved VRAM. Check on the GPU with
+       clap → muq-mulan → clap that `torch_base.close()` really frees the memory.
+  7. **Loop playback.** A repeat-one toggle in `PlayerBar` (`audio.loop`), kept in
+     `localStorage`.
+
+  Slices: S1 backend (serializer, release, health), S2 the Projects frontend (items 1–4 and the
+  `?similar=` entry point), S3 the rest of the frontend (items 5–7).
 
 M11 (desktop packaging) comes last.
 
