@@ -22,13 +22,14 @@ Last updated: 2026-10-26.
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
 | M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
+| QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14 |
 | M8, M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after the M9 code (2026-10-26):
-- Backend, default env: 1,904 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 1,901 passed, 31 skipped.
+Test suite on `dev`, counted after QoL batch 1 (2026-10-27):
+- Backend, default env: 1,925 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 1,922 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 328 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 405 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -462,6 +463,48 @@ Details are in `docs/llm.md`.
   positions and parts; a search with Stealth + Low intensity scored the stealth tag and energy
   0.25. Then the same build, tags and pool on the real catalog (backup `data/catalog.pre-m9.db`).
 
+### 3.14 QoL batch 1 (2026-10-27)
+The owner's list from labelling, with their choices (plan of 2026-10-27, branch `qol-1`):
+- **Shortlist entries work like result rows.**
+  - The title opens the track drawer, as in Search (owner's choice).
+  - Download and Find similar come from the shared `features/track/TrackActions.tsx`.
+  - The licence badge opens the credit popover.
+  - Remove is a labelled button with a trash icon, and Undo stays.
+  - Find similar from Projects goes through `#/search?similar=<id>`. It runs once, then the
+    param leaves the address without a history entry.
+  - The items endpoints return `source_url`, `download_url` (when allowed), the licence URLs and
+    `attribution_text` (`track_links`).
+- **Notes:**
+  - "Add note" until used, then an auto-growing box.
+  - Autosave 800 ms after typing, with serialised saves.
+  - "Insert current time" is enabled while that track is loaded in the player, playing or
+    paused.
+  - `m:ss` tokens play the track from there (`player.play(track, {startAt})`).
+- **Source label** ("Jamendo" / "Local") from one map (`features/track/sourceLabel.ts`) on
+  result rows, shortlist entries and the Library table; M8 adds Spotify there.
+- **Model switch.**
+  - Saving a new default unloads the other models (`ModelPool.release`) and loads the new one
+    in the background.
+  - During an ingest job nothing is unloaded. When the job ends, every model but the default is
+    released, CLAP included.
+  - `/api/health` adds `models` (loading/ready/error, device, dtype) and `gpu` VRAM.
+  - The Settings page shows "Model saved", then "Loading …", then "Ready on cuda (fp16) · N MB
+    VRAM in use".
+  - **Measured on the RTX 3060:** clap → muq-mulan → clap → glap → clap returns to 396 MB
+    allocated each time (386 MB on the first load). muq-mulan uses 1,295 MB and glap 1,659 MB.
+    Background loads take about 27 s for muq-mulan, 13 s for glap and 4 s for clap.
+- **Repeat** toggle in the player bar (`audio.loop`), remembered in `localStorage`.
+- **Search box hint:** "Describe the music, e.g. …". With a reference song it reads "Optional:
+  steer it with words, e.g. calmer, no vocals". Placeholders use the lighter
+  `--color-text-placeholder`. The old example hint had been mistaken for typed text after Find
+  similar.
+- **Checked in the built UI** on a catalog copy (port 8010, scratch `MCRAR_HOME`, real
+  `.secrets` read-only for streaming):
+  - a timestamp seek to 0:18, Insert time and autosave;
+  - the badge popover, the drawer, and Find similar from the row and from the drawer;
+  - the source labels, the model switch status line and toast, and Repeat (loop, pressed,
+    stored).
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -557,46 +600,6 @@ M3b is merged and the real catalog is tagged. Still open:
 These can follow in any order:
 - M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
   from M7.
-- **QoL batch 1 (planned 2026-10-27, not started; implement only on the owner's go).** The
-  owner's list from labelling, with their choices:
-  1. **Shortlist entry like a result row.**
-     - `_entry_json` (`api/routes/projects.py`) returns `source_url`, `download_url` (gated by
-       `audiodownload_allowed`), `license_url`, `commercial_license_url` and `attribution_text`.
-       The full `StoredTrack` is already loaded, so only the serializer changes.
-     - The title opens `TrackDrawer`, as in Search (owner's choice; in Search the source link
-       lives in the drawer).
-     - Add Download (reuse `downloadTrack`) and Find similar. Find similar goes through a new
-       `#/search?similar=<id>` entry point: SearchPage reads no route params today.
-     - The shared actions move into `features/track/TrackActions.tsx`.
-  2. **Clickable licence badge in Projects.** Pass the attribution and URLs to `LicenseBadge`
-     so it opens the popover, as in Search. This replaces the old "Shortlist badges" follow-up.
-  3. **Remove.** A labelled "Remove" button with a trash icon in the action group, instead of
-     the bare "×" (owner's choice). The Undo notice stays.
-  4. **Notes** (owner chose all three):
-     - collapsed to "Add note" until used, then an auto-growing box;
-     - autosave about 800 ms after typing stops, with Saving / Saved / Couldn't save and
-       serialised writes;
-     - timestamp tools: "Insert current time" from the player, and `mm:ss` tokens that seek
-       the player when clicked.
-  5. **Source label** ("Jamendo" / "Local") on result rows and shortlist entries, from one
-     helper so M8 can add Spotify.
-  6. **Model switch.**
-     - **Feedback.** Today there is none: the save is silent and the new model loads lazily on
-       the next search. Add a toast, then a "Loading … → Ready on cuda" line, using a background
-       load of the new default and per-model state in `/api/health`.
-     - **VRAM (checked 2026-10-27): not released.** `ModelPool.update_settings` keeps every
-       loaded model and `LockedEmbedder.close()` is a no-op; only shutdown unloads. Add
-       `ModelPool.release(keep)`:
-       - it drops the entry first, then `unload()`s under the model lock;
-       - it keeps the default, and keeps `clap` while an ingest or tagging job runs.
-
-       `/api/health` should report allocated and reserved VRAM. Check on the GPU with
-       clap → muq-mulan → clap that `torch_base.close()` really frees the memory.
-  7. **Loop playback.** A repeat-one toggle in `PlayerBar` (`audio.loop`), kept in
-     `localStorage`.
-
-  Slices: S1 backend (serializer, release, health), S2 the Projects frontend (items 1–4 and the
-  `?similar=` entry point), S3 the rest of the frontend (items 5–7).
 
 M11 (desktop packaging) comes last.
 
