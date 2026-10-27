@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from mcrar.catalog.repository import BPM_LOW_CONFIDENCE
 from mcrar.licensing import RISK_ORDER
 
 if TYPE_CHECKING:
@@ -37,7 +38,6 @@ if TYPE_CHECKING:
 
 TERMS = ("semantic", "reference", "tags", "bpm", "energy")
 BPM_SCALE = 15.0
-BPM_LOW_CONFIDENCE = 0.5
 SORT_DECIMALS = 9  # scores equal to this many decimals count as ties (float noise)
 
 

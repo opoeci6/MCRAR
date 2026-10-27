@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { getTrack, trackCreditsUrl } from '../../api/endpoints'
 import type { TrackDetail, TrackFeatures, TrackTag } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
@@ -14,6 +14,7 @@ import { Notice } from '../../ui/Notice'
 import { Spinner } from '../../ui/Spinner'
 import { AddToProjectMenu } from '../projects/AddToProjectMenu'
 import { trackFeatureStrings as t } from './strings'
+import { TempoValue } from './TempoValue'
 import styles from './TrackDrawer.module.css'
 
 export interface TrackDrawerProps {
@@ -196,14 +197,16 @@ function FeaturesSection({ features, track }: { features: TrackFeatures | null; 
       : track.vocal_instrumental === 'instrumental'
         ? f.instrumental
         : null
-  const rows: [string, string | null][] = [
-    [
-      f.bpm,
-      features?.bpm == null
-        ? null
-        : f.bpmValue(String(Math.round(features.bpm))) +
-          (bpmConfidence == null ? '' : ` (${f.confidence(bpmConfidence)})`),
-    ],
+  const tempo =
+    features?.bpm == null ? null : (
+      <TempoValue
+        bpm={features.bpm}
+        confidence={features.bpm_confidence}
+        suffix={bpmConfidence == null ? null : ` (${f.confidence(bpmConfidence)})`}
+      />
+    )
+  const rows: [string, ReactNode][] = [
+    [f.bpm, tempo],
     [f.key, keyText],
     [
       f.loudness,
@@ -248,6 +251,7 @@ function TagsSection({ tags }: { tags: TrackTag[] }) {
   return (
     <section className={styles.section} aria-labelledby="track-tags-heading">
       <h3 id="track-tags-heading">{t.tags.heading}</h3>
+      {tags.length === 0 ? null : <p className={styles.hint}>{t.tags.probabilityCaption}</p>}
       {tags.length === 0 ? <p className={styles.muted}>{t.tags.none}</p> : null}
       {groupTags(tags).map(([set, items]) => (
         <TagGroup key={set} set={set} items={items} />

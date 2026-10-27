@@ -32,6 +32,8 @@ export npm_config_update_notifier=false
 # ML and tooling caches.
 export HF_HOME="$_mcrar_win/.cache/huggingface"
 export TORCH_HOME="$_mcrar_win/.cache/torch"
+export PYTORCH_KERNEL_CACHE_PATH="$_mcrar_win/.cache/torch/kernels"
+export TORCHINDUCTOR_CACHE_DIR="$_mcrar_win/.cache/torchinductor"
 export NUMBA_CACHE_DIR="$_mcrar_win/.cache/numba"
 export MPLCONFIGDIR="$_mcrar_win/.cache/matplotlib"
 export XDG_CACHE_HOME="$_mcrar_win/.cache"

@@ -117,6 +117,14 @@ def test_sources_and_durations_and_bpm_filters(
     }
 
 
+def test_items_carry_the_tempo_confidence(repo: CatalogRepository, ids: dict[str, int]) -> None:
+    service, _ = make_service(repo)
+    by_title = {i.title: i for i in search(service, "epic battle", limit=50).items}
+    assert (by_title["Boss Fight"].bpm, by_title["Boss Fight"].bpm_confidence) == (150.0, 0.9)
+    assert by_title["Misty Lake"].bpm_confidence == 0.5
+    assert by_title["Boss Fight"].to_dict()["bpm_confidence"] == 0.9
+
+
 def test_filter_only_search_never_loads_the_model(
     repo: CatalogRepository, ids: dict[str, int]
 ) -> None:

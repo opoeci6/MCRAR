@@ -117,6 +117,17 @@ describe('TrackDrawer', () => {
     expect(within(features).getByText('Instrumental')).toBeInTheDocument()
   })
 
+  it('shows both readings next to the confidence when the tempo is uncertain', async () => {
+    stubApi({
+      'GET /api/tracks/5': { ...DETAIL, features: { ...DETAIL.features, bpm: 164.4, bpm_confidence: 0.12 } },
+    })
+    open(5)
+    await screen.findByRole('heading', { name: 'Rainy Window' })
+    const features = screen.getByRole('region', { name: 'Audio features' })
+    const tempo = within(features).getByText('82 / 164 BPM (12% confidence)')
+    expect(tempo).toHaveAccessibleDescription('Tempo uncertain: it may be half or double')
+  })
+
   it('shows the local path of a local track', async () => {
     stubApi({
       'GET /api/tracks/6': { ...DETAIL, id: 6, source: 'local', source_url: null, local_path: 'C:/music/a.mp3' },
@@ -132,6 +143,7 @@ describe('TrackDrawer', () => {
     await screen.findByRole('heading', { name: 'Rainy Window' })
     const tags = screen.getByRole('region', { name: 'Tags' })
     const genre = within(tags).getByRole('heading', { name: 'Genre' }).parentElement as HTMLElement
+    expect(within(tags).getByText('Model probability')).toBeInTheDocument()
     expect(within(genre).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
       'Dark Ambient 90%',
       'Ambient 20%',

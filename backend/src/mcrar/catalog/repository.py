@@ -48,6 +48,8 @@ Clock = Callable[[], datetime]
 
 BATCH = 500  # ids per query when reading many rows (stays under SQLite's variable limit)
 BPM_LOW_CONFIDENCE = 0.5  # below this the tempo may be off by an octave (half or double)
+# The one copy of this threshold: rank.py imports it; the frontend mirrors it in
+# features/track/tempo.ts (BPM_LOW_CONFIDENCE).
 
 
 @dataclass(frozen=True, kw_only=True)
