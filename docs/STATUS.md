@@ -512,6 +512,8 @@ Details are in `docs/llm.md`.
     folders holding the run reports were deleted from this machine; the scene metric table's
     header was fixed (one column too many when a label set has no extra columns).
   - Backup before the import: `data/catalog.pre-m9-labels.db`.
+  - **Restart a running server after a selection change:** the search service reads which tag
+    versions to trust when it starts, so until then it scores scenes zero-shot.
 
 ### 3.14 QoL batch 1 (2026-10-27)
 The owner's list from labelling, with their choices (plan of 2026-10-27, branch `qol-1`):
