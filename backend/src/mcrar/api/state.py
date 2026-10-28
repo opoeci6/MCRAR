@@ -2,10 +2,11 @@
 
 One state is built when the app starts (the lifespan in :mod:`mcrar.api.app`) and closed when it
 stops. It holds the catalog repository, the :class:`~mcrar.api.models.ModelPool`, the
-:class:`~mcrar.recommend.SearchService` that uses the pool, a factory for Jamendo clients and the
-cache of fresh Jamendo stream URLs, the :class:`~mcrar.api.references.ReferenceStore` of uploaded
-reference songs and the :class:`~mcrar.api.jobs.JobManager` that runs ingest jobs. Routes get it
-through :func:`get_state`.
+:class:`~mcrar.recommend.SearchService` that uses the pool, factories for Jamendo and Freesound
+clients and the cache of fresh Jamendo stream URLs, the
+:class:`~mcrar.api.references.ReferenceStore` of uploaded reference songs and the
+:class:`~mcrar.api.jobs.JobManager` that runs ingest jobs. Routes get it through
+:func:`get_state`.
 
 ``reload_settings`` swaps the settings at run time (the settings page): it tells the pool and
 rebuilds the search service when the default embedder, the search settings or the LLM settings
@@ -57,6 +58,7 @@ class ApiDeps:
 
     embedder_loader: Callable[[str, Settings], Any] | None = None
     jamendo_factory: Callable[[Settings], Any] | None = None
+    freesound_factory: Callable[[Settings], Any] | None = None
     torch_available: Callable[[], bool] | None = None
     llm_provider_factory: ProviderFactory | None = None  # (preset, model, base_url, key)
     repo: CatalogRepository | None = None  # not closed by the app when given
@@ -109,6 +111,12 @@ def default_jamendo_factory(settings: Settings) -> Any:
     return JamendoClient.from_settings(settings)
 
 
+def default_freesound_factory(settings: Settings) -> Any:
+    from mcrar.sources import FreesoundClient
+
+    return FreesoundClient.from_settings(settings)
+
+
 class AppState:
     def __init__(self, settings: Settings, deps: ApiDeps | None = None) -> None:
         deps = deps or ApiDeps()
@@ -120,6 +128,9 @@ class AppState:
         )
         self.jamendo_factory: Callable[[Settings], Any] = (
             deps.jamendo_factory or default_jamendo_factory
+        )
+        self.freesound_factory: Callable[[Settings], Any] = (
+            deps.freesound_factory or default_freesound_factory
         )
         self.stream_urls = StreamUrlCache()
         self.references = ReferenceStore()
@@ -205,6 +216,11 @@ class AppState:
         """A Jamendo client for one request; the caller closes it. Raises ``JamendoError`` when
         the client id secret is not set."""
         return self.jamendo_factory(self.settings)
+
+    def open_freesound(self) -> Any:
+        """A Freesound client for one request; the caller closes it. Raises ``FreesoundError``
+        when the API key secret is not set."""
+        return self.freesound_factory(self.settings)
 
     # -- models and lifecycle ---------------------------------------------------------------
 

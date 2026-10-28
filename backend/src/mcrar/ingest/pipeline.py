@@ -5,9 +5,9 @@ Design
   today, embeddings in M3a) are skipped per track when ``Stage.is_current`` says so, unless
   ``force``. Audio is obtained at most once per track, and not at all when every stage is
   current.
-- Jamendo audio is downloaded by a small thread pool up to ``PREFETCH`` tracks ahead of the one
-  being analysed, held in memory only. Analysis and every database write stay on the calling
-  thread.
+- Jamendo and Freesound audio (Freesound: the mp3 preview) is downloaded by a small thread pool
+  up to ``PREFETCH`` tracks ahead of the one being analysed, held in memory only. Analysis and
+  every database write stay on the calling thread.
 - Per-track failures are logged (``ingest_log``) and the run goes on. Auth and rate-limit errors
   (and a failing search) abort the run: the exception is re-raised after cleanup, with the
   partial :class:`IngestReport` attached as its ``report`` attribute. Ctrl+C returns the partial
@@ -39,7 +39,13 @@ from mcrar.licensing import LicenseInfo, parse_license
 from mcrar.ml.embedders.base import Embedder
 from mcrar.ml.embedders.source import EMBED_MAX_SECONDS, embed_audio_source
 from mcrar.ml.errors import EmbedderMemoryError
-from mcrar.sources import JamendoAuthError, JamendoRateLimitError, SourceTrack
+from mcrar.sources import (
+    FreesoundAuthError,
+    FreesoundRateLimitError,
+    JamendoAuthError,
+    JamendoRateLimitError,
+    SourceTrack,
+)
 from mcrar.sources.local_folder import iter_audio_files, scan_local
 
 logger = logging.getLogger(__name__)
@@ -52,7 +58,13 @@ NO_STREAM = "no audio stream"
 INTERRUPTED = "interrupted"
 REFRESH_BATCH = 50  # Jamendo tracks whose stream URLs are refreshed with one API request
 # Errors that end the run instead of failing one track: they would hit every following track.
-_ABORT_ERRORS = (JamendoAuthError, JamendoRateLimitError, EmbedderMemoryError)
+_ABORT_ERRORS = (
+    JamendoAuthError,
+    JamendoRateLimitError,
+    FreesoundAuthError,
+    FreesoundRateLimitError,
+    EmbedderMemoryError,
+)
 _POLL_S = 0.25
 
 Audio = bytes | Path
@@ -448,6 +460,42 @@ def _drive(
     return aborted, error
 
 
+def _ingest_remote(
+    source: str,
+    client: Any,
+    repo: CatalogRepository,
+    find_tracks: Callable[[], Iterator[SourceTrack] | Sequence[SourceTrack]],
+    *,
+    total: int | None,
+    force: bool,
+    stages: Sequence[Stage] | None,
+    on_progress: ProgressCallback | None,
+) -> IngestReport:
+    """Store the tracks ``find_tracks()`` yields, then run the stages on their downloaded audio.
+
+    ``find_tracks`` is called inside the guarded block (a failing search aborts the run with
+    its report attached) and iterated lazily. The shared body of the Jamendo and Freesound runs.
+    """
+    run = _Run(source, repo, _default_stages(stages), force, total, on_progress)
+    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
+
+    def make_items() -> Iterator[_Prepared]:
+        for src in find_tracks():
+            item = run.prepare(src, parse_license(src.license_url))
+            if any(needs_audio(s) for s in item.needs):
+                _start_fetch(executor, client, item, src)
+            yield item
+
+    aborted, error = _drive(run, executor, make_items)
+    return _finish(run, aborted, error)
+
+
+def _by_ids(client: Any, wanted: Sequence[str]) -> Iterator[SourceTrack]:
+    """The tracks of ``client.get_tracks`` for ``wanted``, looked up ``REFRESH_BATCH`` at a time."""
+    for start in range(0, len(wanted), REFRESH_BATCH):
+        yield from client.get_tracks(wanted[start : start + REFRESH_BATCH])
+
+
 def ingest_jamendo(
     client: Any,
     repo: CatalogRepository,
@@ -465,18 +513,16 @@ def ingest_jamendo(
     report with ``aborted="interrupted"``.
     """
     kwargs = query.to_kwargs() if isinstance(query, JamendoQuery) else dict(query)
-    run = _Run("jamendo", repo, _default_stages(stages), force, limit, on_progress)
-    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
-
-    def make_items() -> Iterator[_Prepared]:
-        for src in client.search_tracks(**kwargs, limit=limit):
-            item = run.prepare(src, parse_license(src.license_url))
-            if any(needs_audio(s) for s in item.needs):
-                _start_fetch(executor, client, item, src)
-            yield item
-
-    aborted, error = _drive(run, executor, make_items)
-    return _finish(run, aborted, error)
+    return _ingest_remote(
+        "jamendo",
+        client,
+        repo,
+        lambda: client.search_tracks(**kwargs, limit=limit),
+        total=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
 
 
 def ingest_jamendo_ids(
@@ -495,19 +541,16 @@ def ingest_jamendo_ids(
     and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
     wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))
-    run = _Run("jamendo", repo, _default_stages(stages), force, len(wanted), on_progress)
-    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
-
-    def make_items() -> Iterator[_Prepared]:
-        for start in range(0, len(wanted), REFRESH_BATCH):
-            for src in client.get_tracks(wanted[start : start + REFRESH_BATCH]):
-                item = run.prepare(src, parse_license(src.license_url))
-                if any(needs_audio(s) for s in item.needs):
-                    _start_fetch(executor, client, item, src)
-                yield item
-
-    aborted, error = _drive(run, executor, make_items)
-    return _finish(run, aborted, error)
+    return _ingest_remote(
+        "jamendo",
+        client,
+        repo,
+        lambda: _by_ids(client, wanted),
+        total=len(wanted),
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
 
 
 def ingest_jamendo_queries(
@@ -555,6 +598,81 @@ def ingest_jamendo_queries(
 
 
 # --------------------------------------------------------------------------------------
+# Freesound
+# --------------------------------------------------------------------------------------
+
+
+def ingest_freesound(
+    client: Any,
+    repo: CatalogRepository,
+    *,
+    query: str = "",
+    tags: Sequence[str] = (),
+    licenses: Sequence[str] = ("cc0", "by"),
+    duration_min_s: float = 10.0,
+    duration_max_s: float = 600.0,
+    sort: str = "score",
+    limit: int = 50,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest up to ``limit`` music-like sounds matching the filters from a ``FreesoundClient``.
+
+    The audio is the sound's mp3 preview. Raises ``FreesoundAuthError`` /
+    ``FreesoundRateLimitError`` (or whatever the search itself raised, such as a ValueError
+    for a bad tag) after cleanup; the partial report is available as ``exc.report``. Ctrl+C
+    returns a report with ``aborted="interrupted"``.
+    """
+    return _ingest_remote(
+        "freesound",
+        client,
+        repo,
+        lambda: client.search_tracks(
+            query=query,
+            tags=list(tags),
+            licenses=list(licenses),
+            duration_min_s=duration_min_s,
+            duration_max_s=duration_max_s,
+            sort=sort,
+            limit=limit,
+        ),
+        total=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def ingest_freesound_ids(
+    client: Any,
+    repo: CatalogRepository,
+    ids: Sequence[str | int],
+    *,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the Freesound sounds with these ids (looked up with ``client.get_tracks``).
+
+    ``stages=[]`` stores the metadata and licence only. Ids Freesound no longer knows (or that
+    have no preview) are simply not seen. Failures, aborts and Ctrl+C behave as in
+    :func:`ingest_freesound`.
+    """
+    wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))
+    return _ingest_remote(
+        "freesound",
+        client,
+        repo,
+        lambda: _by_ids(client, wanted),
+        total=len(wanted),
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+# --------------------------------------------------------------------------------------
 # Existing catalog tracks
 # --------------------------------------------------------------------------------------
 
@@ -585,6 +703,7 @@ def reprocess_catalog(
     *,
     stages: Sequence[Stage],
     client: Any = None,
+    freesound_client: Any = None,
     source: str | None = None,
     force: bool = False,
     limit: int | None = None,
@@ -596,9 +715,10 @@ def reprocess_catalog(
     ``limit`` caps the number of tracks that actually need work. Jamendo tracks need a
     ``client``: their stream URLs are refreshed with ``client.get_tracks`` in batches of
     ``REFRESH_BATCH``, just before the downloads (the stored URLs carry expiring tokens), and
-    audio is downloaded by the same prefetching pool as :func:`ingest_jamendo`. Local tracks
-    are read from their stored ``local_path``. Failures, aborts and Ctrl+C behave as in
-    :func:`ingest_jamendo`.
+    audio is downloaded by the same prefetching pool as :func:`ingest_jamendo`. Freesound tracks
+    need a ``freesound_client``: it downloads the stored preview URL (which does not expire, so
+    there is no refresh). Local tracks are read from their stored ``local_path``. Failures,
+    aborts and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
     stage_list = list(stages)
     if not stage_list:
@@ -618,6 +738,19 @@ def reprocess_catalog(
                 item.error = "track no longer available from Jamendo"
             else:
                 _start_fetch(executor, client, item, fresh[track.source_id])
+        elif track.source == "freesound":
+            # The stored preview URL is stable: no refresh, the client only downloads it.
+            if freesound_client is None:
+                item.error = "no Freesound client to download the preview"
+            else:
+                preview = SourceTrack(
+                    source=track.source,
+                    source_id=track.source_id,
+                    title=track.title or track.source_id,
+                    artist=track.artist,
+                    stream_url=track.stream_url,
+                )
+                _start_fetch(executor, freesound_client, item, preview)
         elif track.source == "local" and track.local_path:
             item.get_audio = lambda p=Path(track.local_path): p
         elif track.source == "local":

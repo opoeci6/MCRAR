@@ -121,7 +121,7 @@ These are different things.
   recommend/  parse → retrieve → rank → explain
   llm/        OpenAI-compatible (OpenAI, OpenRouter, Groq, Gemini-compat, … and, for free,
               local Ollama/LM Studio) + Anthropic native; structured JSON; optional
-  sources/    jamendo · local_folder (incl. asset packs) · spotify (metadata) · freesound (later)
+  sources/    jamendo · local_folder (incl. asset packs) · spotify (metadata) · freesound (music-like sounds, M12)
   audio/      decode · BPM · key · energy · duration
   ml/         embedders (CLAP/GLAP/MuQ-MuLan) · zero-shot tagger · heads · eval · bake-off
   licensing/  normalize licenses → {commercial_ok, attribution, share_alike, no_derivs} → risk level; credits export

@@ -48,6 +48,11 @@ KNOWN_SECRETS = (
         "name": "jamendo_client_id",
         "description": "Jamendo API client id: needed to search, add and stream Jamendo tracks.",
     },
+    {
+        "name": "freesound_api_key",
+        "description": "Freesound API key: needed to search and add Freesound sounds "
+        "(free for non-commercial use).",
+    },
     *(
         {"name": preset.key_secret, "description": f"API key for {preset.label} (LLM)"}
         for preset in PRESETS

@@ -33,7 +33,7 @@ from mcrar.api.app import create_app  # noqa: E402
 from mcrar.api.state import ApiDeps  # noqa: E402
 from mcrar.catalog import CatalogRepository, open_path  # noqa: E402
 from mcrar.config import Settings, get_settings  # noqa: E402
-from mcrar.sources import SourceTrack  # noqa: E402
+from mcrar.sources import FreesoundError, SourceTrack  # noqa: E402
 
 TEST_HOST = "testserver"
 
@@ -88,6 +88,7 @@ class ApiClient(TestClient):
     embedder: MapEmbedder
     loader: LoaderSpy
     jamendo: FakeStreamJamendo | Exception | None
+    freesound: Any
 
     def __exit__(self, *args: Any) -> None:
         try:
@@ -101,6 +102,7 @@ def make_client(
     *,
     embedder: MapEmbedder | None = None,
     jamendo: FakeStreamJamendo | Exception | None = None,
+    freesound: Any = None,
     torch: bool = True,
     settings_overrides: dict[str, Any] | None = None,
     warm: bool | None = None,
@@ -109,7 +111,9 @@ def make_client(
     """Use as ``with make_client(tmp_path) as client:`` so the app's lifespan runs.
 
     ``jamendo`` is the fake client; an exception instance makes the factory raise it (the way a
-    missing client id does). ``torch=False`` makes the pool report that the ml extra is missing.
+    missing client id does); ``freesound`` works the same for the Freesound client (default:
+    ``FreesoundError``, as without an API key). ``torch=False`` makes the pool report that the
+    ml extra is missing.
     ``llm_factory`` replaces the LLM provider factory ``(preset, model, base_url, key)``.
     """
     options: dict[str, Any] = {"data_dir": tmp_path / "api-data", "search": {"max_per_artist": 50}}
@@ -125,9 +129,17 @@ def make_client(
             raise jamendo
         return jamendo
 
+    def freesound_factory(_settings: Settings) -> Any:
+        if freesound is None:
+            raise FreesoundError("No Freesound API key is configured")
+        if isinstance(freesound, Exception):
+            raise freesound
+        return freesound
+
     deps = ApiDeps(
         embedder_loader=loader,
         jamendo_factory=jamendo_factory,
+        freesound_factory=freesound_factory,
         torch_available=lambda: torch,
         llm_provider_factory=llm_factory,
         repo=repo,
@@ -136,6 +148,7 @@ def make_client(
     client = ApiClient(create_app(settings, deps=deps, warm=warm))
     client.repo, client.ids, client.settings = repo, ids, settings
     client.embedder, client.loader, client.jamendo = embedder, loader, jamendo
+    client.freesound = freesound
     return client
 
 
@@ -165,6 +178,37 @@ class IngestJamendo(FakeJamendoClient):
             )
             for n in range(min(self.count, kwargs.get("limit", self.count)))
         )
+
+
+class IngestFreesound(FakeJamendoClient):
+    """A Freesound client for the ingest routes: ``count`` new sounds (ids from 7001), synthetic
+    audio for every preview, the searches and the audio downloads recorded."""
+
+    FIRST_ID = 7001
+
+    def __init__(self, count: int = 3) -> None:
+        super().__init__(count)
+        self.queries: list[dict[str, Any]] = []
+        self.fetched: list[str] = []
+
+    def search_tracks(self, **kwargs: Any) -> Iterator[SourceTrack]:
+        self.queries.append(kwargs)
+        return iter(
+            SourceTrack(
+                source="freesound",
+                source_id=str(self.FIRST_ID + n),
+                title=f"New Sound {n + 1}",
+                artist=f"user{n + 1}",
+                stream_url=f"https://cdn.freesound.org/previews/{self.FIRST_ID + n}/p.mp3",
+                license_url="https://creativecommons.org/publicdomain/zero/1.0/",
+                tags={"category": ["Music"]},
+            )
+            for n in range(min(self.count, kwargs.get("limit", self.count)))
+        )
+
+    def fetch_audio(self, track: SourceTrack, **kwargs: Any) -> bytes:
+        self.fetched.append(track.source_id)
+        return self.audio
 
 
 def wait_done(client: ApiClient, job_id: str, timeout_s: float = 30.0) -> dict[str, Any]:

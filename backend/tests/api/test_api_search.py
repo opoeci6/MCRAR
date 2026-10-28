@@ -159,7 +159,10 @@ def test_a_model_that_cannot_load_is_503_not_a_traceback(tmp_path: Path) -> None
     [
         ({"filters": {"genres": ["polka"]}}, "unknown genre label 'polka'; choose from: blues"),
         ({"filters": {"moods": ["jazz"]}}, "unknown moodtheme label 'jazz'"),
-        ({"filters": {"sources": ["spotify"]}}, "sources must be one of: jamendo, local"),
+        (
+            {"filters": {"sources": ["spotify"]}},
+            "sources must be one of: jamendo, freesound, local",
+        ),
         ({"filters": {"bpm_min": 120, "bpm_max": 80}}, "bpm_min must not exceed bpm_max"),
         (
             {"filters": {"duration_min_s": 90, "duration_max_s": 30}},

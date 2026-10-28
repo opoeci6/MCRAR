@@ -32,7 +32,7 @@ server, which proxies `/api`. When `frontend/dist` exists, the API also serves t
 | Tracks | `GET /tracks?source&risk&limit&offset`; `GET /tracks/{id}`; `GET /tracks/{id}/stream`; `GET /tracks/{id}/credits?format=txt\|md\|json` |
 | Projects | `GET/POST /projects`; `GET/PATCH/DELETE /projects/{id}`; `GET /projects/{id}/items`; `PUT/DELETE /projects/{id}/items/{track_id}` (with an optional note); `GET /projects/{id}/credits?format=`. A shortlist entry is `{track, note, added_at}`; `track` has `id, title, artist, source, duration_s, risk, license_code` plus the links and credit data a shortlist needs: `source_id, source_url, download_url` (null unless the source allows downloading), `license_url, commercial_license_url, attribution_text` (the same values as `GET /tracks/{id}`). |
 | Settings | `GET/PUT /settings` (editable: `default_embedder`, `search.*`, `llm.*`; the view also lists `llm_presets`); `GET /secrets` (names only); `PUT/DELETE /secrets/{name}` |
-| Ingest | `POST /ingest/jamendo`, `POST /ingest/local`, `POST /ingest/reprocess` (`embed` or `tag`) → 202 with a job; `GET /jobs`; `GET /jobs/{id}`; `POST /jobs/{id}/cancel`; `GET /jobs/{id}/events` (Server-Sent Events) |
+| Ingest | `POST /ingest/jamendo`, `POST /ingest/freesound`, `POST /ingest/local`, `POST /ingest/reprocess` `{what: embed\|tag, force = false, source?: jamendo\|freesound\|local}` → 202 with a job; `GET /jobs`; `GET /jobs/{id}`; `POST /jobs/{id}/cancel`; `GET /jobs/{id}/events` (Server-Sent Events) |
 | Analyze | `POST /analyze` (multipart upload, ≤ 50 MB) → BPM, key, loudness and energy. Nothing is stored. |
 | Reference song (M10) | `POST /reference` (multipart `file`, same type and size rules as `/analyze`) → `{upload_id, filename, duration_s, model_id}`. The first 4 minutes are embedded with the default embedder (the way catalog tracks are) and the vector, not the audio, is kept in memory. Pass the `upload_id` to `POST /search` (below). 503 without the `ml` extra; 422 for a wrong file type or audio that can't be decoded; 413 over the size limit. |
 
@@ -44,15 +44,35 @@ Errors are JSON `{"detail": "..."}`:
 | 404 | Unknown id (also an unknown reference `track_id`, or an `upload_id` that expired: the store is lost on restart) |
 | 409 | Conflict: a job is already running, a field is pinned by an environment variable, the secret backend is read-only, a reference upload was embedded with another model than the one searched (the default embedder changed since the upload), or there is no labelling pool yet (`/labels/next`, `/labels/pool`, `/labels/progress`: "No labelling pool yet: run mcrar scenes pool") |
 | 413 | An upload is over 50 MB (`/analyze`, `/reference`) |
-| 503 | Missing prerequisite: no `ml` extra for text search or a reference upload (or for a genre/mood filter when a matching track has no usable stored tags), no Jamendo client id, or no ready LLM for a rerank |
+| 503 | Missing prerequisite: no `ml` extra for text search or a reference upload (or for a genre/mood filter when a matching track has no usable stored tags), no Jamendo client id, no Freesound API key (`POST /ingest/freesound`, or a reprocess with `source: "freesound"`), or no ready LLM for a rerank |
 | 502 | Jamendo failed, or the LLM call of a rerank failed |
 
 ## Behaviour worth knowing
 
 - **Audio is never re-hosted.** A Jamendo preview is a 307 redirect to a fresh stream URL. The
   URL is looked up again because the stored one expires, and is cached for 30 minutes. It carries
-  no client id. A local track is served from the path stored in the catalog, with HTTP Range
+  no client id. A Freesound track is a 307 redirect to its stored mp3 preview on the Freesound
+  CDN: the URL is stable, so there is no API call and no key is needed to play it. The redirect
+  only goes to an `https` URL on `freesound.org` or a subdomain; anything else is a 404 ("no
+  playable audio"). A local track is served from the path stored in the catalog, with HTTP Range
   support. No request can name a file to stream.
+- **Sources.** The `sources` filter of `POST /search` and the `source` parameter of
+  `GET /tracks` take `jamendo`, `freesound` and `local`.
+- **Freesound** is a source of music-like sounds only (music, loops, ambience; 10 s or longer by
+  default), not of sound effects. `POST /ingest/freesound`
+  `{query = "" (≤ 200 characters), tags = [] (≤ 10; letters, digits, "_" and "-"),
+  licenses = ["cc0", "by"] (at least one of cc0, by, by-nc, sampling+), duration_min_s = 10 (≥ 0),
+  duration_max_s = 600 (≤ 3600, not below the minimum), sort = "score" (score, duration_desc,
+  duration_asc, created_desc, created_asc, downloads_desc, downloads_asc, rating_desc,
+  rating_asc), limit = 50 (1–500), embed = true, force = false}` starts an `ingest-freesound` job
+  (the job's `params` are these values, never the key). Unknown fields are a 422, and so is a
+  body with neither a `query` nor a tag. A missing key is a 503 ("Freesound API key is not set:
+  add it in Settings, or `mcrar secrets set freesound_api_key`"). The audio analysed and embedded
+  is the mp3 preview (never stored on disk); the catalog keeps the sound page as its source and
+  download link, because the original files need a Freesound login. The key is the secret
+  `freesound_api_key` (`GET /secrets` lists it as known; see `docs/dev-setup.md`). A
+  `reprocess` of the whole catalog without a Freesound key does not stop: the Freesound tracks
+  fail one by one ("no Freesound client ..."); `source: "freesound"` without a key is a 503.
 - **Models.** Every embedder can be selected, including the non-commercial MuQ-MuLan (each
   entry in `GET /settings` carries `commercial_ok` as information). Stored tags count only when
   they come from the tagging model currently selected in `models/registry.json`; tags from an

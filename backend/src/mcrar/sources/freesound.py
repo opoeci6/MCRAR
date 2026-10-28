@@ -454,7 +454,7 @@ class FreesoundClient:
                 FreesoundStreamError,
                 f"Track {track.source_id} has no stream_url; refresh it with get_tracks()",
             )
-        if not _is_freesound_https(url):
+        if not is_freesound_https(url):
             raise self._error(
                 FreesoundStreamError,
                 f"Track {track.source_id} has a stream_url that is not an https {STREAM_HOST} URL",
@@ -739,7 +739,8 @@ class FreesoundClient:
             )
 
 
-def _is_freesound_https(url: str) -> bool:
+def is_freesound_https(url: str) -> bool:
+    """Whether ``url`` is https on freesound.org or one of its subdomains (the preview CDN)."""
     try:
         parts = urlsplit(url)
         host = (parts.hostname or "").lower()

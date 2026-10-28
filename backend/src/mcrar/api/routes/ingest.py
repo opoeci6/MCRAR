@@ -4,7 +4,10 @@ Design
 - ``POST /api/ingest/...`` validates the request, then starts one background job
   (:class:`~mcrar.api.jobs.JobManager`, one at a time, else 409) and answers 202 with the job.
   Everything that can fail fast fails before the job starts: a body that does not validate (422),
-  a missing Jamendo client id (503), no torch for a re-embed or a search import (503).
+  a bad Freesound tag (422), a missing Jamendo client id or Freesound API key (503), no torch for
+  a re-embed or a search import (503).
+- ``POST /api/ingest/freesound`` adds music-like Freesound sounds (kind ``ingest-freesound``). A
+  reprocess of the whole catalog without a Freesound key carries on: those tracks fail one by one.
 - ``POST /api/search/import`` imports new Jamendo tracks for a text search (kind ``ingest-query``):
   the text is parsed like a search, the Jamendo queries come from
   :mod:`mcrar.recommend.jamendo_query` and the run stops after ``limit`` new tracks. It embeds
@@ -32,7 +35,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Literal
 import anyio.to_thread
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mcrar.api.jobs import FINAL_EVENTS, Job, JobBusyError, JobNotRunningError, ProgressSink
 from mcrar.api.models import NO_TORCH_MESSAGE
@@ -40,7 +43,7 @@ from mcrar.api.routes.search import FiltersBody, resolve_filters
 from mcrar.api.state import AppState, StateDep
 from mcrar.recommend import SearchRequest
 from mcrar.secrets import SecretError
-from mcrar.sources import JamendoError
+from mcrar.sources import FreesoundError, JamendoError
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -52,6 +55,9 @@ router = APIRouter()
 POLL_S = 1.0  # longest wait for a new event before the stream checks on its client again
 KEEPALIVE_S = 15.0
 NO_JAMENDO_MESSAGE = "Jamendo client id is not set"
+NO_FREESOUND_MESSAGE = (
+    "Freesound API key is not set: add it in Settings, or `mcrar secrets set freesound_api_key`"
+)
 IMPORT_NEEDS_TEXT_MESSAGE = "describe the music to search Jamendo for"
 NO_EMBED_WARNING = (
     "embedding skipped: torch is not installed, so tracks are analysed but not embedded "
@@ -72,6 +78,40 @@ class JamendoIngestBody(BaseModel):
     limit: int = Field(50, ge=1, le=1000)
     embed: bool = True
     force: bool = False
+
+
+class FreesoundIngestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str = Field("", max_length=200)
+    tags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=10)
+    licenses: list[Literal["cc0", "by", "by-nc", "sampling+"]] = Field(
+        default_factory=lambda: ["cc0", "by"], min_length=1
+    )
+    duration_min_s: float = Field(10.0, ge=0)
+    duration_max_s: float = Field(600.0, le=3600)
+    sort: Literal[
+        "score",
+        "duration_desc",
+        "duration_asc",
+        "created_desc",
+        "created_asc",
+        "downloads_desc",
+        "downloads_asc",
+        "rating_desc",
+        "rating_asc",
+    ] = "score"
+    limit: int = Field(50, ge=1, le=500)
+    embed: bool = True
+    force: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> FreesoundIngestBody:
+        if self.duration_max_s < self.duration_min_s:
+            raise ValueError("duration_max_s must not be below duration_min_s")
+        if not self.query.strip() and not any(t.strip() for t in self.tags):
+            raise ValueError("give a query or at least one tag")
+        return self
 
 
 class SearchImportBody(BaseModel):
@@ -96,7 +136,7 @@ class ReprocessBody(BaseModel):
 
     what: Literal["embed", "tag"]
     force: bool = False
-    source: Literal["jamendo", "local"] | None = None
+    source: Literal["jamendo", "freesound", "local"] | None = None
 
 
 # -- starting jobs -------------------------------------------------------------------------------
@@ -125,6 +165,13 @@ def _open_jamendo(state: AppState) -> Any:
         return state.open_jamendo()
     except (JamendoError, SecretError):
         raise HTTPException(status_code=503, detail=NO_JAMENDO_MESSAGE) from None
+
+
+def _open_freesound(state: AppState) -> Any:
+    try:
+        return state.open_freesound()
+    except (FreesoundError, SecretError):
+        raise HTTPException(status_code=503, detail=NO_FREESOUND_MESSAGE) from None
 
 
 def _ingest_stages(state: AppState, embed: bool, sink: ProgressSink) -> list[Stage] | None:
@@ -174,6 +221,43 @@ def ingest_jamendo_route(body: JamendoIngestBody, state: StateDep) -> dict[str, 
     return _start(
         state, "ingest-jamendo", body.model_dump(exclude_none=True), run, cleanup=client.close
     )
+
+
+@router.post("/api/ingest/freesound", status_code=202)
+def ingest_freesound_route(body: FreesoundIngestBody, state: StateDep) -> dict[str, Any]:
+    from mcrar.ingest import ingest_freesound
+    from mcrar.sources.freesound import build_filter
+
+    tags = [t.strip() for t in body.tags if t.strip()]
+    # Bad tags (ValueError, so 422) fail here, before a client is opened or a job started.
+    build_filter(
+        tags=tags,
+        licenses=body.licenses,
+        duration_min_s=body.duration_min_s,
+        duration_max_s=body.duration_max_s,
+    )
+    client = _open_freesound(state)
+
+    def run(sink: ProgressSink) -> IngestReport:
+        try:
+            return ingest_freesound(
+                client,
+                state.repo,
+                query=body.query,
+                tags=tags,
+                licenses=body.licenses,
+                duration_min_s=body.duration_min_s,
+                duration_max_s=body.duration_max_s,
+                sort=body.sort,
+                limit=body.limit,
+                force=body.force,
+                stages=_ingest_stages(state, body.embed, sink),
+                on_progress=sink.on_event,
+            )
+        finally:
+            client.close()
+
+    return _start(state, "ingest-freesound", body.model_dump(), run, cleanup=client.close)
 
 
 @router.post("/api/search/import", status_code=202)
@@ -248,15 +332,30 @@ def reprocess_route(body: ReprocessBody, state: StateDep) -> dict[str, Any]:
         return _start(state, "reprocess-tag", params, _reprocess_tags(state, body))
     if not state.torch_available():
         raise HTTPException(status_code=503, detail=NO_TORCH_MESSAGE)
-    client = None
-    if body.source != "local" and state.repo.stats()["tracks_by_source"].get("jamendo", 0) > 0:
+    counts = state.repo.stats()["tracks_by_source"]
+    client = freesound = None
+    if body.source in (None, "jamendo") and counts.get("jamendo", 0) > 0:
         client = _open_jamendo(state)  # Jamendo audio URLs expire: they are refreshed first
+    if body.source in (None, "freesound") and counts.get("freesound", 0) > 0:
+        try:
+            freesound = _open_freesound(state)
+        except HTTPException:
+            # Without a key the Freesound tracks fail one by one (with the reason in the log);
+            # the rest of a whole-catalog run goes on. Asked for by name, it is a 503.
+            if body.source == "freesound":
+                raise
+
+    def cleanup() -> None:
+        for opened in (client, freesound):
+            if opened is not None:
+                opened.close()
+
     return _start(
         state,
         "reprocess-embed",
         params,
-        _reprocess_embeddings(state, body, client),
-        cleanup=client.close if client is not None else None,
+        _reprocess_embeddings(state, body, client, freesound),
+        cleanup=cleanup,
     )
 
 
@@ -282,7 +381,7 @@ def _reprocess_tags(state: AppState, body: ReprocessBody) -> Callable[[ProgressS
 
 
 def _reprocess_embeddings(
-    state: AppState, body: ReprocessBody, client: Any
+    state: AppState, body: ReprocessBody, client: Any, freesound: Any = None
 ) -> Callable[[ProgressSink], IngestReport]:
     def run(sink: ProgressSink) -> IngestReport:
         from mcrar.ingest import EmbeddingStage, reprocess_catalog
@@ -293,13 +392,15 @@ def _reprocess_embeddings(
                 state.repo,
                 stages=[EmbeddingStage(embedder)],
                 client=client,
+                freesound_client=freesound,
                 source=body.source,
                 force=body.force,
                 on_progress=sink.on_event,
             )
         finally:
-            if client is not None:
-                client.close()
+            for opened in (client, freesound):
+                if opened is not None:
+                    opened.close()
 
     return run
 

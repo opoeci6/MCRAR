@@ -71,10 +71,11 @@ def _clip(text: str, limit: int) -> str:
 
 
 def _source_tags(track: StoredTrack | None) -> list[str]:
-    """The source's own tags (Jamendo genres, instruments and free tags), in that order."""
+    """The source's own tags (Jamendo genres and instruments, the Freesound category, then free
+    tags), in that order; the broad groups come first so the cap drops free tags first."""
     tags = (track.source_tags if track else None) or {}
     found: list[str] = []
-    for group in ("genres", "instruments", "vartags"):
+    for group in ("genres", "instruments", "category", "vartags"):
         values = tags.get(group)
         if isinstance(values, list):
             found.extend(_clip(v, MAX_FIELD_CHARS) for v in values if isinstance(v, str) and v)

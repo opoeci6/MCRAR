@@ -167,6 +167,43 @@ def test_source_tags() -> None:
     assert len(_source_tags(many)) == 12  # type: ignore[arg-type]
 
 
+def test_freesound_category_tags_come_before_free_tags() -> None:
+    track = SimpleNamespace(
+        source_tags={
+            "vartags": ["loop", "warm"],
+            "category": ["Music", "Soundscape", 3],
+            "gen_ai_preference": ["no"],  # not a prompt tag group
+        }
+    )
+    assert _source_tags(track) == ["Music", "Soundscape", "loop", "warm"]  # type: ignore[arg-type]
+    category_only = SimpleNamespace(source_tags={"category": ["Music"]})
+    assert _source_tags(category_only) == ["Music"]  # type: ignore[arg-type]
+    crowded = SimpleNamespace(
+        source_tags={"vartags": [f"t{n}" for n in range(40)], "category": ["Music"]}
+    )
+    assert _source_tags(crowded)[0] == "Music"  # type: ignore[arg-type]
+
+
+def test_freesound_category_reaches_the_prompt(found: Any) -> None:
+    parsed, items = found
+    tracks = {
+        items[0].track_id: SimpleNamespace(
+            source_tags={"category": ["Music"], "vartags": ["loop"]}, vocal_instrumental=None
+        )
+    }
+    provider = FakeProvider(reply([]))
+    rerank(
+        provider,
+        text=TEXT,
+        parsed=parsed,
+        items=items,
+        timeout_s=9.0,
+        tracks=tracks,  # type: ignore[arg-type]
+    )
+    listed = json.loads(provider.calls[0]["messages"][1]["content"].splitlines()[-1])
+    assert listed[0]["tags"] == ["Music", "loop"]
+
+
 def test_schema_is_strict_compatible() -> None:
     assert SCHEMA["additionalProperties"] is False
     assert set(SCHEMA["required"]) == set(SCHEMA["properties"])

@@ -15,7 +15,7 @@ from collections.abc import Callable, Sequence
 from mcrar.recommend.query import SearchFilters
 from mcrar.recommend.vocab import GENRE, MOODTHEME, SCENE, Vocabulary
 
-SOURCES = ("jamendo", "local")
+SOURCES = ("jamendo", "freesound", "local")
 RISKS = ("green", "amber", "red")  # "unknown" (the default) is the loosest level and is implicit
 VOCALS = ("vocal", "instrumental")
 INTENSITIES = ("low", "mid", "high")

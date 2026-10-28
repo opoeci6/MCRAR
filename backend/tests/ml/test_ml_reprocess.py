@@ -5,13 +5,26 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from ml_support import CountingStage, FakeJamendo, add_jamendo, add_local, write_wav
+from ml_support import (
+    CountingStage,
+    FakeJamendo,
+    add_freesound,
+    add_jamendo,
+    add_local,
+    write_wav,
+)
 
-from mcrar.catalog import CatalogRepository
+from mcrar.catalog import CatalogRepository, TrackRecord
 from mcrar.ingest import IngestEvent, reprocess_catalog
 from mcrar.ingest.pipeline import REFRESH_BATCH
 from mcrar.ml import EmbedderMemoryError
-from mcrar.sources import JamendoAuthError, JamendoRateLimitError, JamendoStreamError
+from mcrar.sources import (
+    FreesoundAuthError,
+    FreesoundStreamError,
+    JamendoAuthError,
+    JamendoRateLimitError,
+    JamendoStreamError,
+)
 
 
 def test_refresh_batch_is_fifty() -> None:
@@ -334,3 +347,86 @@ def test_arguments_are_validated(repo: CatalogRepository) -> None:
 def test_an_empty_catalog_is_a_clean_no_op(repo: CatalogRepository) -> None:
     report = reprocess_catalog(repo, stages=[CountingStage()], client=FakeJamendo())
     assert (report.seen, report.processed, report.failed, report.aborted) == (0, 0, 0, None)
+
+
+# -- Freesound ----------------------------------------------------------------------------------
+
+
+def test_freesound_previews_are_fetched_with_the_freesound_client_and_never_refreshed(
+    repo: CatalogRepository,
+) -> None:
+    ids = [add_freesound(repo, n) for n in (1, 2)]
+    add_jamendo(repo, 7)
+    jamendo, freesound = FakeJamendo(), FakeJamendo()
+    stage = CountingStage()
+    report = reprocess_catalog(repo, stages=[stage], client=jamendo, freesound_client=freesound)
+    assert (report.processed, report.failed) == (3, 0)
+    assert stage.done >= set(ids)
+    assert freesound.get_calls == []  # the stored preview URL is stable: no lookup
+    assert dict(freesound.fetched) == {
+        "1": "https://cdn.freesound.org/previews/1/1_1-hq.mp3",
+        "2": "https://cdn.freesound.org/previews/2/2_1-hq.mp3",
+    }
+    assert [source_id for source_id, _ in jamendo.fetched] == ["7"]  # Jamendo kept its refresh
+    assert jamendo.get_calls == [["7"]]
+    assert repo.get_ingest_status("freesound", "1", "count").status == "ok"  # type: ignore[union-attr]
+
+
+def test_source_filter_freesound_leaves_the_other_sources_alone(repo: CatalogRepository) -> None:
+    add_freesound(repo, 1)
+    add_jamendo(repo, 2)
+    jamendo, freesound = FakeJamendo(), FakeJamendo()
+    report = reprocess_catalog(
+        repo,
+        stages=[CountingStage()],
+        client=jamendo,
+        freesound_client=freesound,
+        source="freesound",
+    )
+    assert (report.seen, report.processed) == (1, 1)
+    assert jamendo.get_calls == [] and jamendo.fetched == []
+    assert [i for i, _ in freesound.fetched] == ["1"]
+
+
+def test_freesound_tracks_without_a_client_fail_cleanly(repo: CatalogRepository) -> None:
+    add_freesound(repo, 1)
+    add_jamendo(repo, 2)
+    report = reprocess_catalog(repo, stages=[CountingStage()], client=FakeJamendo())
+    assert (report.processed, report.failed, report.aborted) == (1, 1, None)
+    (failure,) = report.failures
+    assert failure.source_id == "1" and "no Freesound client" in failure.message
+    entry = repo.get_ingest_status("freesound", "1", "count")
+    assert entry is not None and entry.status == "failed"
+
+
+def test_a_freesound_track_without_a_preview_url_fails_alone(repo: CatalogRepository) -> None:
+    add_freesound(repo, 1)
+    repo.upsert_track(
+        TrackRecord(source="freesound", source_id="2", title="Sound 2", stream_url=None)
+    )
+    freesound = FakeJamendo()
+    report = reprocess_catalog(repo, stages=[CountingStage()], freesound_client=freesound)
+    assert (report.processed, report.failed) == (1, 1)
+    assert report.failures[0].message == "no audio stream"
+    assert [i for i, _ in freesound.fetched] == ["1"]
+
+
+def test_a_freesound_auth_error_aborts_the_reprocess(repo: CatalogRepository) -> None:
+    for n in range(1, 5):
+        add_freesound(repo, n)
+    freesound = FakeJamendo(fetch_errors={"3": FreesoundAuthError("bad key")})
+    stage = CountingStage()
+    with pytest.raises(FreesoundAuthError) as err:
+        reprocess_catalog(repo, stages=[stage], freesound_client=freesound)
+    report = err.value.report  # type: ignore[attr-defined]
+    assert report.aborted is not None and "FreesoundAuthError" in report.aborted
+    assert report.processed == 2 and len(stage.runs) == 2
+
+
+def test_a_freesound_download_error_fails_only_its_track(repo: CatalogRepository) -> None:
+    for n in range(1, 4):
+        add_freesound(repo, n)
+    freesound = FakeJamendo(fetch_errors={"2": FreesoundStreamError("HTTP 404")})
+    report = reprocess_catalog(repo, stages=[CountingStage()], freesound_client=freesound)
+    assert (report.processed, report.failed) == (2, 1)
+    assert "FreesoundStreamError" in report.failures[0].message
