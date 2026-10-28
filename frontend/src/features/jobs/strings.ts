@@ -6,8 +6,17 @@ export const jobStrings = {
     showRunning: 'Show the running job',
     openLibrary: 'Open Library',
     failed: "Couldn't start the job",
-    missingKeyTitle: 'Jamendo client id is not set',
-    missingKeyBody: 'Jamendo needs a client id before it can be searched.',
+    /** A 503 that says which key is missing: the notice names it and leads to Settings. */
+    missingKey: {
+      jamendo: {
+        title: 'Jamendo client id is not set',
+        body: 'Jamendo needs a client id before it can be searched.',
+      },
+      freesound: {
+        title: 'Freesound API key is not set',
+        body: 'Freesound needs an API key before it can be searched. Add it in Settings, under API keys.',
+      },
+    } as Record<string, { title: string; body: string }>,
     openSettings: 'Open Settings',
   },
   progress: {

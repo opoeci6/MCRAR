@@ -9,6 +9,7 @@ import { request } from './client'
 import type {
   AnalyzeResponse,
   CreditsFormat,
+  FreesoundIngestRequest,
   Health,
   JamendoIngestRequest,
   Job,
@@ -108,7 +109,7 @@ export const listTracks = (params: TrackListParams = {}, o?: CallOptions) =>
 export const getTrack = (trackId: number, o?: CallOptions) =>
   request<TrackDetail>('GET', `/api/tracks/${id(trackId)}`, o)
 
-/** The `src` of an <audio> element. The backend redirects Jamendo to its CDN or serves the file. */
+/** The `src` of an <audio> element. The backend redirects Jamendo to its CDN and Freesound to its preview, or serves the file. */
 export const trackStreamUrl = (trackId: number) => `/api/tracks/${id(trackId)}/stream`
 
 /** Download link for the credits of one track. */
@@ -225,7 +226,10 @@ export const deleteSecret = (name: string, o?: CallOptions) =>
 export const ingestJamendo = (body: JamendoIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/jamendo', { ...o, body })
 
-export const ingestLocal = (body: LocalIngestRequest, o?: CallOptions) =>
+export const ingestFreesound = (body: FreesoundIngestRequest, o?: CallOptions) =>
+  request<{ job: Job }>('POST', '/api/ingest/freesound', { ...o, body })
+
+export const ingestLocal =(body: LocalIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/local', { ...o, body })
 
 export const reprocess = (body: ReprocessRequest, o?: CallOptions) =>

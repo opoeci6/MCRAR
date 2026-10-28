@@ -394,3 +394,227 @@ describe('Library jobs', () => {
     expect(screen.getByText('Report')).toBeInTheDocument()
   })
 })
+
+describe('Library: Freesound', () => {
+  const FREESOUND_JOB = job({ id: 'f1', kind: 'ingest-freesound' })
+
+  async function openFreesound(extra: Routes = {}) {
+    const user = userEvent.setup()
+    const api = stubApi(
+      baseRoutes({ 'POST /api/ingest/freesound': jsonResponse({ job: FREESOUND_JOB }, 202), ...extra }),
+    )
+    renderWithProviders(<LibraryPage />)
+    await screen.findByTestId('stat-tracks')
+    await user.click(screen.getByRole('tab', { name: 'Freesound' }))
+    const form = within(screen.getByRole('tabpanel', { name: 'Freesound' }))
+    return { user, api, form, submit: () => user.click(form.getByRole('button', { name: 'Add from Freesound' })) }
+  }
+
+  it('adds a Freesound tab between Jamendo and Local folder', async () => {
+    stubApi(baseRoutes())
+    renderWithProviders(<LibraryPage />)
+    await screen.findByTestId('stat-tracks')
+    const tabs = within(screen.getByRole('tablist', { name: 'Ways to add music' })).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Jamendo', 'Freesound', 'Local folder', 'Maintenance'])
+  })
+
+  it('starts with the defaults and an explanatory note', async () => {
+    const { form } = await openFreesound()
+    expect(form.getByText(/Music, loops and ambience from Freesound\. Short sound effects aren't supported yet\./)).toBeInTheDocument()
+    expect(form.getByLabelText('Search words')).toHaveValue('')
+    expect(form.getByLabelText('Freesound tags')).toHaveValue('')
+    expect(form.getByLabelText('CC0 (public domain)')).toBeChecked()
+    expect(form.getByLabelText('CC BY (credit the author)')).toBeChecked()
+    expect(form.getByLabelText('CC BY-NC (no commercial use)')).not.toBeChecked()
+    expect(form.getByLabelText('Sampling+ (only transformed use)')).not.toBeChecked()
+    expect(form.getByLabelText('Shortest sound (seconds)')).toHaveValue(10)
+    expect(form.getByLabelText('Longest sound (seconds)')).toHaveValue(600)
+    expect(form.getByLabelText('Order by')).toHaveValue('score')
+    expect(form.getByLabelText('Number of sounds')).toHaveValue(50)
+    expect(form.getByLabelText(/Also embed/)).toBeChecked()
+    expect(
+      within(form.getByLabelText('Order by')).getAllByRole('option').map((option) => option.textContent),
+    ).toEqual(['Best match', 'Most downloaded', 'Highest rated', 'Newest', 'Longest', 'Shortest'])
+  })
+
+  it('sends the defaults for a tags-only search and follows the job', async () => {
+    const { user, api, form, submit } = await openFreesound()
+    await user.type(form.getByLabelText('Freesound tags'), 'Loop')
+    await submit()
+    await waitFor(() =>
+      expect(bodyOf(api, '/api/ingest/freesound')).toEqual({
+        query: '',
+        tags: ['loop'],
+        licenses: ['cc0', 'by'],
+        duration_min_s: 10,
+        duration_max_s: 600,
+        sort: 'score',
+        limit: 50,
+        embed: true,
+      }),
+    )
+    const panel = await screen.findByRole('region', { name: 'Job progress' })
+    expect(FakeEventSource.instances[0]!.url).toBe('/api/jobs/f1/events')
+    expect(panel).toHaveTextContent('Freesound import')
+  })
+
+  it('sends exactly what was entered', async () => {
+    const { user, api, form, submit } = await openFreesound()
+    await user.type(form.getByLabelText('Search words'), '  rain pad ')
+    await user.type(form.getByLabelText('Freesound tags'), ' Loop, ambient ,,Dark_Pad-2 ')
+    await user.click(form.getByLabelText('CC0 (public domain)'))
+    await user.click(form.getByLabelText('CC BY-NC (no commercial use)'))
+    await user.click(form.getByLabelText('Sampling+ (only transformed use)'))
+    await user.clear(form.getByLabelText('Shortest sound (seconds)'))
+    await user.type(form.getByLabelText('Shortest sound (seconds)'), '20.5')
+    await user.clear(form.getByLabelText('Longest sound (seconds)'))
+    await user.type(form.getByLabelText('Longest sound (seconds)'), '3600')
+    await user.selectOptions(form.getByLabelText('Order by'), 'downloads_desc')
+    await user.clear(form.getByLabelText('Number of sounds'))
+    await user.type(form.getByLabelText('Number of sounds'), '500')
+    await user.click(form.getByLabelText(/Also embed/))
+    await submit()
+    await waitFor(() =>
+      expect(bodyOf(api, '/api/ingest/freesound')).toEqual({
+        query: 'rain pad',
+        tags: ['loop', 'ambient', 'dark_pad-2'],
+        licenses: ['by', 'by-nc', 'sampling+'],
+        duration_min_s: 20.5,
+        duration_max_s: 3600,
+        sort: 'downloads_desc',
+        limit: 500,
+        embed: false,
+      }),
+    )
+  })
+
+  describe('validation', () => {
+    async function expectRefused(
+      fill: (ctx: Awaited<ReturnType<typeof openFreesound>>) => Promise<void>,
+      message: string,
+    ) {
+      const ctx = await openFreesound()
+      await fill(ctx)
+      await ctx.submit()
+      expect(ctx.form.getByText(message)).toBeInTheDocument()
+      expect(bodyOf(ctx.api, '/api/ingest/freesound')).toBeUndefined()
+    }
+
+    it('needs search words or a tag', () =>
+      expectRefused(async () => {}, 'Enter search words or at least one tag.'))
+
+    it('treats blank search words and tags as empty', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), '   ')
+        await user.type(form.getByLabelText('Freesound tags'), ' , ,')
+      }, 'Enter search words or at least one tag.'))
+
+    it('refuses a tag with a character the backend rejects', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Freesound tags'), 'loop, bad tag!')
+      }, 'Tags can only use lowercase letters, digits, "-" and "_".'))
+
+    it('refuses more than 10 tags', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Freesound tags'), 'a,b,c,d,e,f,g,h,i,j,k')
+      }, 'Use at most 10 tags.'))
+
+    it('refuses search words over 200 characters', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.click(form.getByLabelText('Search words'))
+        await user.paste('x'.repeat(201))
+      }, 'Use at most 200 characters.'))
+
+    it('needs at least one licence', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), 'rain')
+        await user.click(form.getByLabelText('CC0 (public domain)'))
+        await user.click(form.getByLabelText('CC BY (credit the author)'))
+      }, 'Choose at least one licence.'))
+
+    it('refuses a longest sound shorter than the shortest', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), 'rain')
+        await user.clear(form.getByLabelText('Longest sound (seconds)'))
+        await user.type(form.getByLabelText('Longest sound (seconds)'), '5')
+      }, 'The longest sound must not be shorter than the shortest.'))
+
+    it('refuses a longest sound over 3600 seconds', () =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), 'rain')
+        await user.clear(form.getByLabelText('Longest sound (seconds)'))
+        await user.type(form.getByLabelText('Longest sound (seconds)'), '3601')
+      }, 'Enter at most 3600 seconds.'))
+
+    it('refuses a negative or empty shortest sound', async () => {
+      await expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), 'rain')
+        await user.clear(form.getByLabelText('Shortest sound (seconds)'))
+        await user.type(form.getByLabelText('Shortest sound (seconds)'), '-1')
+      }, 'Enter a number of seconds, 0 or more.')
+    })
+
+    it.each(['0', '501', '2.5', ''])('refuses the limit "%s"', (value) =>
+      expectRefused(async ({ user, form }) => {
+        await user.type(form.getByLabelText('Search words'), 'rain')
+        await user.clear(form.getByLabelText('Number of sounds'))
+        if (value) await user.type(form.getByLabelText('Number of sounds'), value)
+      }, 'Enter a whole number from 1 to 500.'),
+    )
+
+    it('clears the errors once the form is valid', async () => {
+      const { user, form, submit, api } = await openFreesound()
+      await submit()
+      expect(form.getByText('Enter search words or at least one tag.')).toBeInTheDocument()
+      await user.type(form.getByLabelText('Search words'), 'rain')
+      await submit()
+      expect(form.queryByText('Enter search words or at least one tag.')).not.toBeInTheDocument()
+      await waitFor(() => expect(bodyOf(api, '/api/ingest/freesound')).toBeDefined())
+    })
+  })
+
+  it('links to Settings when the Freesound API key is missing (503)', async () => {
+    const { user, form, submit } = await openFreesound({
+      'POST /api/ingest/freesound': jsonResponse(
+        {
+          detail:
+            'Freesound API key is not set: add it in Settings, or `mcrar secrets set freesound_api_key`',
+        },
+        503,
+      ),
+    })
+    await user.type(form.getByLabelText('Search words'), 'rain')
+    await submit()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Freesound API key is not set')
+    expect(alert).not.toHaveTextContent('Jamendo')
+    expect(within(alert).getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '#/settings')
+  })
+
+  it('explains a 409 and shows other errors with the backend detail', async () => {
+    const { user, form, submit } = await openFreesound({
+      'POST /api/ingest/freesound': jsonResponse({ detail: 'job other is already running' }, 409),
+    })
+    await user.type(form.getByLabelText('Search words'), 'rain')
+    await submit()
+    expect(await screen.findByText('Another job is running')).toBeInTheDocument()
+  })
+
+  it('names Freesound in the overview, the track table and the source filter', async () => {
+    stubApi(
+      baseRoutes({
+        'GET /api/stats': { ...STATS, tracks_by_source: { jamendo: 100, freesound: 7, local: 20 } },
+        'GET /api/tracks': page(0, 1, [{ ...track(1, 'Pad Loop'), source: 'freesound' }]),
+      }),
+    )
+    renderWithProviders(<LibraryPage />)
+    const overview = await screen.findByRole('region', { name: 'Catalog overview' })
+    await waitFor(() => expect(within(overview).getByText('Freesound')).toBeInTheDocument())
+    expect(within(overview).getByText('Freesound').parentElement).toHaveTextContent('7')
+    const table = await screen.findByRole('table', { name: 'Tracks in the catalog' })
+    expect(within(table).getByRole('cell', { name: 'Freesound' })).toBeInTheDocument()
+    expect(within(screen.getByLabelText('Source')).getByRole('option', { name: 'Freesound' })).toHaveValue(
+      'freesound',
+    )
+  })
+})

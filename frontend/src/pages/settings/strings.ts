@@ -101,6 +101,10 @@ export const settingsStrings = {
     jamendoBody:
       'Needed to search, add and stream Jamendo tracks. You can get a free client id by registering an app at devportal.jamendo.com.',
     jamendoLink: 'devportal.jamendo.com',
+    freesoundTitle: 'Freesound API key',
+    freesoundBody:
+      'Needed to import music-like sounds (loops, ambience) from Freesound. The key is free for non-commercial use: apply for one at freesound.org/apiv2/apply.',
+    freesoundLink: 'freesound.org/apiv2/apply',
     status: 'Status',
     statusSetFile: 'Set (stored in file)',
     statusSetEnv: 'Set (environment variable)',
@@ -108,6 +112,8 @@ export const settingsStrings = {
     statusNotSet: 'Not set',
     jamendoInput: 'Client id',
     jamendoRemoveWarning: 'Jamendo search, adding and streaming stop working until you set it again.',
+    freesoundInput: 'API key',
+    freesoundRemoveWarning: 'Importing from Freesound stops working until you set it again.',
     inputHint: 'Paste the key here. It is stored on this computer and never shown again.',
     save: 'Save key',
     saved: (title: string) => `${title} saved.`,

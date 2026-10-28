@@ -180,6 +180,17 @@ describe('Search page: filters', () => {
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ max_risk: 'amber' })
   })
 
+  it('offers Freesound as a source filter', async () => {
+    const mock = setup({ 'POST /api/search': response([item(1)]) })
+    renderWithProviders(<SearchPage />)
+    const select = screen.getByLabelText('Source')
+    expect(within(select).getByRole('option', { name: 'Freesound' })).toHaveValue('freesound')
+    await userEvent.selectOptions(select, 'freesound')
+    await searchFor('loop')
+    await screen.findByText('Track 1')
+    expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ sources: ['freesound'] })
+  })
+
   it('maps vocals, source, BPM, genres and moods', async () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)

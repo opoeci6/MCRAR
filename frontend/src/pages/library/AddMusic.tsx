@@ -2,6 +2,7 @@ import { useId } from 'react'
 import { usePersistentState } from '../../app/usePersistentState'
 import { cx } from '../../lib/cx'
 import { Notice } from '../../ui/Notice'
+import { FreesoundForm } from './FreesoundForm'
 import { JamendoForm } from './JamendoForm'
 import { LocalForm } from './LocalForm'
 import { MaintenancePanel } from './MaintenancePanel'
@@ -11,12 +12,13 @@ import styles from './AddMusic.module.css'
 
 const TABS = [
   { id: 'jamendo', label: t.add.jamendo },
+  { id: 'freesound', label: t.add.freesound },
   { id: 'local', label: t.add.local },
   { id: 'maintenance', label: t.add.maintenance },
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
-/** The three ways to start a job. All panels stay mounted so a half-filled form survives a tab switch. */
+/** The ways to start a job. All panels stay mounted so a half-filled form survives a tab switch. */
 export function AddMusic(props: StartProps) {
   const [tab, setTab] = usePersistentState<TabId>('library.addTab', 'jamendo')
   const base = useId()
@@ -54,7 +56,8 @@ export function AddMusic(props: StartProps) {
           hidden={tab !== item.id}
         >
           {item.id === 'jamendo' ? <JamendoForm {...props} /> : null}
-          {item.id === 'local' ? <LocalForm {...props} /> : null}
+          {item.id === 'freesound' ? <FreesoundForm {...props} /> : null}
+          {item.id === 'local' ?<LocalForm {...props} /> : null}
           {item.id === 'maintenance' ? <MaintenancePanel {...props} /> : null}
         </div>
       ))}

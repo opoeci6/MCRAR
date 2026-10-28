@@ -4,7 +4,7 @@
  */
 
 export type Risk = 'green' | 'amber' | 'red' | 'unknown'
-export type Source = 'jamendo' | 'local'
+export type Source = 'jamendo' | 'freesound' | 'local'
 export type Vocal = 'vocal' | 'instrumental'
 export type CreditsFormat = 'txt' | 'md' | 'json'
 /** 0 = not a fit, 1 = OK, 2 = good fit. */
@@ -628,6 +628,38 @@ export interface JamendoIngestRequest {
   vocalinstrumental?: Vocal | null
   commercial_only?: boolean
   order?: string | null
+  limit?: number
+  embed?: boolean
+  force?: boolean
+}
+
+export type FreesoundLicense = 'cc0' | 'by' | 'by-nc' | 'sampling+'
+
+export type FreesoundSort =
+  | 'score'
+  | 'duration_desc'
+  | 'duration_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'downloads_desc'
+  | 'downloads_asc'
+  | 'rating_desc'
+  | 'rating_asc'
+
+/** Imports music-like sounds from Freesound; needs a query or at least one tag. */
+export interface FreesoundIngestRequest {
+  /** Up to 200 characters. */
+  query?: string
+  /** Up to 10, each of a-z, 0-9, `_` and `-`. */
+  tags?: string[]
+  /** At least one; the backend defaults to cc0 and by. */
+  licenses?: FreesoundLicense[]
+  /** The backend defaults to 10. */
+  duration_min_s?: number
+  /** Up to 3600; the backend defaults to 600. */
+  duration_max_s?: number
+  sort?: FreesoundSort
+  /** 1 to 500; the backend defaults to 50. */
   limit?: number
   embed?: boolean
   force?: boolean

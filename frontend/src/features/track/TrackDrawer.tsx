@@ -112,7 +112,11 @@ function Intro({
         </p>
         {track.source_url ? (
           <a className={styles.source} href={track.source_url} target="_blank" rel="noreferrer noopener">
-            {track.source === 'jamendo' ? t.openOnJamendo : t.openSource}
+            {track.source === 'jamendo'
+              ? t.openOnJamendo
+              : track.source === 'freesound'
+                ? t.openOnFreesound
+                : t.openSource}
             <span className="sr-only"> {strings.common.opensInNewTab}</span>
           </a>
         ) : null}

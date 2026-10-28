@@ -100,6 +100,19 @@ describe('TrackDrawer', () => {
     )
   })
 
+  it('labels the source link of a Freesound track', async () => {
+    stubApi({
+      'GET /api/tracks/5': { ...DETAIL, source: 'freesound', source_url: 'https://freesound.org/s/5/' },
+    })
+    open(5)
+    await screen.findByRole('heading', { name: 'Rainy Window' })
+    expect(screen.getByRole('link', { name: /Open on Freesound/ })).toHaveAttribute(
+      'href',
+      'https://freesound.org/s/5/',
+    )
+    expect(screen.queryByRole('link', { name: /Open on Jamendo/ })).not.toBeInTheDocument()
+  })
+
   it('shows the source link and the audio features', async () => {
     stubApi({ 'GET /api/tracks/5': DETAIL })
     open(5)
