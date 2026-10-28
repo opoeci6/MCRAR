@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-26.
+Last updated: 2026-10-28.
 
 ## 1. Milestones
 
@@ -21,15 +21,15 @@ Last updated: 2026-10-26.
 | M6 UI | Done (2026-10-15) | `dev` | React UI served by `mcrar serve` at `/`; result ratings; see §3.9 |
 | M7 Optional LLM | Done (2026-10-19) | `dev` | A query parse on every text search, a top-20 rerank on click. OpenAI-compatible presets plus Anthropic; `docs/llm.md`; see §3.11 |
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
-| M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
+| M9 Game-scene tags | Done (2026-10-28) | `dev` | 14 scenes, scene and intensity filters, Labelling tab, `mcrar scenes …`; 269 hand-labelled tracks (owner and Simon); the trained hybrid head `scene-logreg-hybrid@5f5ba48` is selected (cross-validated mean P@10 0.414 against 0.407 for the centered zero-shot). See §3.13 |
 | QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
 | M11 | Not started | — | See `docs/PLAN.md` §5 |
 
 Test suite on `dev`, counted after M12 (2026-10-28):
-- Backend, default env: 2,223 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,220 passed, 31 skipped.
+- Backend, default env: 2,224 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,221 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
 - Frontend: 458 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
@@ -453,7 +453,7 @@ Details are in `docs/llm.md`.
 - **Not in v1:** the LLM rerank refuses a reference (its prompt knows only the text), and a
   search with a reference has no ratings (they are filed under text and filters). See §5.2.
 
-### 3.13 Game-scene tags (M9, code 2026-10-26; results wait for the labels)
+### 3.13 Game-scene tags (M9, code 2026-10-26; results 2026-10-28)
 - **Owner's choices:** 14 scenes (PLAN §6's 11 plus cutscene, chase and ambient); intensity
   Low/Mid/High drives the existing energy target (0.25 / 0.5 / 0.8) for now, and the labels
   record intensity so DSP energy and the arousal head can be compared; the collaborator
@@ -491,6 +491,27 @@ Details are in `docs/llm.md`.
   real audio; labels exported and imported into another copy, and a pack imported with identical
   positions and parts; a search with Stealth + Low intensity scored the stealth tag and energy
   0.25. Then the same build, tags and pool on the real catalog (backup `data/catalog.pre-m9.db`).
+
+- **Results (2026-10-28).** The owner labelled part A (150 tracks) and the collaborator
+  (labeller name "Simon") part B (149: all 119 plus the 30 shared; file
+  `data/labels/scene-labels-Simon.json`). Imported into the real catalog after a trial on a copy.
+  - Cross-validated mean P@10 on the 269 labelled tracks: plain zero-shot 0.307, centered
+    zero-shot 0.407, hybrid head 0.414. The head wins narrowly; over CV seeds 0 to 8 it won
+    eight times (0.414 to 0.464) and tied once, so the win is consistent but small. It is
+    selected and the whole catalog (Jamendo and Freesound) was re-tagged with it.
+  - Strong scenes: horror, menu, town, ambient, exploration, combat. Weak: puzzle, victory,
+    defeat, chase (few positives; victory and defeat have 10 each).
+  - **The labellers often disagree:** mean Cohen's κ 0.24 on the 30 shared tracks (credits 0.61,
+    cutscene 0.58, combat 0.53; boss, menu and puzzle at or below chance). On the owner's labels
+    alone the head scored 0.53, so part of the drop is disagreement, which caps any model.
+    Intensity agreement can't be judged (only 3 shared tracks have intensity from both).
+  - **Intensity stays on DSP energy:** energy and arousal both reach Spearman ρ 0.66 against the
+    intensity labels (n = 153), so there is no reason to switch.
+  - The model card has the "Game scenes" section. Its dataset rows now fall back to the recorded
+    M3b run numbers (`RECORDED_EMBEDDING_RUNS` in `ml/tagging/report.py`), because the dataset
+    folders holding the run reports were deleted from this machine; the scene metric table's
+    header was fixed (one column too many when a label set has no extra columns).
+  - Backup before the import: `data/catalog.pre-m9-labels.db`.
 
 ### 3.14 QoL batch 1 (2026-10-27)
 The owner's list from labelling, with their choices (plan of 2026-10-27, branch `qol-1`):
@@ -607,10 +628,12 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures; `scene` zero-shot tags since 2026-10-26), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Labelling pool 269 tracks; part A as the labelling page shows it is 150 tracks (120 A plus the 30 shared); the owner had labelled 124 of them by 2026-10-27 |
+| Catalog | `data/catalog.db` | 1,568 tracks (2026-10-28): 1,079 Jamendo (green 325, amber 414, red 337, unknown 3) and 489 Freesound (all green: CC0 214, CC BY 4.0 259, CC BY 3.0 16). Features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; `scene` from the hybrid head since 2026-10-28), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Hand labels: 269 tracks (owner 150, Simon 149) |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
 | Catalog backup (M12) | `data/catalog.pre-m12.db` | Copy taken 2026-10-28 before the Freesound library build for the demo |
+| Catalog backup (M9 labels) | `data/catalog.pre-m9-labels.db` | Copy taken 2026-10-28 after the Freesound build, before Simon's labels, the head and the re-tag |
+| Simon's labels | `data/labels/scene-labels-Simon.json` | Part B as the collaborator sent it (149 labels); already imported |
 | Labelling pack | `data/scene-pack.json` | The 269-track pool for the collaborator (Jamendo ids, titles, parts; no keys) |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
@@ -643,6 +666,7 @@ The rest of `.cache/huggingface` (14 GB in total) is in use: `larger_clap_music_
 |---|---|---|
 | `data/catalog.pre-m9.db` | 16 MB | The scene labels are imported and checked (M9) |
 | `data/catalog.pre-m12.db` | 17 MB | The Freesound library is confirmed good after the demo |
+| `data/catalog.pre-m9-labels.db` | 42 MB | The scene head is confirmed good after the demo |
 | `data/benchmarks/` (Song Describer clips, bake-off results) | 3.2 GB | Re-running the bake-off and the model card numbers is no longer needed. Keep it until M9's model card is final |
 | `data/datasets/` (DEAM archives) | 1.3 GB | Retraining the valence and arousal heads is no longer needed |
 
@@ -685,30 +709,24 @@ M3b is merged and the real catalog is tagged. Still open:
     `gpt-6-luna` if the owner wants the same model there.
   - **Unchecked providers.** JSON mode for SiliconFlow, Z.AI and Gemini is from the docs and
     hasn't been checked with a real key; the step-down covers a wrong guess.
-- **Demo library build (in progress since 2026-10-28, for the demo on Thu 2026-10-29).**
-  - What: about 500 music-like Freesound sounds imported into the real catalog. The backup is
-    `data/catalog.pre-m12.db`.
-  - How: through the owner's server (port 8000), by the agent's scratch script
-    `fs_library.py`.
-    - 22 themes of 25 sounds each: ambient loop, game music loop, chiptune, 8-bit, orchestral,
-      epic battle, boss fight, menu, calm piano, medieval, fantasy village, dungeon, horror,
-      sci-fi, space drone, forest, rain, synthwave, lofi, jazz loop, tension, acoustic guitar
-      loop.
-    - Licences CC0 and CC BY; most downloaded first.
-    - It takes about 4 to 10 minutes per theme.
-  - **After it finishes:**
-    1. Run `mcrar embed --models glap,muq-mulan --source freesound`, so model switching covers
-       the new sounds.
-    2. Check a few demo searches.
-    3. Update the §4 catalog row with the final counts.
-- **M9 to finish (after the labels):** both labellers label their part (about 150 tracks each,
-  `docs/labelling.md`): the owner part A in their own catalog, the collaborator part B from
-  `data/scene-pack.json` following `docs/handover/M9-labelling.md` (forward message drafted
-  2026-10-26; the owner sends it with the pack). Then `mcrar scenes import-labels` the
-  collaborator's file; `mcrar scenes eval`
-  and `mcrar scenes train`; re-tag if the selection changed; regenerate the model card; fill in
-  §3.13's results. Then decide whether intensity should follow the arousal head instead of DSP
-  energy (the eval reports both correlations).
+- **Demo library built (2026-10-28, for the demo on Thu 2026-10-29).** 489 music-like
+  Freesound sounds in the real catalog (backup `data/catalog.pre-m12.db`), imported through the
+  owner's server by the agent's scratch script `fs_library.py`: 22 themes of 25 (ambient loop,
+  game music loop, chiptune, 8-bit, orchestral, epic battle, boss fight, menu, calm piano,
+  medieval, fantasy village, dungeon, horror, sci-fi, space drone, forest, rain, synthwave, lofi,
+  jazz loop, tension, acoustic guitar loop) plus fantasy music, electronic loop and piano loop;
+  CC0 and CC BY, most downloaded first; 0 failures, about 2.7 hours. Many themes overlap, so a theme of
+  25 gave 1 to 25 new sounds ("fantasy village" found only 2). Then GLAP and MuQ-MuLan
+  embeddings for them (2.3 hours, mostly preview downloads) and for the 25 Jamendo tracks that
+  "search for more" had added without them. Demo searches (dungeon, boss fight, calm town,
+  8-bit menu, rainy forest, stealth) mix both sources sensibly; stealth is the weakest, as the
+  M9 eval predicts.
+- **Scene follow-ups (M9):**
+  - More labels for victory, defeat, chase and puzzle would help most (10 to 22 positives).
+  - The two labellers could agree on what boss, menu and puzzle mean (κ near 0) before more
+    labelling; `docs/labelling.md` "What a label means" is the place to sharpen.
+  - The head was trained on Jamendo music; its scene tags on Freesound loops and ambience are
+    unchecked.
 - **Reference song follow-ups (M10):**
   - The LLM rerank could take the reference into account (for example its title and top tags).
   - Ratings for reference searches would need their own key (reference plus text and filters).

@@ -88,6 +88,19 @@ def test_the_model_card_tables_list_an_unevaluated_entry() -> None:
     assert "| Pending data run |" in tables  # genre, without entries, as before
 
 
+def test_the_scene_metric_table_has_as_many_cells_as_its_header() -> None:
+    from mcrar.ml.tagging.report import metric_tables
+
+    metrics = {"split": "hand-labels-cv", "primary": "mean_p_at_10", "mean_p_at_10": 0.4143}
+    registry = {
+        "label_sets": {"scene": {"entries": [{"variant": "logreg-hybrid", "metrics": metrics}]}}
+    }
+    rows = [line for line in metric_tables(registry).splitlines() if line.startswith("|")]
+    assert rows[0] == "| Variant | Test n | Primary (95% CI) |"
+    assert rows[2] == "| logreg-hybrid | — | 0.4143 |"
+    assert {row.count("|") for row in rows} == {4}
+
+
 def test_the_registry_accepts_null_metrics_only() -> None:
     settings = get_settings()
     with open_catalog(settings) as repo:

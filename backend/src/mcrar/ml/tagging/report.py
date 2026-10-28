@@ -10,6 +10,14 @@ from mcrar.ml.datasets.service import dataset_root
 from mcrar.ml.tagging.registry import read_registry, select_entry
 from mcrar.ml.tagging.scene_eval import latest_results
 
+# The M3b embedding runs' reports, as the card recorded them: the dataset folders (and the
+# reports in them) were deleted from the dev machine afterwards, and the card must not lose them.
+RECORDED_EMBEDDING_RUNS = {
+    "fma-medium": {"embedded": 24980, "skipped": 20, "elapsed_s": 2212.922},
+    "mtg-moodtheme": {"embedded": 17982, "skipped": 0, "elapsed_s": 2098.235},
+    "deam": {"embedded": 1802, "skipped": 0},
+}
+
 
 def _number(value: object) -> str:
     return f"{value:.4f}" if isinstance(value, (int, float)) else "—"
@@ -30,14 +38,16 @@ def metric_tables(registry: dict) -> str:
             else {"macro_roc_auc": "Macro ROC-AUC", "ece": "ECE"}
             if name == "moodtheme"
             else {}
-            if name == "scene"  # zero-shot from prompts, not evaluated on labelled data
+            if name == "scene"  # cross-validated mean P@10 on hand labels; see "Game scenes"
             else {"pearson_r": "Pearson r", "mae": "MAE"}
         )
         lines.extend(
             [
                 f"### {name}",
                 "",
-                "| Variant | Test n | Primary (95% CI) | " + " | ".join(columns.values()) + " |",
+                "| "
+                + " | ".join(["Variant", "Test n", "Primary (95% CI)", *columns.values()])
+                + " |",
                 "|" + "---|" * (3 + len(columns)),
             ]
         )
@@ -46,10 +56,9 @@ def metric_tables(registry: dict) -> str:
             if metrics is None:
                 lines.append(f"| {entry['variant']} | — | not evaluated |" + " — |" * len(columns))
                 continue
+            cells = [entry["variant"], str(metrics.get("n", "—")), _primary(metrics)]
             lines.append(
-                f"| {entry['variant']} | {metrics.get('n', '—')} | {_primary(metrics)} | "
-                + " | ".join(_number(metrics.get(k)) for k in columns)
-                + " |"
+                "| " + " | ".join(cells + [_number(metrics.get(k)) for k in columns]) + " |"
             )
         if not spec["entries"]:
             lines.append("| Pending data run | — | — | " + " | ".join("—" for _ in columns) + " |")
@@ -196,7 +205,11 @@ def write_model_card(settings: Settings) -> None:
     reports = {}
     for name, (licence, split, expected) in descriptions.items():
         report_path = dataset_root(settings, name) / f"embeddings/{EMBEDDER}.report.json"
-        report = json.loads(report_path.read_text()) if report_path.is_file() else {}
+        report = (
+            json.loads(report_path.read_text())
+            if report_path.is_file()
+            else RECORDED_EMBEDDING_RUNS.get(name, {})
+        )
         reports[name] = report
         lines.append(
             f"| {name} | {licence} | {split} | {report.get('embedded', 'pending')} / {expected} "
