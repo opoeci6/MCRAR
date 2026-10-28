@@ -37,7 +37,7 @@ from mcrar.licensing import RISK_ORDER
 from mcrar.recommend.explain import REFERENCE_BANDS, explain
 from mcrar.recommend.parser import QueryParser, RuleParser
 from mcrar.recommend.query import ParsedQuery, ReferenceQuery, SearchFilters, SearchRequest
-from mcrar.recommend.rank import Candidate, Ranked, rank_candidates
+from mcrar.recommend.rank import Candidate, Ranked, piece_key, rank_candidates
 from mcrar.recommend.results import (
     LLMUse,
     MatchQuality,
@@ -452,7 +452,14 @@ class SearchService:
 
         tracks = self._repo.get_tracks(pool)
         features = self._repo.get_features_many(pool)
+        pieces = {i: piece_key(t.title, t.artist, t.duration_s) for i, t in tracks.items()}
         pool = [i for i in pool if i in tracks]
+        if reference is not None and reference.track_id is not None:
+            # another copy of the reference song is not a match either
+            source = self._repo.get_track(reference.track_id)
+            own = piece_key(source.title, source.artist, source.duration_s) if source else None
+            if own is not None:
+                pool = [i for i in pool if pieces[i] != own]
 
         top_sets = tuple(dict.fromkeys(label_set for label_set, _ in requested)) or (
             GENRE,
@@ -481,6 +488,7 @@ class SearchService:
                     bpm_confidence=feats.get("bpm_confidence"),
                     energy=feats.get("energy"),
                     tags=tuple(float(tag_arrays[key][i]) for key in requested),
+                    same_piece=pieces[track_id],
                 )
             )
         ranked = rank_candidates(

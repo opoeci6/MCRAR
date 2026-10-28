@@ -24,7 +24,7 @@ The result is written to ``<data>/benchmarks/results/scenes_<UTC timestamp>.json
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -265,9 +265,12 @@ def evaluate_scenes(
 
 
 def write_results(settings: Settings, result: dict) -> Path:
-    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
-    path = settings.data_dir / RESULTS_DIR / f"scenes_{stamp}.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    folder = settings.data_dir / RESULTS_DIR
+    folder.mkdir(parents=True, exist_ok=True)
+    when = datetime.now(UTC)
+    # Windows' clock can return one time twice; a later result must not replace an earlier one
+    while (path := folder / f"scenes_{when.strftime('%Y%m%dT%H%M%S%fZ')}.json").exists():
+        when += timedelta(microseconds=1)
     path.write_text(json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     return path
 

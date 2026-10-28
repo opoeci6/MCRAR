@@ -18,7 +18,7 @@ terms are rescaled to sum to 1, so ``score = sum(weight * term)`` stays in [0, 1
 contributions in the breakdown add up to the score. A track that lacks the data for an active
 term (no BPM, no energy) gets 0 for that term. With no active term every score is 0 and the
 order is by licence risk, then track id. Ties break by risk (green first), then by the smaller
-track id.
+track id. Copies of one piece (:func:`piece_key`) are collapsed to the best-ranked copy.
 """
 
 from __future__ import annotations
@@ -78,6 +78,7 @@ class Candidate:
     bpm_confidence: float | None = None
     energy: float | None = None
     tags: Sequence[float] = field(default_factory=tuple)  # score per requested label
+    same_piece: str | None = None  # see piece_key: candidates sharing one are the same piece
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,17 @@ def _artist_key(artist: str | None) -> str | None:
     return key or None
 
 
+def piece_key(title: str | None, artist: str | None, duration_s: float | None) -> str | None:
+    """What makes two catalog tracks the same piece: title and artist (case and spacing
+    ignored) and the length to the second. Jamendo has some pieces uploaded twice under
+    different ids. None (never a duplicate) without a title, an artist or a length."""
+    name = " ".join((title or "").split()).casefold()
+    artist_key = " ".join((artist or "").split()).casefold()
+    if not name or not artist_key or duration_s is None:
+        return None
+    return f"{name}\x1f{artist_key}\x1f{round(duration_s)}"
+
+
 def rank_candidates(
     candidates: Sequence[Candidate],
     *,
@@ -166,7 +178,8 @@ def rank_candidates(
     ``semantic``, ``reference`` and ``tags`` tell whether the query has text / a reference song /
     requested labels (then every candidate carries ``cosine`` / ``ref_cosine`` / ``tags``);
     ``reference_weight`` is the reference's share of the semantic weight. Order: score
-    descending, then licence risk (green first), then track id. With ``max_per_artist`` an
+    descending, then licence risk (green first), then track id. Of candidates with the same
+    ``same_piece`` only the first in that order is kept. With ``max_per_artist`` an
     artist's tracks beyond that count are demoted behind every in-cap track (keeping their
     relative order), so the next best tracks of other artists move up but nothing is lost.
     Tracks without an artist are never capped.
@@ -210,6 +223,17 @@ def rank_candidates(
 
     risks = {c.track_id: _risk_rank(c.risk) for c in candidates}
     scored.sort(key=lambda r: (-round(r.score, SORT_DECIMALS), risks[r.track_id], r.track_id))
+    pieces = {c.track_id: c.same_piece for c in candidates}
+    seen: set[str] = set()
+    unique: list[Ranked] = []
+    for ranked in scored:
+        piece = pieces[ranked.track_id]
+        if piece is not None:
+            if piece in seen:
+                continue
+            seen.add(piece)
+        unique.append(ranked)
+    scored = unique
     if max_per_artist is None:
         return scored
     artists = {c.track_id: _artist_key(c.artist) for c in candidates}
