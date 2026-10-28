@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -105,6 +106,10 @@ def test_delete_removes_the_rating_then_404(tmp_path: Path) -> None:
 
 def test_list_shows_newest_first_with_the_track_and_the_filters(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
+        ticks = iter(range(1, 1000))  # every write a second later (Windows' clock can repeat)
+        client.repo._clock = lambda: (
+            datetime(2026, 1, 1, tzinfo=UTC) + timedelta(seconds=next(ticks))
+        )
         put(client, "Shadow Walk", 2)
         put(client, "Epic Quest", 1, text="epic battle", filters={"vocal": "instrumental"})
         put(client, "Shadow Walk", 1)  # replaces the first rating and is now the newest

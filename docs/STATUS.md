@@ -28,8 +28,8 @@ Last updated: 2026-10-28.
 | M11 | Not started | — | See `docs/PLAN.md` §5 |
 
 Test suite on `dev`, counted after M12 (2026-10-28):
-- Backend, default env: 2,224 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,221 passed, 31 skipped.
+- Backend, default env: 2,230 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,227 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
 - Frontend: 458 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
@@ -575,6 +575,16 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
 - **Reference uploads were not slow** (re-measured in §3.12), so the planned window-only
   decoding was dropped: it would save at most about 0.2 s and change the catalog vectors.
 - **Torch caches** are redirected into `.cache/` (§5.2).
+- **Duplicate uploads show once (2026-10-28).** Jamendo has some pieces under two ids (5 pairs
+  in the catalog). Results now keep only the best-ranked copy of a piece: same title and artist
+  (case and spacing ignored) and the same length to the second (`piece_key` in
+  `recommend/rank.py`); a track without a title, artist or length is never merged. Copies are
+  dropped before the artist cap, so a dropped copy does not use up the artist's places, and
+  "Find similar" leaves out every copy of the reference track. The catalog is unchanged.
+- **Two timestamp-tie test failures fixed (2026-10-28).** On a coarse Windows clock two writes
+  can get the same time. `mcrar scenes eval` could then overwrite the previous result file (it
+  now steps the name forward by a microsecond), and the ratings-list test saw a tie (it now uses
+  a ticking clock).
 
 ### 3.16 Freesound (M12, 2026-10-28)
 - **Why:** M8 (Spotify) is on hold; Freesound has a free key and CC licences, and its previews may
@@ -727,10 +737,6 @@ M3b is merged and the real catalog is tagged. Still open:
     labelling; `docs/labelling.md` "What a label means" is the place to sharpen.
   - The head was trained on Jamendo music; its scene tags on Freesound loops and ambience are
     unchecked.
-- **Duplicate uploads on Jamendo:** 5 pieces are in the catalog twice under different Jamendo
-  ids (same title, artist and length; for example "October Sunset" 2282355 and 2277133), so a
-  result list can show the same piece twice. A fix would collapse such pairs in results (or at
-  import).
 - **Reference song follow-ups (M10):**
   - The LLM rerank could take the reference into account (for example its title and top tags).
   - Ratings for reference searches would need their own key (reference plus text and filters).
@@ -742,8 +748,9 @@ M3b is merged and the real catalog is tagged. Still open:
   - `search.weak_cosine` can't be cleared back to the default through the API, only in
     `settings.toml`.
 - **A flaky backend test?** One full run on 2026-10-15 had a single failure that did not
-  reproduce in the next nine runs, and the job tests passed six times in a row. If it shows up
-  again, note the test name.
+  reproduce in the next nine runs, and the job tests passed six times in a row. On 2026-10-28
+  two tests failed on timestamp ties (fixed, §3.15); the 2026-10-15 failure may have been one of
+  them. If one shows up again, note the test name.
 - **CLI search speed.** `mcrar search` with text still loads CLAP on every run (about 15 s). The
   API server keeps it loaded, so use `mcrar serve` for repeated searches.
 - **API polish:**
