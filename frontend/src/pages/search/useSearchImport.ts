@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { importForSearch, listJobs } from '../../api/endpoints'
-import type { Job, SearchFilters } from '../../api/types'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { getImportSources, importForSearch, listJobs } from '../../api/endpoints'
+import type { ImportSource, Job, SearchFilters } from '../../api/types'
+import { useAsync } from '../../api/useAsync'
 import type { JobView } from '../../features/jobs/jobState'
 import { useStartJob } from '../../features/jobs/useStartJob'
-import { searchStrings as s } from './strings'
+import { importWording, searchStrings as s } from './strings'
+import type { ImportWording } from './strings'
 
-/** How many Jamendo candidates one import asks for. */
+/** How many new tracks one import asks for, in all sources. */
 export const IMPORT_LIMIT = 50
 
 export const IMPORT_KIND = 'ingest-query'
@@ -19,9 +21,11 @@ export interface ActiveImport {
 export interface ImportOutcome {
   text: string
   newTrackIds: number[]
+  /** The wording in force when the import ended. */
+  wording: ImportWording
 }
 
-export interface UseJamendoImportOptions {
+export interface UseSearchImportOptions {
   /** The text and filters of the search on screen, which an import is for. */
   text: string | undefined
   filters: SearchFilters | undefined
@@ -29,11 +33,23 @@ export interface UseJamendoImportOptions {
   onFinished: (outcome: ImportOutcome) => void
 }
 
+/** What the page says until the usable sources are known (or when they cannot be loaded). */
+const DEFAULT_SOURCES: ImportSource[] = ['jamendo']
+
 /**
- * Runs the "search Jamendo for more" job of the Search page: starts it, finds one that is
- * already running when the page opens, and reports how it ended.
+ * Runs the "search for more" job of the Search page (Jamendo and/or Freesound, whichever have
+ * their key): starts it, finds one that is already running when the page opens, and reports how
+ * it ended. `wording` names the usable sources. The request never names them: left out, the
+ * backend uses every source that has its key, which is what `wording` describes.
  */
-export function useJamendoImport({ text, filters, onFinished }: UseJamendoImportOptions) {
+export function useSearchImport({ text, filters, onFinished }: UseSearchImportOptions) {
+  const usable = useAsync((signal) => getImportSources({ signal }), [])
+  const sources = usable.data && usable.data.sources.length > 0 ? usable.data.sources : DEFAULT_SOURCES
+  const wording = useMemo(() => importWording(sources), [sources])
+  const wordingRef = useRef(wording)
+  useEffect(() => {
+    wordingRef.current = wording
+  })
   const [active, setActive] = useState<ActiveImport | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const finishedRef = useRef(onFinished)
@@ -70,13 +86,17 @@ export function useJamendoImport({ text, filters, onFinished }: UseJamendoImport
   const onSettled = useCallback((view: JobView) => {
     setActive(null)
     if (view.status === 'failed') {
-      setFailure(view.error ?? s.jamendo.failedFallback)
+      setFailure(view.error ?? s.importing.failedFallback)
       return
     }
     const newTrackIds = view.report?.new_track_ids ?? []
     // A job the user cancelled before it added anything has nothing to show.
     if (view.status === 'done' || newTrackIds.length > 0) {
-      finishedRef.current({ text: String(view.params.text ?? ''), newTrackIds })
+      finishedRef.current({
+        text: String(view.params.text ?? ''),
+        newTrackIds,
+        wording: wordingRef.current,
+      })
     }
   }, [])
 
@@ -86,5 +106,15 @@ export function useJamendoImport({ text, filters, onFinished }: UseJamendoImport
     resetStart()
   }, [resetStart])
 
-  return { active, pending: starter.pending, error: starter.error, failure, start, onSettled, reset }
+  return {
+    active,
+    pending: starter.pending,
+    error: starter.error,
+    failure,
+    sources,
+    wording,
+    start,
+    onSettled,
+    reset,
+  }
 }

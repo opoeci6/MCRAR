@@ -8,10 +8,12 @@ Design
   a re-embed or a search import (503).
 - ``POST /api/ingest/freesound`` adds music-like Freesound sounds (kind ``ingest-freesound``). A
   reprocess of the whole catalog without a Freesound key carries on: those tracks fail one by one.
-- ``POST /api/search/import`` imports new Jamendo tracks for a text search (kind ``ingest-query``):
-  the text is parsed like a search, the Jamendo queries come from
-  :mod:`mcrar.recommend.jamendo_query` and the run stops after ``limit`` new tracks. It embeds
-  with the default model and with CLAP.
+- ``POST /api/search/import`` imports new Jamendo and/or Freesound tracks for a text search (kind
+  ``ingest-query``): the text is parsed like a search, the queries come from
+  :mod:`mcrar.recommend.jamendo_query` and :mod:`mcrar.recommend.freesound_query` and the run
+  stops after ``limit`` new tracks in all (Jamendo first, then Freesound with what is left). It
+  embeds with the default model and with CLAP. ``GET /api/search/import/sources`` lists the
+  sources that have their secret set.
 - The job runs the same pipeline as the CLI (:mod:`mcrar.ingest.pipeline`) with the stages of
   :func:`mcrar.ingest.stages.build_stages`. Embedders come from the server's model pool, the same
   loaded model search uses; the job never closes it. Without torch an ingest still analyses the
@@ -29,6 +31,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
 
@@ -58,7 +61,10 @@ NO_JAMENDO_MESSAGE = "Jamendo client id is not set"
 NO_FREESOUND_MESSAGE = (
     "Freesound API key is not set: add it in Settings, or `mcrar secrets set freesound_api_key`"
 )
-IMPORT_NEEDS_TEXT_MESSAGE = "describe the music to search Jamendo for"
+NO_IMPORT_SOURCE_MESSAGE = (
+    "Neither a Jamendo client id nor a Freesound API key is set: add one in Settings"
+)
+IMPORT_NEEDS_TEXT_MESSAGE = "describe the music to search for"
 NO_EMBED_WARNING = (
     "embedding skipped: torch is not installed, so tracks are analysed but not embedded "
     "(install the ml extra: uv sync --extra ml)"
@@ -120,6 +126,7 @@ class SearchImportBody(BaseModel):
     text: str = Field(min_length=1, max_length=300)
     filters: FiltersBody = Field(default_factory=FiltersBody)
     limit: int = Field(50, ge=1, le=100)
+    sources: list[Literal["jamendo", "freesound"]] | None = Field(None, min_length=1, max_length=2)
 
 
 class LocalIngestBody(BaseModel):
@@ -260,11 +267,119 @@ def ingest_freesound_route(body: FreesoundIngestBody, state: StateDep) -> dict[s
     return _start(state, "ingest-freesound", body.model_dump(), run, cleanup=client.close)
 
 
+def _open_import_sources(state: AppState, wanted: list[str] | None) -> dict[str, Any]:
+    """The clients for a search import, in run order (Jamendo, then Freesound).
+
+    ``wanted=None`` opens every source whose secret is set (503 when there is none); a list
+    opens exactly those (503 with the first missing source's message). Nothing stays open on a
+    failure.
+    """
+    clients: dict[str, Any] = {}
+    try:
+        for name, opener in (("jamendo", _open_jamendo), ("freesound", _open_freesound)):
+            if wanted is not None and name not in wanted:
+                continue
+            try:
+                clients[name] = opener(state)
+            except HTTPException:
+                if wanted is not None:
+                    raise
+        if not clients:
+            raise HTTPException(status_code=503, detail=NO_IMPORT_SOURCE_MESSAGE)
+    except HTTPException:
+        _close_all(clients)
+        raise
+    return clients
+
+
+def _close_all(clients: dict[str, Any]) -> None:
+    for client in clients.values():
+        client.close()
+
+
+@router.get("/api/search/import/sources")
+def search_import_sources(state: StateDep) -> dict[str, Any]:
+    """The remote sources a search import can use now (those whose secret is set)."""
+    usable: list[str] = []
+    for name, opener in (("jamendo", _open_jamendo), ("freesound", _open_freesound)):
+        try:
+            opener(state).close()
+        except HTTPException:
+            continue
+        usable.append(name)
+    return {"sources": usable}
+
+
+def _run_search_import(
+    state: AppState,
+    sink: ProgressSink,
+    clients: dict[str, Any],
+    jamendo_searches: list[Any],
+    freesound_searches: list[Any],
+    limit: int,
+) -> IngestReport:
+    """Run the import source by source (see :func:`search_import_route` for the budget rule)."""
+    from mcrar.ingest import combine_reports, ingest_freesound_queries, ingest_jamendo_queries
+    from mcrar.ingest.stages import TAGGING_EMBEDDER, build_stages
+
+    # The tagging heads read CLAP vectors, so CLAP is embedded whatever the default is.
+    keys = dict.fromkeys([state.settings.default_embedder, TAGGING_EMBEDDER])
+    stages = build_stages(state.settings, [state.pool.get(key) for key in keys])
+
+    reports: list[IngestReport] = []
+    for position, (name, client) in enumerate(clients.items()):
+        remaining = limit - sum(r.new for r in reports)
+        budget = -(-remaining // (len(clients) - position))  # ceil: the last source gets it all
+        if budget < 1:
+            break
+        offset = sum(r.seen for r in reports)
+
+        def relay(event: Any, offset: int = offset) -> None:
+            # One progress bar over the whole job: indexes continue, the total is the limit.
+            sink.on_event(replace(event, index=event.index + offset, total=limit))
+
+        try:
+            if name == "jamendo":
+                report = ingest_jamendo_queries(
+                    client,
+                    state.repo,
+                    queries=jamendo_searches,
+                    max_new=budget,
+                    stages=stages,
+                    on_progress=relay,
+                )
+            else:
+                report = ingest_freesound_queries(
+                    client,
+                    state.repo,
+                    freesound_searches,
+                    limit=budget,
+                    stages=stages,
+                    on_progress=relay,
+                )
+        except Exception as exc:
+            partial = getattr(exc, "report", None)
+            if partial is not None:  # what the earlier sources added counts too
+                exc.report = combine_reports([*reports, partial])  # type: ignore[attr-defined]
+            raise
+        reports.append(report)
+        if report.aborted:  # interrupted: do not start the next source
+            break
+    return combine_reports(reports)
+
+
 @router.post("/api/search/import", status_code=202)
 def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, Any]:
-    """Import new Jamendo tracks for a text search, so that CLAP can rank them next time."""
-    from mcrar.ingest import ingest_jamendo_queries
-    from mcrar.ingest.stages import TAGGING_EMBEDDER, build_stages
+    """Import new tracks from Jamendo and/or Freesound for a text search, so that CLAP can rank
+    them next time.
+
+    ``sources`` omitted means every source whose secret is set; a list means exactly those (a
+    missing secret is a 503). The sources run one after the other, Jamendo first, in one job. The
+    budget is ``limit`` new tracks in all: every source but the last may take up to its equal
+    share (rounded up), and the last takes what is left, so a source that finds fewer new tracks
+    than its share leaves the rest to the next one (never more than ``limit`` in total).
+    """
+    from mcrar.recommend.freesound_query import freesound_queries
     from mcrar.recommend.jamendo_query import jamendo_queries
 
     filters = resolve_filters(body.filters, state.search.vocab)
@@ -273,29 +388,29 @@ def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, An
         raise ValueError(IMPORT_NEEDS_TEXT_MESSAGE)
     if not state.torch_available():  # new tracks cannot be ranked without embeddings
         raise HTTPException(status_code=503, detail=NO_TORCH_MESSAGE)
-    queries = jamendo_queries(parsed.semantic_text, parsed.filters, parsed.search_terms)
-    client = _open_jamendo(state)
+    clients = _open_import_sources(state, body.sources)
+    queries = {
+        "jamendo": jamendo_queries(parsed.semantic_text, parsed.filters, parsed.search_terms),
+        "freesound": freesound_queries(parsed.semantic_text, parsed.filters, parsed.search_terms),
+    }
 
     def run(sink: ProgressSink) -> IngestReport:
         try:
-            # The tagging heads read CLAP vectors, so CLAP is embedded whatever the default is.
-            keys = dict.fromkeys([state.settings.default_embedder, TAGGING_EMBEDDER])
-            stages = build_stages(state.settings, [state.pool.get(key) for key in keys])
-            return ingest_jamendo_queries(
-                client,
-                state.repo,
-                queries=queries,
-                max_new=body.limit,
-                stages=stages,
-                on_progress=sink.on_event,
+            return _run_search_import(
+                state, sink, clients, queries["jamendo"], queries["freesound"], body.limit
             )
         finally:
-            client.close()
+            _close_all(clients)
 
     # ``text`` is the request as sent (the page matches it against the search on screen),
-    # ``query`` what the parser made of it.
-    params = {"text": body.text.strip(), "limit": body.limit, "query": parsed.semantic_text}
-    return _start(state, "ingest-query", params, run, cleanup=client.close)
+    # ``query`` what the parser made of it, ``sources`` the sources used (never a secret).
+    params = {
+        "text": body.text.strip(),
+        "limit": body.limit,
+        "query": parsed.semantic_text,
+        "sources": list(clients),
+    }
+    return _start(state, "ingest-query", params, run, cleanup=lambda: _close_all(clients))
 
 
 @router.post("/api/ingest/local", status_code=202)

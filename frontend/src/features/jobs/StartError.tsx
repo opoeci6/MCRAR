@@ -11,9 +11,13 @@ export interface StartErrorProps {
   onShowRunning?: () => void
 }
 
-/** The notice text for the source whose key a 503 detail says is missing (checked in table order). */
+/**
+ * The notice text for the source whose key a 503 detail says is missing (checked in table order);
+ * a detail that names several sources (a search import with none set up) gets the combined text.
+ */
 function missingKeySource(detail: string) {
   const names = Object.keys(t.start.missingKey).filter((name) => new RegExp(name, 'i').test(detail))
+  if (names.length > 1) return t.start.missingKeyAll
   return names.length > 0 ? t.start.missingKey[names[0]!]! : null
 }
 

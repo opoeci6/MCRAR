@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -201,6 +201,29 @@ class JamendoQuery:
     def to_kwargs(self) -> dict[str, Any]:
         """The ``JamendoClient.search_tracks`` keyword arguments that are actually set."""
         return {f.name: v for f in fields(self) if (v := getattr(self, f.name))}
+
+
+@dataclass(frozen=True)
+class FreesoundQuery:
+    """One Freesound search for :func:`ingest_freesound_queries` (the arguments of
+    ``FreesoundClient.search_tracks``; a ``None`` duration bound is open)."""
+
+    query: str = ""
+    licenses: Sequence[str] = ("cc0", "by")
+    duration_min_s: float | None = 10.0
+    duration_max_s: float | None = 600.0
+    music_like: bool = True
+    sort: str = "score"
+
+    def to_kwargs(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "licenses": list(self.licenses),
+            "duration_min_s": self.duration_min_s,
+            "duration_max_s": self.duration_max_s,
+            "music_like": self.music_like,
+            "sort": self.sort,
+        }
 
 
 ProgressCallback = Callable[[IngestEvent], None]
@@ -572,17 +595,43 @@ def ingest_jamendo_queries(
     upsert or download and does not count. The progress total is ``max_new`` (an upper bound).
     Failures, aborts and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
+    return _ingest_new_from_queries(
+        "jamendo",
+        client,
+        repo,
+        [lambda q=q: client.search_tracks(**q.to_kwargs(), limit=scan_limit) for q in queries],
+        max_new=max_new,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def _ingest_new_from_queries(
+    source: str,
+    client: Any,
+    repo: CatalogRepository,
+    searches: Sequence[Callable[[], Iterable[SourceTrack]]],
+    *,
+    max_new: int,
+    force: bool,
+    stages: Sequence[Stage] | None,
+    on_progress: ProgressCallback | None,
+) -> IngestReport:
+    """The shared body of :func:`ingest_jamendo_queries` and :func:`ingest_freesound_queries`:
+    take the first ``max_new`` tracks of ``source`` that are not in the catalog from ``searches``
+    (each a function that starts one search, called only when the earlier ones ran out)."""
     if max_new < 1:
         raise ValueError("max_new must be at least 1")
-    run = _Run("jamendo", repo, _default_stages(stages), force, max_new, on_progress)
+    run = _Run(source, repo, _default_stages(stages), force, max_new, on_progress)
     executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
 
     def make_items() -> Iterator[_Prepared]:
         taken = 0
         seen_ids: set[str] = set()
-        for query in queries:
-            for src in client.search_tracks(**query.to_kwargs(), limit=scan_limit):
-                if src.source_id in seen_ids or repo.get_track_by_source("jamendo", src.source_id):
+        for search in searches:
+            for src in search():
+                if src.source_id in seen_ids or repo.get_track_by_source(source, src.source_id):
                     continue
                 seen_ids.add(src.source_id)
                 item = run.prepare(src, parse_license(src.license_url))
@@ -595,6 +644,23 @@ def ingest_jamendo_queries(
 
     aborted, error = _drive(run, executor, make_items)
     return _finish(run, aborted, error)
+
+
+def combine_reports(reports: Sequence[IngestReport]) -> IngestReport:
+    """One report for runs done one after the other: the counts, failures, elapsed time and new
+    track ids add up (in run order); ``aborted`` is the first run's reason, if any."""
+    return IngestReport(
+        seen=sum(r.seen for r in reports),
+        new=sum(r.new for r in reports),
+        updated=sum(r.updated for r in reports),
+        processed=sum(r.processed for r in reports),
+        skipped=sum(r.skipped for r in reports),
+        failed=sum(r.failed for r in reports),
+        failures=[f for r in reports for f in r.failures],
+        elapsed_s=sum(r.elapsed_s for r in reports),
+        aborted=next((r.aborted for r in reports if r.aborted), None),
+        new_track_ids=[i for r in reports for i in r.new_track_ids],
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -638,6 +704,38 @@ def ingest_freesound(
             limit=limit,
         ),
         total=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def ingest_freesound_queries(
+    client: Any,
+    repo: CatalogRepository,
+    queries: Sequence[FreesoundQuery],
+    *,
+    limit: int,
+    scan_limit: int = 150,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the first ``limit`` sounds that are not in the catalog yet from ``queries``.
+
+    Works like :func:`ingest_jamendo_queries`: the queries run in order, each scanning up to
+    ``scan_limit`` results (one page of the API by default), lazily; a sound that is already in
+    the catalog or came up in an earlier query of this run is skipped before any upsert or
+    download and does not count. The progress total is ``limit`` (an upper bound).
+    """
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    return _ingest_new_from_queries(
+        "freesound",
+        client,
+        repo,
+        [lambda q=q: client.search_tracks(**q.to_kwargs(), limit=scan_limit) for q in queries],
+        max_new=limit,
         force=force,
         stages=stages,
         on_progress=on_progress,

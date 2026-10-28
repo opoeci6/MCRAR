@@ -934,6 +934,241 @@ describe('Search page: Jamendo import', () => {
   })
 })
 
+describe('Search page: import from Jamendo and Freesound', () => {
+  const WEAK = { top_cosine: 0.12, weak: true }
+  const FINE = { top_cosine: 0.5, weak: false }
+  const BOTH = { sources: ['jamendo', 'freesound'] }
+  const FREESOUND = { sources: ['freesound'] }
+  const importJob = (overrides: Record<string, unknown> = {}) => ({
+    id: 'j1',
+    kind: 'ingest-query',
+    params: { text: 'cozy town', limit: 50, sources: ['jamendo', 'freesound'] },
+    status: 'running',
+    created_at: '2026-10-15T10:00:00Z',
+    finished_at: null,
+    cancel_requested: false,
+    error: null,
+    progress: null,
+    ...overrides,
+  })
+  const REPORT = {
+    seen: 50,
+    new: 2,
+    updated: 0,
+    processed: 2,
+    skipped: 0,
+    failed: 0,
+    failures: [],
+    failures_total: 0,
+    elapsed_s: 100,
+    aborted: null,
+    new_track_ids: [3, 4],
+  }
+  const source = () => FakeEventSource.instances[FakeEventSource.instances.length - 1]!
+  const progressRegion = { name: 'Job progress' }
+  const both = { name: 'Search Jamendo and Freesound for more' }
+  const freesound = { name: 'Search Freesound for more' }
+
+  /** The first search answers with track 1; after the import: 1, a Jamendo track 3 and a Freesound sound 4. */
+  function twoStageSearch(match: unknown = WEAK) {
+    let calls = 0
+    return {
+      'POST /api/search': () => {
+        calls += 1
+        return calls === 1
+          ? response([item(1)], { match })
+          : response([item(1), item(3), item(4, { source: 'freesound' })], { match: FINE })
+      },
+    }
+  }
+
+  async function weakSearch() {
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+  }
+
+  it('names both sources when both have their key', async () => {
+    const mock = setup({
+      'GET /api/search/import/sources': BOTH,
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    expect(
+      await screen.findByText(
+        'Few close matches in your library. Find about 50 more on Jamendo and Freesound and rank them with your library (2 to 3 minutes).',
+      ),
+    ).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', both))
+    expect(await screen.findByRole('region', progressRegion)).toBeInTheDocument()
+    expect(screen.getByText('Searching Jamendo and Freesound for "cozy town"')).toBeInTheDocument()
+    // Without `sources` the backend uses every source that has its key.
+    expect(bodies(mock, 'POST /api/search/import')).toEqual([{ text: 'cozy town', filters: {}, limit: 50 }])
+  })
+
+  it('says where the new tracks came from, and when there were none or the job failed', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Jamendo and Freesound')).toBeInTheDocument()
+  })
+
+  it('says so when neither source had anything new', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('done', { report: { ...REPORT, new: 0, new_track_ids: [] } })
+    expect(await screen.findByText('No new tracks found on Jamendo and Freesound for this search')).toBeInTheDocument()
+  })
+
+  it('shows a failed import under the title of both sources', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('failed', { report: null, error: 'FreesoundAuthError: bad key' })
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('The Jamendo and Freesound search failed')
+    expect(alert).toHaveTextContent('FreesoundAuthError: bad key')
+  })
+
+  it('searches only Freesound when it is the only source with a key', async () => {
+    const mock = setup({
+      'GET /api/search/import/sources': FREESOUND,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob({ params: { text: 'cozy town', limit: 50, sources: ['freesound'] } }) }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    expect(await screen.findByText(/Find about 50 more on Freesound and rank them/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Search Jamendo for more' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', freesound))
+    expect(await screen.findByText('Searching Freesound for "cozy town"')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search/import')).toEqual([{ text: 'cozy town', filters: {}, limit: 50 }])
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Freesound')).toBeInTheDocument()
+  })
+
+  it('keeps the Jamendo wording when only Jamendo has its client id', async () => {
+    setup({
+      'GET /api/search/import/sources': { sources: ['jamendo'] },
+      'POST /api/search': response([item(1)], { match: WEAK }),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    expect(await screen.findByRole('button', { name: 'Search Jamendo for more' })).toBeInTheDocument()
+  })
+
+  it('keeps the Jamendo wording when the sources are unknown or none', async () => {
+    for (const sources of [{ sources: [] }, { detail: 'down' }]) {
+      setup({
+        'GET /api/search/import/sources': jsonResponse(sources, 'detail' in sources ? 500 : 200),
+        'POST /api/search': response([item(1)], { match: WEAK }),
+      })
+      const view = renderWithProviders(<SearchPage />)
+      await weakSearch()
+      expect(await screen.findByRole('button', { name: 'Search Jamendo for more' })).toBeInTheDocument()
+      view.unmount()
+      cleanup()
+      clearPersistentState()
+    }
+  })
+
+  it('marks each new track with the source it came from', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('done', { report: REPORT })
+    await screen.findByText('Track 3')
+    const chip = (title: string) => within(screen.getByRole('article', { name: title })).getByText('New')
+    expect(chip('Track 3')).toHaveAttribute('title', 'Added from Jamendo for this search')
+    expect(chip('Track 4')).toHaveAttribute('title', 'Added from Freesound for this search')
+  })
+
+  it('reattaches to a running import for the search shown', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'GET /api/jobs': { jobs: [importJob({ id: 'other', params: { text: 'else', limit: 50 } }), importJob({ id: 'j9' })] },
+    })
+    const first = renderWithProviders(<SearchPage />)
+    await searchFor('cozy town')
+    await screen.findByText('Track 1')
+    first.unmount()
+    FakeEventSource.instances = []
+
+    renderWithProviders(<SearchPage />)
+    expect(await screen.findByRole('region', progressRegion)).toBeInTheDocument()
+    expect(screen.queryByRole('button', both)).not.toBeInTheDocument()
+    expect(source().url).toBe('/api/jobs/j9/events')
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Jamendo and Freesound')).toBeInTheDocument()
+  })
+
+  it('points to Settings when neither a client id nor a key is set', async () => {
+    setup({
+      'GET /api/search/import/sources': { sources: [] },
+      'POST /api/search': response([item(1)], { match: WEAK }),
+      'POST /api/search/import': jsonResponse(
+        { detail: 'Neither a Jamendo client id nor a Freesound API key is set: add one in Settings' },
+        503,
+      ),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(await screen.findByRole('button', { name: 'Search Jamendo for more' }))
+    expect(await screen.findByText('No Jamendo client id or Freesound API key is set')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '#/settings')
+  })
+
+  it('names the sources in the search terms line', async () => {
+    const parsed = { source: 'llm', search_terms: ['stealth', 'drone'], notes: [], semantic_text: 'tense' }
+    const cases: [Record<string, unknown>, string][] = [
+      [BOTH, 'Search terms for Jamendo and Freesound: stealth, drone'],
+      [FREESOUND, 'Freesound search terms: stealth, drone'],
+    ]
+    for (const [sources, line] of cases) {
+      setup({
+        'GET /api/search/import/sources': sources,
+        'POST /api/search': response([item(1)], { parsed }),
+      })
+      const view = renderWithProviders(<SearchPage />)
+      await searchFor('tense stealth')
+      await screen.findByText('Track 1')
+      await userEvent.click(screen.getByText(/^How your search was read/))
+      expect(await screen.findByText(line)).toBeInTheDocument()
+      view.unmount()
+      cleanup()
+      clearPersistentState()
+    }
+  })
+})
+
 describe('Search page: how the search was read', () => {
   const read = () => screen.getByText(/^How your search was read/)
   const LLM_USED = { used: true, model: 'deepseek-chat', cached: false, error: null }

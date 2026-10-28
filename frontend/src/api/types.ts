@@ -665,13 +665,23 @@ export interface FreesoundIngestRequest {
   force?: boolean
 }
 
-/** Searches Jamendo for the text of a search and imports the candidates found. */
+/** A remote source a search import can add tracks from. */
+export type ImportSource = 'jamendo' | 'freesound'
+
+/** Searches Jamendo and/or Freesound for the text of a search and imports the candidates found. */
 export interface SearchImportRequest {
   text: string
   /** The filters of the search, the same object that `SearchRequest` takes. */
   filters?: SearchFilters
-  /** 1 to 100; the backend defaults to 50. */
+  /** 1 to 100 new tracks in all, split between the sources; the backend defaults to 50. */
   limit?: number
+  /** Omitted: every source whose secret is set. A list uses exactly those (503 when one is missing). */
+  sources?: ImportSource[]
+}
+
+/** GET /api/search/import/sources: the sources whose secret is set, never a value. */
+export interface SearchImportSources {
+  sources: ImportSource[]
 }
 
 export interface LocalIngestRequest {

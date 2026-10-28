@@ -1,3 +1,4 @@
+import type { ImportSource } from '../../api/types'
 import { trackFeatureStrings } from '../../features/track/strings'
 
 /** Text of the Search page. Add this page's strings here, not in src/strings.ts. */
@@ -88,17 +89,9 @@ export const searchStrings = {
     disclaimer:
       'Licence levels are guidance, not legal advice. Check the source page before you ship a track.',
   },
-  jamendo: {
-    weakNotice:
-      'Few close matches in your library. Find about 50 more on Jamendo and rank them with your library (2 to 3 minutes).',
-    action: 'Search Jamendo for more',
+  /** The words of "search for more" that do not name a source; see `importWording` for the rest. */
+  importing: {
     starting: 'Starting',
-    progressTitle: (text: string) => `Searching Jamendo for "${text}"`,
-    added: (count: number) => `Added ${count} ${count === 1 ? 'track' : 'tracks'} from Jamendo`,
-    addedElsewhere: (count: number, text: string) =>
-      `Added ${count} ${count === 1 ? 'track' : 'tracks'} from Jamendo for "${text}"`,
-    noneFound: 'No new tracks found on Jamendo for this search',
-    failedTitle: 'The Jamendo search failed',
     failedFallback: 'The job stopped without a message.',
     rerunFailed: "Couldn't refresh the results",
   },
@@ -109,7 +102,6 @@ export const searchStrings = {
     cached: 'cached',
     notes: 'Notes',
     llmFailed: (error: string) => `The LLM could not read this search, so rules were used: ${error}`,
-    searchTerms: (terms: string) => `Jamendo search terms: ${terms}`,
     parsed: 'Parsed query',
   },
   rerank: {
@@ -145,8 +137,45 @@ export const searchStrings = {
     tagStrong: (display: string) => `${display} · strong`,
     tagsHint: 'Compared with the rest of your catalog',
     isNew: 'New',
-    newHint: 'Added from Jamendo for this search',
+    /** `source` is the display name of the track's source, when it is one an import adds from. */
+    newHint: (source?: string) => (source ? `Added from ${source} for this search` : 'Added for this search'),
     why: 'Why this result',
     llmPrefix: 'LLM:',
   },
+}
+
+const IMPORT_SOURCE_NAMES: Record<ImportSource, string> = { jamendo: 'Jamendo', freesound: 'Freesound' }
+
+/**
+ * The words of "search for more" for the sources an import can use. Jamendo alone (also the
+ * wording while the sources are unknown) keeps the original texts; Freesound alone and both name
+ * what they search.
+ */
+export function importWording(sources: readonly ImportSource[]) {
+  const both = sources.includes('jamendo') && sources.includes('freesound')
+  const where = both
+    ? `${IMPORT_SOURCE_NAMES.jamendo} and ${IMPORT_SOURCE_NAMES.freesound}`
+    : sources.includes('freesound')
+      ? IMPORT_SOURCE_NAMES.freesound
+      : IMPORT_SOURCE_NAMES.jamendo
+  const tracks = (count: number) => `${count} ${count === 1 ? 'track' : 'tracks'}`
+  return {
+    where,
+    weakNotice: `Few close matches in your library. Find about 50 more on ${where} and rank them with your library (2 to 3 minutes).`,
+    action: `Search ${where} for more`,
+    progressTitle: (text: string) => `Searching ${where} for "${text}"`,
+    added: (count: number) => `Added ${tracks(count)} from ${where}`,
+    addedElsewhere: (count: number, text: string) => `Added ${tracks(count)} from ${where} for "${text}"`,
+    noneFound: `No new tracks found on ${where} for this search`,
+    failedTitle: `The ${where} search failed`,
+    searchTerms: (terms: string) =>
+      both ? `Search terms for ${where}: ${terms}` : `${where} search terms: ${terms}`,
+  }
+}
+
+export type ImportWording = ReturnType<typeof importWording>
+
+/** The display name of an import source, or undefined for any other source. */
+export function importSourceName(source: string): string | undefined {
+  return Object.hasOwn(IMPORT_SOURCE_NAMES, source) ? IMPORT_SOURCE_NAMES[source as ImportSource] : undefined
 }

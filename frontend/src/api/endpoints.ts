@@ -33,6 +33,7 @@ import type {
   SceneLabel,
   SceneLabelRequest,
   SearchImportRequest,
+  SearchImportSources,
   SearchRequest,
   SearchResponse,
   SecretsList,
@@ -71,9 +72,13 @@ export const search = (body: SearchRequest, o?: CallOptions) =>
 export const rerankSearch = (body: SearchRequest, o?: CallOptions) =>
   request<SearchResponse>('POST', '/api/search/rerank', { ...o, body })
 
-/** Starts a job that imports Jamendo candidates for a search. Re-run the search when it is done. */
+/** Starts a job that imports Jamendo and/or Freesound candidates for a search. Re-run the search when it is done. */
 export const importForSearch = (body: SearchImportRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/search/import', { ...o, body })
+
+/** The sources a search import can use now (those with their key or client id set). */
+export const getImportSources = (o?: CallOptions) =>
+  request<SearchImportSources>('GET', '/api/search/import/sources', o)
 
 // -- reference song -------------------------------------------------------------------------
 

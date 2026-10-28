@@ -17,6 +17,11 @@ export const jobStrings = {
         body: 'Freesound needs an API key before it can be searched. Add it in Settings, under API keys.',
       },
     } as Record<string, { title: string; body: string }>,
+    /** A 503 that names more than one source: none of them is set up. */
+    missingKeyAll: {
+      title: 'No Jamendo client id or Freesound API key is set',
+      body: 'Searching for more music needs a Jamendo client id or a Freesound API key. Add one in Settings, under API keys.',
+    },
     openSettings: 'Open Settings',
   },
   progress: {

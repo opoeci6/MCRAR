@@ -1,5 +1,6 @@
 import type { LlmUse, ParsedQuery } from '../../api/types'
-import { searchStrings } from './strings'
+import { importWording, searchStrings } from './strings'
+import type { ImportWording } from './strings'
 import styles from './SearchPage.module.css'
 
 const r = searchStrings.reading
@@ -8,10 +9,12 @@ export interface QueryReadingProps {
   parsed: ParsedQuery
   /** What the LLM did with the query; null or absent when it was off or not ready. */
   llm?: LlmUse | null
+  /** Names the sources the search terms are for; Jamendo's when absent. */
+  wording?: ImportWording
 }
 
 /** "How your search was read": by rules or by the LLM, and the parsed query as the backend saw it. */
-export function QueryReading({ parsed, llm }: QueryReadingProps) {
+export function QueryReading({ parsed, llm, wording = importWording(['jamendo']) }: QueryReadingProps) {
   const byLlm = parsed.source === 'llm'
   const verdict = [byLlm ? r.byLlm(llm?.model ?? '') : r.byRules, byLlm && llm?.cached ? r.cached : null]
     .filter(Boolean)
@@ -25,7 +28,7 @@ export function QueryReading({ parsed, llm }: QueryReadingProps) {
       </summary>
       <div className={styles.readingBody}>
         {llm && !llm.used && llm.error ? <p>{r.llmFailed(llm.error)}</p> : null}
-        {terms.length > 0 ? <p>{r.searchTerms(terms.join(', '))}</p> : null}
+        {terms.length > 0 ? <p>{wording.searchTerms(terms.join(', '))}</p> : null}
         {notes.length > 0 ? (
           <div>
             <strong>{r.notes}</strong>
