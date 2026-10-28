@@ -784,6 +784,16 @@ M3b is merged and the real catalog is tagged. Still open:
   - decide what happens to its ratings and scene labels, which reference the track id.
   It fits with the after-demo local-music work (§3.17), where copied files under
   `data/library/` would also be deleted.
+- **The weak-match notice rarely fires with the LLM on** (measured 2026-10-28 on the real
+  catalog). `search.weak_cosine` (0.40) was calibrated in M4 on raw queries (§3.10). The LLM parse
+  rewrites a request into a rich English description, which scores far higher: 日本のアニメの
+  オープニング曲 and 中国传统音乐 reached a top cosine of 0.55 to 0.69, with or without the Safe
+  filter, although the catalog has no fitting track. So "Few close matches" now appears almost
+  only after a rerank whose verdict is "poor", and that verdict varies between calls on a
+  borderline list (two reranks each: the Japanese query "partial" ×4; 中国传统音乐 "partial" ×2
+  with Safe off, "poor" ×2 with Safe on). Options: recalibrate the threshold on LLM-rewritten
+  queries, measure the cosine of the original text as well, or let the parse itself judge
+  whether the catalog can serve the request.
 - **Scene follow-ups (M9):**
   - More labels for victory, defeat, chase and puzzle would help most (10 to 22 positives).
   - The two labellers could agree on what boss, menu and puzzle mean (κ near 0) before more
