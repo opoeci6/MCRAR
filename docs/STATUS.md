@@ -727,6 +727,10 @@ M3b is merged and the real catalog is tagged. Still open:
     labelling; `docs/labelling.md` "What a label means" is the place to sharpen.
   - The head was trained on Jamendo music; its scene tags on Freesound loops and ambience are
     unchecked.
+- **Duplicate uploads on Jamendo:** 5 pieces are in the catalog twice under different Jamendo
+  ids (same title, artist and length; for example "October Sunset" 2282355 and 2277133), so a
+  result list can show the same piece twice. A fix would collapse such pairs in results (or at
+  import).
 - **Reference song follow-ups (M10):**
   - The LLM rerank could take the reference into account (for example its title and top tags).
   - Ratings for reference searches would need their own key (reference plus text and filters).
