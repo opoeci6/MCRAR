@@ -57,9 +57,10 @@ class Preferences:
 @dataclass(frozen=True)
 class ReferenceQuery:
     """A song to find similar tracks to: its embedding (with the search model) and where it came
-    from. ``kind`` is ``"track"`` (a catalog track, left out of the results) or ``"upload"``.
-    ``weight`` is the reference's share of the semantic score, in [0, 1]: 1 ranks by the
-    reference alone, 0 by the text alone (without text the reference is all there is)."""
+    from. ``kind`` is ``"track"`` (a catalog track, left out of the results together with any
+    other upload of the same piece) or ``"upload"``. ``weight`` is the reference's share of the
+    semantic score, in [0, 1]: 1 ranks by the reference alone, 0 by the text alone (without text
+    the reference is all there is)."""
 
     vector: np.ndarray = field(repr=False, compare=False)
     label: str
