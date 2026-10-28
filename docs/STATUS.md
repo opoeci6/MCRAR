@@ -610,14 +610,54 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
 | Catalog | `data/catalog.db` | 1,054 Jamendo tracks (green 320, amber 402, red 329, unknown 3), features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; re-tagged 2026-10-15 in 48 s, 0 failures; `scene` zero-shot tags since 2026-10-26), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Labelling pool 269 tracks; part A as the labelling page shows it is 150 tracks (120 A plus the 30 shared); the owner had labelled 124 of them by 2026-10-27 |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
+| Catalog backup (M12) | `data/catalog.pre-m12.db` | Copy taken 2026-10-28 before the Freesound library build for the demo |
 | Labelling pack | `data/scene-pack.json` | The 269-track pool for the collaborator (Jamendo ids, titles, parts; no keys) |
 | Song Describer Dataset | `data/benchmarks/sdd/` | 3.2 GB; embeddings per model under `embeddings/` |
 | Bake-off results | `data/benchmarks/results/` | SDD, tag eval, benchmark, candidates (+ private model map), the owner's 88 ratings (`user_ratings.json`), scored ratings |
 | DEAM archives | `data/datasets/deam/download/` | 1.3 GB, used for the checksum cross-check in issue #1 |
 | Model weights | `.cache/huggingface/` | about 14 GB; includes three extra CLAP checkpoints downloaded while diagnosing the broken one (`larger_clap_music`, `larger_clap_general`, `clap-htsat-unfused`), which can be deleted |
-| Secrets | `.secrets/secrets.toml` | `jamendo_client_id` (the client secret is not needed); `llm_api_key_openai` (since 2026-10-19) |
+| Secrets | `.secrets/secrets.toml` | `jamendo_client_id` (the client secret is not needed); `llm_api_key_openai` (since 2026-10-19); `freesound_api_key` (since 2026-10-28) |
 | LLM settings | `config/settings.toml` `[llm]` | enabled with the OpenAI preset (default model `gpt-6-luna`) since 2026-10-19 |
 | Listening-test page | https://claude.ai/artifact/NPEKNfqBEZZBDeHx8ZD2J4 | private; ratings stored in its database |
+
+### 4.1 Cleanup candidates (measured 2026-10-28; nothing deleted yet)
+Each deletion waits for the owner's word. The plan is to do them at the end of the project.
+
+**Safe now** (about 1.2 to 2.7 GB):
+
+| What | Size | Note |
+|---|---|---|
+| `.cache/huggingface` `laion/clap-htsat-unfused` | about 1.2 GB | Downloaded while diagnosing the broken checkpoint (M3a); unused |
+| `.cache/huggingface` `laion/larger_clap_music` | about 0.75 to 1.5 GB | The same; unused |
+| `.cache/huggingface` `laion/larger_clap_general` | about 1.5 GB | Unused now. **Keep it if SFX support is likely**: it's the general-audio CLAP that milestone would need |
+| `data/catalog.pre-tag.db` | 11 MB | A backup from before the first tagging |
+| `.cache/smoke`, `.cache/smoke-m3a`, `.cache/demo120.wav` | about 6 MB | Early test leftovers |
+| `%TEMP%\torch`, `%TEMP%\torchinductor_Admin` | 52 KB | Outside the repo; the caches now go to `.cache/` |
+
+The rest of `.cache/huggingface` (14 GB in total) is in use: `larger_clap_music_and_speech`
+(the default CLAP), GLAP, and MuQ-MuLan with the MuQ and xlm-roberta parts it loads.
+
+**When the work that needs them is done:**
+
+| What | Size | Delete when |
+|---|---|---|
+| `data/catalog.pre-m9.db` | 16 MB | The scene labels are imported and checked (M9) |
+| `data/catalog.pre-m12.db` | 17 MB | The Freesound library is confirmed good after the demo |
+| `data/benchmarks/` (Song Describer clips, bake-off results) | 3.2 GB | Re-running the bake-off and the model card numbers is no longer needed. Keep it until M9's model card is final |
+| `data/datasets/` (DEAM archives) | 1.3 GB | Retraining the valence and arousal heads is no longer needed |
+
+**After development** (about 3 GB; a packaged app needs none of it):
+- `.cache/uv`: 2.6 GB. The cache can be pruned, but rebuilding environments then downloads
+  again.
+- `.cache/npm`: 122 MB.
+- `.tools/` (Python, Node and uv): 138 MB.
+- `backend/.venv`: 73 MB.
+- `frontend/node_modules`: 69 MB.
+- The agent's session scratch folder (outside the repo; about 550 MB, holding catalog copies
+  and the no-`ml` test environment).
+
+**Leave alone:** `%APPDATA%\NVIDIA\ComputeCache` (1.1 GB) is the graphics driver's cache,
+shared with other programs.
 
 ## 5. Open items
 
@@ -679,8 +719,7 @@ M3b is merged and the real catalog is tagged. Still open:
   hand. `%APPDATA%\NVIDIA\ComputeCache` (1.1 GB) is the GPU driver's cache, shared with other
   programs; it was left alone.
 - **Starlette warning:** a deprecation warning about `httpx` in tests (harmless).
-- **Disk:** the extra CLAP checkpoints in `.cache/huggingface` and `data/catalog.pre-tag.db`
-  can be deleted (§4).
+- **Disk:** the cleanup candidates are listed with sizes in §4.1.
 - **UI follow-ups:**
   - **Add-to-project menu.** It makes one request per project to find which projects already
     hold a track; a "projects containing track" endpoint would be cleaner if there are many
