@@ -24,7 +24,10 @@ export const searchStrings = {
   reference: {
     group: 'Reference song',
     upload: 'Upload a song',
-    uploadHint: 'to find tracks that sound like it. "Find similar" on any result works too.',
+    uploadHint:
+      'or drop one anywhere on this page to find tracks that sound like it. "Find similar" on any result works too.',
+    dropOverlay: 'Drop a song to find similar music',
+    notAudio: (name: string) => `${name} is not an audio file. Drop a WAV, FLAC, OGG, Opus, MP3 or AIFF file.`,
     uploading: 'Uploading song',
     chip: (label: string) => `Sounds like: ${label}`,
     remove: 'Remove reference song',
@@ -93,6 +96,8 @@ export const searchStrings = {
   importing: {
     starting: 'Starting',
     failedFallback: 'The job stopped without a message.',
+    /** An import that still added tracks, but a source failed. */
+    warningTitle: 'The import had a problem',
     rerunFailed: "Couldn't refresh the results",
   },
   reading: {

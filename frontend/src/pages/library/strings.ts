@@ -25,6 +25,8 @@ export const libraryStrings = {
     loadFailed: "Couldn't load the tracks",
     filterSource: 'Source',
     filterRisk: 'Licence risk',
+    filterSearch: 'Search title or artist',
+    searchPlaceholder: 'Title, artist or album',
     any: 'Any',
     sourceOptions: Object.entries({ ...trackFeatureStrings.sourceNames, local: 'Local folder' }).map(
       ([value, label]) => ({ value, label }),
@@ -64,6 +66,7 @@ export const libraryStrings = {
     tabs: 'Ways to add music',
     jamendo: 'Jamendo',
     freesound: 'Freesound',
+    links: 'By link',
     local: 'Local folder',
     maintenance: 'Maintenance',
   },
@@ -131,6 +134,17 @@ export const libraryStrings = {
     starting: 'Starting',
   },
 
+  links: {
+    intro: 'Add the tracks you found yourself. Their licences are kept with them.',
+    label: 'Jamendo or Freesound links',
+    hint: "One per line. Paste the track's page address from jamendo.com or freesound.org.",
+    placeholder: 'https://www.jamendo.com/track/1234567/song-name',
+    embed: 'Analyse and embed',
+    embedHint: 'Takes longer. You can do it later with "Re-embed missing tracks".',
+    submit: 'Add tracks',
+    starting: 'Starting',
+  },
+
   local: {
     intro:
       'Scan a folder of audio files on the computer that runs MCRAR, and add them to your catalog.',
@@ -169,6 +183,7 @@ export const libraryStrings = {
     kindNames: {
       'ingest-jamendo': 'Add from Jamendo',
       'ingest-freesound': 'Freesound import',
+      'ingest-links': 'Add by link',
       'ingest-local': 'Add from folder',
       'reprocess-embed': 'Re-embed missing tracks',
       'reprocess-tag': 'Re-tag catalog',
@@ -208,6 +223,14 @@ export const libraryStrings = {
         total > shown ? `Failures (showing ${shown} of ${total})` : `Failures (${total})`,
       failure: (title: string, stage: string, message: string) =>
         `${title || 'Untitled'} (${stage}): ${message}`,
+      already: (count: number) => `Already in your library: ${count}`,
+      notFound: (list: string) => `Not found (or no preview): ${list}`,
+      invalid: (list: string) => `Not understood: ${list}`,
+      /** The first few of a long list, then how many more there are. */
+      shortList: (items: string[], shown = 5) =>
+        items.length > shown
+          ? `${items.slice(0, shown).join(', ')} and ${items.length - shown} more`
+          : items.join(', '),
     },
     viewNew: 'View new tracks',
     dismiss: 'Close',

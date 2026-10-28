@@ -41,12 +41,13 @@ import { activeFilterCount, DEFAULT_FILTERS, filterProblem, toApiFilters } from 
 import type { FilterState } from './filters'
 import { FiltersPanel } from './FiltersPanel'
 import { QueryReading } from './QueryReading'
-import { DEFAULT_REFERENCE_WEIGHT, toApiReference, trackLabel } from './reference'
+import { DEFAULT_REFERENCE_WEIGHT, isAudioFile, toApiReference, trackLabel } from './reference'
 import type { Reference } from './reference'
 import { ReferenceBar } from './ReferenceBar'
 import { ResultRow } from './ResultRow'
 import { searchStrings as s } from './strings'
 import type { ImportWording } from './strings'
+import { useFileDrop } from './useFileDrop'
 import { useSearchImport } from './useSearchImport'
 import type { ImportOutcome } from './useSearchImport'
 import styles from './SearchPage.module.css'
@@ -404,6 +405,15 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
     }
   }
 
+  // A song dropped on the page is the reference, like one picked with "Upload a song".
+  const dropping = useFileDrop((file) => {
+    if (isAudioFile(file.name)) {
+      void upload(file)
+    } else {
+      setReferenceProblem({ title: s.reference.uploadFailed, message: s.reference.notAudio(file.name) })
+    }
+  }, uploading)
+
   const removeReference = () => {
     setReference(null)
     setReferenceProblem(null)
@@ -521,6 +531,11 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
   return (
     <>
       <PageHeader title={s.title} description={s.description} />
+      {dropping ? (
+        <div className={styles.dropOverlay} role="status">
+          <p className={styles.dropMessage}>{s.reference.dropOverlay}</p>
+        </div>
+      ) : null}
 
       <form className={styles.queryBar} role="search" onSubmit={onSubmit}>
         <div className={styles.queryRow}>
@@ -609,12 +624,19 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
               {searchImport.failure}
             </Notice>
           ) : null}
+          {searchImport.warnings.length > 0 ? (
+            <Notice kind="warning" title={s.importing.warningTitle}>
+              {searchImport.warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </Notice>
+          ) : null}
           {results ? (
             <ResultsView
               results={results}
               loading={loading}
               wording={searchImport.wording}
-              canImport={!searchImport.active}
+              canImport={!searchImport.active && searchImport.available}
               importPending={searchImport.pending}
               onImport={searchImport.start}
               rerankReady={llmStatus.data?.ready === true}

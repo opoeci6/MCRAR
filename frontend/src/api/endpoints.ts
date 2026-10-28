@@ -12,6 +12,7 @@ import type {
   FreesoundIngestRequest,
   Health,
   JamendoIngestRequest,
+  LinksIngestRequest,
   Job,
   JobDetail,
   LabelPart,
@@ -234,7 +235,10 @@ export const ingestJamendo = (body: JamendoIngestRequest, o?: CallOptions) =>
 export const ingestFreesound = (body: FreesoundIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/freesound', { ...o, body })
 
-export const ingestLocal =(body: LocalIngestRequest, o?: CallOptions) =>
+export const ingestLinks = (body: LinksIngestRequest, o?: CallOptions) =>
+  request<{ job: Job }>('POST', '/api/ingest/links', { ...o, body })
+
+export const ingestLocal = (body: LocalIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/local', { ...o, body })
 
 export const reprocess = (body: ReprocessRequest, o?: CallOptions) =>

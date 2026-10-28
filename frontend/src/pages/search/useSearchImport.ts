@@ -36,15 +36,41 @@ export interface UseSearchImportOptions {
 /** What the page says until the usable sources are known (or when they cannot be loaded). */
 const DEFAULT_SOURCES: ImportSource[] = ['jamendo']
 
+const REMOTE_SOURCES: readonly string[] = ['jamendo', 'freesound']
+
+/**
+ * The sources an import for these filters uses. With no Source filter that is every usable source
+ * and nothing is sent (`request` is undefined: the backend picks the same). With one, it is the
+ * filter's remote sources that are usable; `request` then names them. Usable sources that are
+ * unknown or none do not narrow the filter: the backend then says what is missing.
+ */
+export function importSourcesFor(
+  filters: SearchFilters | undefined,
+  usable: readonly ImportSource[],
+): { sources: ImportSource[]; request?: ImportSource[] } {
+  const wanted = filters?.sources
+  const known = usable.length > 0 ? usable : undefined
+  if (!wanted || wanted.length === 0) return { sources: [...(known ?? DEFAULT_SOURCES)] }
+  const remote = wanted.filter((source): source is ImportSource => REMOTE_SOURCES.includes(source))
+  const sources = known ? remote.filter((source) => known.includes(source)) : remote
+  return { sources, request: sources }
+}
+
 /**
  * Runs the "search for more" job of the Search page (Jamendo and/or Freesound, whichever have
- * their key): starts it, finds one that is already running when the page opens, and reports how
- * it ended. `wording` names the usable sources. The request never names them: left out, the
- * backend uses every source that has its key, which is what `wording` describes.
+ * their key and the Source filter allows): starts it, finds one that is already running when the
+ * page opens, and reports how it ended. `wording` names the sources it uses. The request names
+ * them only when the search has a Source filter; left out, the backend uses every source that has
+ * its key, which is what `wording` describes. `available` is false when the filter leaves none.
  */
 export function useSearchImport({ text, filters, onFinished }: UseSearchImportOptions) {
   const usable = useAsync((signal) => getImportSources({ signal }), [])
-  const sources = usable.data && usable.data.sources.length > 0 ? usable.data.sources : DEFAULT_SOURCES
+  const usableSources = usable.data?.sources
+  const { sources, request: requestSources } = useMemo(
+    () => importSourcesFor(filters, usableSources ?? []),
+    [filters, usableSources],
+  )
+  const available = sources.length > 0
   const wording = useMemo(() => importWording(sources), [sources])
   const wordingRef = useRef(wording)
   useEffect(() => {
@@ -52,6 +78,8 @@ export function useSearchImport({ text, filters, onFinished }: UseSearchImportOp
   })
   const [active, setActive] = useState<ActiveImport | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
+  /** What went wrong in an import that still added tracks, or in one source of it. */
+  const [warnings, setWarnings] = useState<string[]>([])
   const finishedRef = useRef(onFinished)
   useEffect(() => {
     finishedRef.current = onFinished
@@ -80,18 +108,33 @@ export function useSearchImport({ text, filters, onFinished }: UseSearchImportOp
   const start = useCallback(() => {
     if (!text) return
     setFailure(null)
-    void startRequest(() => importForSearch({ text, filters: filters ?? {}, limit: IMPORT_LIMIT }))
-  }, [text, filters, startRequest])
+    setWarnings([])
+    void startRequest(() =>
+      importForSearch({
+        text,
+        filters: filters ?? {},
+        limit: IMPORT_LIMIT,
+        ...(requestSources ? { sources: requestSources } : {}),
+      }),
+    )
+  }, [text, filters, requestSources, startRequest])
 
   const onSettled = useCallback((view: JobView) => {
     setActive(null)
-    if (view.status === 'failed') {
-      setFailure(view.error ?? s.importing.failedFallback)
-      return
-    }
     const newTrackIds = view.report?.new_track_ids ?? []
+    if (view.status === 'failed') {
+      const message = view.error ?? s.importing.failedFallback
+      if (newTrackIds.length === 0) {
+        setFailure(message)
+        return
+      }
+      // One source failed but the other's tracks are in: show them, with the error as a warning.
+      setWarnings([...view.warnings.filter((warning) => warning !== message), message])
+    } else {
+      setWarnings(view.warnings)
+    }
     // A job the user cancelled before it added anything has nothing to show.
-    if (view.status === 'done' || newTrackIds.length > 0) {
+    if (view.status !== 'cancelled' || newTrackIds.length > 0) {
       finishedRef.current({
         text: String(view.params.text ?? ''),
         newTrackIds,
@@ -103,6 +146,7 @@ export function useSearchImport({ text, filters, onFinished }: UseSearchImportOp
   /** Hides the error and failure of an earlier attempt (a new search starts). */
   const reset = useCallback(() => {
     setFailure(null)
+    setWarnings([])
     resetStart()
   }, [resetStart])
 
@@ -111,6 +155,8 @@ export function useSearchImport({ text, filters, onFinished }: UseSearchImportOp
     pending: starter.pending,
     error: starter.error,
     failure,
+    warnings,
+    available,
     sources,
     wording,
     start,

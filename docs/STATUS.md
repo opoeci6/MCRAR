@@ -23,15 +23,16 @@ Last updated: 2026-10-28.
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
 | M9 Game-scene tags | Done (2026-10-28) | `dev` | 14 scenes, scene and intensity filters, Labelling tab, `mcrar scenes …`; 269 hand-labelled tracks (owner and Simon); the trained hybrid head `scene-logreg-hybrid@5f5ba48` is selected (cross-validated mean P@10 0.414 against 0.407 for the centered zero-shot). See §3.13 |
 | QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
+| QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker and drop follow after the demo |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
 | M11 | Not started | — | See `docs/PLAN.md` §5 |
 
 Test suite on `dev`, counted after M12 (2026-10-28):
-- Backend, default env: 2,230 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,227 passed, 31 skipped.
+- Backend, default env: 2,340 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,337 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 458 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 487 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -41,8 +42,9 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
   (`opoeci6/MCRAR`, private). Merged local branches are kept.
 - **Pushing.** Push `dev` only when the owner asks. Before every push: run the default suite in
   the normal env **and** in a scratch venv without the `ml` extra (as CI does), and grep the
-  outgoing commits for the Jamendo client id (`git log -p origin/dev..dev | grep -c <id>` must
-  be 0).
+  outgoing commits for **every** value in `.secrets/secrets.toml` (the Jamendo client id, the
+  Freesound key and each LLM key; `git log -p origin/dev..dev | grep -c <value>` must be 0 for
+  each, without printing the values).
 - **Commit identity.** The human is the author; agents are credited with a `Co-authored-by`
   trailer (`AGENTS.md` §6). Claude Code commits end with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
@@ -636,6 +638,42 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
   - "calm piano loop for a menu screen" ranked a Freesound piano loop 4th among Jamendo tracks;
   - "search for more" with limit 4 gave 2 Jamendo and 2 Freesound in 26 s.
 
+### 3.17 Review fixes and QoL batch 2 (2026-10-28)
+An independent review (the `reviewer` agent, Opus at max effort) of the 28 unpushed commits
+passed with two minor findings and some nits; the owner had them fixed before the demo together
+with new QoL items (plan of 2026-10-28, branch `qol-2`).
+- **"Search for more" survives one source failing.** A Jamendo or Freesound error (a rejected key,
+  a rate limit) only adds a warning ("Freesound failed: …") and the next source gets the rest of
+  the budget; the job fails only when every source failed. A failed source's abort does not mark
+  the finished job as aborted. When a failed job still added tracks, the page shows them as New
+  with the error as a warning.
+- **"Search for more" follows the Source filter.** Only the remote sources in the filter are
+  searched; a local-only filter hides the button (the API answers 422), and the button names
+  the sources it will use.
+- **Library search:** a box above the track table (`GET /api/tracks?q=`): every word must appear
+  in the title, artist or album; ASCII letters ignore case (SQLite folds only those); `%` and `_`
+  are literal. Debounced 300 ms.
+- **Drop a song to find similar:** dropping an audio file anywhere on the Search page uploads it
+  as the reference song (an overlay shows while a file is dragged; other drags are ignored).
+- **Add by link:** Library > Add music > **By link** (`POST /api/ingest/links`, job
+  `ingest-links`). Paste up to 50 Jamendo or Freesound track links (or `jamendo:<id>` /
+  `freesound:<id>`); hosts are matched exactly (`sources/links.py`). The report lists what was
+  already in the library, what the source didn't return, and what wasn't understood. No licence
+  filter: the user picked the track, and its badge shows its risk as usual.
+- **Nits:** Settings no longer breaks on a server without `models` in `/api/health`; the model
+  card's scene "Test n" shows the labelled tracks and the pending row has the right cells; two
+  formatting slips; a test for the Projects "removed entry is not re-added" guard.
+- **Checked** on a copy of the real catalog (port 8010, built UI): "booth latin" finds the two
+  copies of one piece; a Jamendo link, a Freesound link, one track already there and a junk line
+  gave 2 new, 1 already, 1 not understood, with badges and embeddings; a generated WAV dropped on
+  Search gave "Sounds like: dropped-tone.wav" and 20 results; the Source-filter 422s.
+- **After the demo (owner's choice): local music without typing a path.** Both a "Browse…"
+  folder dialog drawn by MCRAR (files stay where they are; only when the server is loopback-only)
+  and drop/choose files, which MCRAR copies into `data/library/` (named by content hash, so
+  re-adding is a no-op). The Local tab must tell the user the difference (owner's requirement):
+  browsing reads files in place, so moving them breaks playback; dropped files are copies that
+  use disk space.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -733,6 +771,8 @@ M3b is merged and the real catalog is tagged. Still open:
   "search for more" had added without them. Demo searches (dungeon, boss fight, calm town,
   8-bit menu, rainy forest, stealth) mix both sources sensibly; stealth is the weakest, as the
   M9 eval predicts.
+- **Library table on a narrow window:** the track table is wider than about 1,050 px, so the
+  page scrolls sideways in a narrow window (seen in the in-app browser; not new in batch 2).
 - **Scene follow-ups (M9):**
   - More labels for victory, defeat, chase and puzzle would help most (10 to 22 positives).
   - The two labellers could agree on what boss, menu and puzzle mean (κ near 0) before more
@@ -746,7 +786,6 @@ M3b is merged and the real catalog is tagged. Still open:
     can build on the reference term.
 - **Per-query import polish:**
   - With GLAP as the default embedder the weak notice never shows; the button still works.
-  - A search limited to local sources still offers the Jamendo import.
   - `search.weak_cosine` can't be cleared back to the default through the API, only in
     `settings.toml`.
 - **A flaky backend test?** One full run on 2026-10-15 had a single failure that did not

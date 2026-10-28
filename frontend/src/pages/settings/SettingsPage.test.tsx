@@ -185,6 +185,12 @@ describe('Settings: model status', () => {
     expect(await screen.findByText(ABSENT)).toBeInTheDocument()
   })
 
+  it('treats a health answer of an older server, without a models list, as not loaded', async () => {
+    const older = { ...health([]), models: undefined } as unknown as Health
+    renderWith(older)
+    expect(await screen.findByText(ABSENT)).toBeInTheDocument()
+  })
+
   it('shows the device and precision of a ready model, with VRAM only when there is a GPU', async () => {
     const view = renderWith(health([loadedModel()], { vram_allocated_mb: 1234.4, vram_reserved_mb: 2000 }))
     const status = await screen.findByRole('status')

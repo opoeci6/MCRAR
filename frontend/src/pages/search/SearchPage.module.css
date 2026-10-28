@@ -154,3 +154,25 @@
     display: none;
   }
 }
+
+/* Over everything while a file is dragged onto the page; clicks pass through. */
+.dropOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-overlay);
+  pointer-events: none;
+}
+
+.dropMessage {
+  margin: 0;
+  padding: var(--space-5) var(--space-6);
+  border: 2px dashed var(--color-accent);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  font-size: var(--text-lg);
+  font-weight: 600;
+}

@@ -36,7 +36,7 @@ export function useModelStatus(key: string): ModelStatus {
     setHealth(shared)
   }
 
-  const model = health?.models.find((entry) => entry.key === key) ?? null
+  const model = health?.models?.find((entry) => entry.key === key) ?? null
   // Once the entry appears the expectation is met, whatever happens to it later.
   if (expecting && model) setExpecting(false)
   const waiting = expecting && !model

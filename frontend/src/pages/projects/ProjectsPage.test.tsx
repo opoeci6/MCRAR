@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHashRoute } from '../../app/route'
@@ -445,6 +445,46 @@ describe('Projects page', () => {
       expect(await screen.findByText('Level 2 intro')).toBeInTheDocument()
       expect(calls(api, 'PUT')[0]?.[1]?.body).toBe('{"note":"Level 2 intro"}')
       expect(screen.queryByText('Removed "Forest Walk" from the shortlist.')).not.toBeInTheDocument()
+    })
+
+    it('does not save a note that was still waiting when its track was removed', async () => {
+      const user = userEvent.setup()
+      const api = stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': SAFE_DETAIL,
+        'DELETE /api/projects/1/items/10': NO_CONTENT,
+        // The backend's PUT is an upsert: a late save would add the track again.
+        'PUT /api/projects/1/items/10': entry(10, 'Rainy Window', 'green', 'late'),
+      })
+      renderWithProviders(<Routed />)
+
+      await user.type(await openNote(user, 'Rainy Window'), 'late')
+      // A click event without moving the focus: the note has not been saved by a blur.
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Rainy Window from the project' }))
+
+      expect(await screen.findByText('Removed "Rainy Window" from the shortlist.')).toBeInTheDocument()
+      expect(screen.queryByText('late')).not.toBeInTheDocument()
+      expect(calls(api, 'DELETE')).toHaveLength(1)
+      expect(calls(api, 'PUT')).toHaveLength(0)
+    })
+
+    it('saves a note again when removing its track failed', async () => {
+      const user = userEvent.setup()
+      const api = stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': SAFE_DETAIL,
+        'DELETE /api/projects/1/items/10': jsonResponse({ detail: 'nope' }, 500),
+        'PUT /api/projects/1/items/10': entry(10, 'Rainy Window', 'green', 'kept'),
+      })
+      renderWithProviders(<Routed />)
+
+      const field = await openNote(user, 'Rainy Window')
+      await user.type(field, 'kept')
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Rainy Window from the project' }))
+      expect(await screen.findByRole('alert')).toHaveTextContent('nope')
+      await user.tab()
+      await screen.findByText('Saved')
+      expect(calls(api, 'PUT')[0]?.[1]?.body).toBe('{"note":"kept"}')
     })
 
     it('keeps the track and shows the error when removing fails', async () => {

@@ -4,6 +4,7 @@ import { cx } from '../../lib/cx'
 import { Notice } from '../../ui/Notice'
 import { FreesoundForm } from './FreesoundForm'
 import { JamendoForm } from './JamendoForm'
+import { LinkForm } from './LinkForm'
 import { LocalForm } from './LocalForm'
 import { MaintenancePanel } from './MaintenancePanel'
 import { libraryStrings as t } from './strings'
@@ -13,6 +14,7 @@ import styles from './AddMusic.module.css'
 const TABS = [
   { id: 'jamendo', label: t.add.jamendo },
   { id: 'freesound', label: t.add.freesound },
+  { id: 'links', label: t.add.links },
   { id: 'local', label: t.add.local },
   { id: 'maintenance', label: t.add.maintenance },
 ] as const
@@ -57,7 +59,8 @@ export function AddMusic(props: StartProps) {
         >
           {item.id === 'jamendo' ? <JamendoForm {...props} /> : null}
           {item.id === 'freesound' ? <FreesoundForm {...props} /> : null}
-          {item.id === 'local' ?<LocalForm {...props} /> : null}
+          {item.id === 'links' ? <LinkForm {...props} /> : null}
+          {item.id === 'local' ? <LocalForm {...props} /> : null}
           {item.id === 'maintenance' ? <MaintenancePanel {...props} /> : null}
         </div>
       ))}

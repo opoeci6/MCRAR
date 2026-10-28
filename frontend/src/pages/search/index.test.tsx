@@ -1068,6 +1068,86 @@ describe('Search page: import from Jamendo and Freesound', () => {
     expect(await screen.findByText('Added 2 tracks from Freesound')).toBeInTheDocument()
   })
 
+  it('sends the sources of the Source filter and words the button by them', async () => {
+    const mock = setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob({ params: { text: 'cozy town', limit: 50, sources: ['freesound'] } }) }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'freesound')
+    await weakSearch()
+    expect(await screen.findByText(/Find about 50 more on Freesound and rank them/)).toBeInTheDocument()
+    expect(screen.queryByRole('button', both)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', freesound))
+    expect(await screen.findByText('Searching Freesound for "cozy town"')).toBeInTheDocument()
+    expect(bodies(mock, 'POST /api/search/import')).toEqual([
+      { text: 'cozy town', filters: { sources: ['freesound'] }, limit: 50, sources: ['freesound'] },
+    ])
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Freesound')).toBeInTheDocument()
+  })
+
+  it('hides the import when the Source filter names a source without its key', async () => {
+    setup({
+      'GET /api/search/import/sources': { sources: ['jamendo'] },
+      'POST /api/search': response([item(1)], { match: WEAK }),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'freesound')
+    await weakSearch()
+    expect(screen.queryByRole('button', { name: /for more$/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Few close matches in your library/)).not.toBeInTheDocument()
+  })
+
+  it('hides the import when the Source filter is local only', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      'POST /api/search': response([item(1)], { match: WEAK }),
+    })
+    renderWithProviders(<SearchPage />)
+    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'local')
+    await weakSearch()
+    expect(screen.queryByRole('button', { name: /for more$/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Few close matches in your library/)).not.toBeInTheDocument()
+  })
+
+  it('shows the tracks of a failed job that still added some, with the error as a warning', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('failed', { report: REPORT, error: 'Freesound failed: bad key' })
+    expect(await screen.findByText('Added 2 tracks from Jamendo and Freesound')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Track 3' })).getByText('New')).toBeInTheDocument()
+    expect(within(screen.getByRole('article', { name: 'Track 4' })).getByText('New')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    expect(screen.getByText('Freesound failed: bad key')).toBeInTheDocument()
+    expect(screen.getByText('The import had a problem')).toBeInTheDocument()
+  })
+
+  it('shows the warnings of a job that is done', async () => {
+    setup({
+      'GET /api/search/import/sources': BOTH,
+      ...twoStageSearch(),
+      'POST /api/search/import': jsonResponse({ job: importJob() }, 202),
+    })
+    renderWithProviders(<SearchPage />)
+    await weakSearch()
+    await userEvent.click(screen.getByRole('button', both))
+    await screen.findByRole('region', progressRegion)
+    source().emit('warning', { message: 'Freesound failed: rate limited' })
+    source().emit('done', { report: REPORT })
+    expect(await screen.findByText('Added 2 tracks from Jamendo and Freesound')).toBeInTheDocument()
+    expect(screen.getByText('Freesound failed: rate limited')).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
   it('keeps the Jamendo wording when only Jamendo has its client id', async () => {
     setup({
       'GET /api/search/import/sources': { sources: ['jamendo'] },
@@ -1650,6 +1730,98 @@ describe('Search page: reference song', () => {
     expect(opened).toHaveBeenCalledOnce()
     expect(fileInput().accept).toContain('.mp3')
     expect(screen.getByText(/"Find similar" on any result works too/)).toBeInTheDocument()
+  })
+
+  describe('dropping a song on the page', () => {
+    const SIMILAR = response([item(2)], { reference: { kind: 'upload', track_id: null, label: 'riff.mp3', weight: 0.5 } })
+    const files = (...list: File[]) => ({ dataTransfer: { files: list, types: ['Files'] } })
+    const overlay = 'Drop a song to find similar music'
+    const uploads = (mock: ReturnType<typeof stubApi>) => mock.mock.calls.filter(([input]) => String(input) === '/api/reference')
+    const uploadedName = (mock: ReturnType<typeof stubApi>) =>
+      ((uploads(mock)[0]![1]!.body as FormData).get('file') as File).name
+
+    it('uploads the dropped song and searches with it', async () => {
+      const mock = setup({ 'POST /api/reference': UPLOADED, 'POST /api/search': SIMILAR })
+      renderWithProviders(<SearchPage />)
+      fireEvent.dragEnter(document.body, files(song()))
+      expect(screen.getByText(overlay)).toBeInTheDocument()
+      fireEvent.dragOver(document.body, files(song()))
+      fireEvent.drop(document.body, files(song()))
+      expect(screen.queryByText(overlay)).not.toBeInTheDocument()
+      await screen.findByText('Track 2')
+      expect(uploadedName(mock)).toBe('riff.mp3')
+      expect(bodies(mock, 'POST /api/search')[0]).toMatchObject({ reference: { upload_id: 'u1' } })
+      expect(chip('riff.mp3')).toBeInTheDocument()
+    })
+
+    it('stops the browser from opening the dropped file', () => {
+      renderWithProviders(<SearchPage />)
+      expect(fireEvent.dragOver(document.body, files(song()))).toBe(false)
+      expect(fireEvent.drop(document.body, files(new File(['x'], 'notes.txt')))).toBe(false)
+    })
+
+    it('says so for a file that is not audio, and sends nothing', async () => {
+      const mock = setup({ 'POST /api/reference': UPLOADED, 'POST /api/search': SIMILAR })
+      renderWithProviders(<SearchPage />)
+      fireEvent.dragEnter(document.body, files(new File(['x'], 'notes.txt')))
+      fireEvent.drop(document.body, files(new File(['x'], 'notes.txt')))
+      expect(await screen.findByText(/notes\.txt is not an audio file/)).toBeInTheDocument()
+      expect(screen.getByText("Couldn't use this song")).toBeInTheDocument()
+      expect(screen.queryByText(overlay)).not.toBeInTheDocument()
+      expect(uploads(mock)).toHaveLength(0)
+      expect(bodies(mock, 'POST /api/search')).toHaveLength(0)
+    })
+
+    it('takes the first of several files, whatever the case of its extension', async () => {
+      const mock = setup({ 'POST /api/reference': UPLOADED, 'POST /api/search': SIMILAR })
+      renderWithProviders(<SearchPage />)
+      fireEvent.drop(document.body, files(new File(['a'], 'LOUD.WAV'), new File(['b'], 'other.mp3')))
+      await screen.findByText('Track 2')
+      expect(uploads(mock)).toHaveLength(1)
+      expect(uploadedName(mock)).toBe('LOUD.WAV')
+    })
+
+    it('shows no overlay for a drag without files, and leaves the drop alone', () => {
+      const mock = setup({})
+      renderWithProviders(<SearchPage />)
+      const text = { dataTransfer: { files: [], types: ['text/plain'] } }
+      fireEvent.dragEnter(document.body, text)
+      expect(screen.queryByText(overlay)).not.toBeInTheDocument()
+      expect(fireEvent.drop(document.body, text)).toBe(true)
+      expect(uploads(mock)).toHaveLength(0)
+    })
+
+    it('keeps the overlay while the drag moves over child elements, and hides it when it leaves', () => {
+      renderWithProviders(<SearchPage />)
+      fireEvent.dragEnter(document.body, files(song()))
+      fireEvent.dragEnter(box(), files(song()))
+      fireEvent.dragLeave(document.body, files(song()))
+      expect(screen.getByText(overlay)).toBeInTheDocument()
+      fireEvent.dragLeave(box(), files(song()))
+      expect(screen.queryByText(overlay)).not.toBeInTheDocument()
+    })
+
+    it('ignores a drop while a song is uploading', async () => {
+      let release: () => void = () => {}
+      const mock = setup({
+        'POST /api/reference': () => new Promise((resolve) => (release = () => resolve(UPLOADED))),
+        'POST /api/search': SIMILAR,
+      })
+      renderWithProviders(<SearchPage />)
+      fireEvent.drop(document.body, files(song()))
+      await screen.findByText('Uploading song')
+      fireEvent.dragEnter(document.body, files(song()))
+      expect(screen.queryByText(overlay)).not.toBeInTheDocument()
+      fireEvent.drop(document.body, files(new File(['b'], 'second.mp3')))
+      expect(uploads(mock)).toHaveLength(1)
+      release()
+      await screen.findByText('Track 2')
+    })
+
+    it('mentions dropping in the hint', () => {
+      renderWithProviders(<SearchPage />)
+      expect(screen.getByText(/drop one anywhere on this page/)).toBeInTheDocument()
+    })
   })
 
   it('uploads the song, then searches with it and the current text and filters', async () => {
