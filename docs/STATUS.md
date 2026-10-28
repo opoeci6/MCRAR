@@ -773,6 +773,17 @@ M3b is merged and the real catalog is tagged. Still open:
   M9 eval predicts.
 - **Library table on a narrow window:** the track table is wider than about 1,050 px, so the
   page scrolls sideways in a narrow window (seen in the in-app browser; not new in batch 2).
+- **No way to remove a track** (found by the owner on 2026-10-28 while testing local files).
+  When a local file is moved or deleted, its track stays in the Library and in search results,
+  with its embeddings and tags, and playback fails; nothing in the UI, the API or the CLI
+  removes it. `CatalogRepository.delete_track` exists (it cascades to features, tags,
+  embeddings and shortlist rows) but has no caller. Wanted:
+  - a Remove action in the Library (and the track drawer), with a confirmation;
+  - a Maintenance step that finds local tracks whose file is gone and offers to remove them;
+  - the same for any track (for example an unwanted Jamendo or Freesound import);
+  - decide what happens to its ratings and scene labels, which reference the track id.
+  It fits with the after-demo local-music work (§3.17), where copied files under
+  `data/library/` would also be deleted.
 - **Scene follow-ups (M9):**
   - More labels for victory, defeat, chase and puzzle would help most (10 to 22 positives).
   - The two labellers could agree on what boss, menu and puzzle mean (κ near 0) before more
