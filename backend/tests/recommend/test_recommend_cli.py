@@ -200,7 +200,7 @@ def test_search_options_become_filters(
         (["--duration", "x-3"], "error: --duration must look like"),
         (["--instrumental", "--vocal"], "error: --vocal and --instrumental are mutually exclusive"),
         (["--max-risk", "purple"], "error: --max-risk must be one of: green, amber, red"),
-        (["--source", "spotify"], "error: --source must be one of: jamendo, local"),
+        (["--source", "spotify"], "error: --source must be one of: jamendo, freesound, local"),
         ([], "error: give a search text or at least one filter"),
     ],
 )

@@ -11,7 +11,17 @@ export interface StartErrorProps {
   onShowRunning?: () => void
 }
 
-/** Why a job could not be started: another job runs (409), the Jamendo key is missing (503), or the request. */
+/**
+ * The notice text for the source whose key a 503 detail says is missing (checked in table order);
+ * a detail that names several sources (a search import with none set up) gets the combined text.
+ */
+function missingKeySource(detail: string) {
+  const names = Object.keys(t.start.missingKey).filter((name) => new RegExp(name, 'i').test(detail))
+  if (names.length > 1) return t.start.missingKeyAll
+  return names.length > 0 ? t.start.missingKey[names[0]!]! : null
+}
+
+/** Why a job could not be started: another job runs (409), a source's key is missing (503), or the request. */
 export function StartError({ error, onShowRunning }: StartErrorProps) {
   if (!error) return null
   if (error instanceof ApiError && error.status === 409) {
@@ -33,14 +43,15 @@ export function StartError({ error, onShowRunning }: StartErrorProps) {
       </Notice>
     )
   }
-  if (error instanceof ApiError && error.status === 503 && /jamendo/i.test(error.detail)) {
+  const missing = error instanceof ApiError && error.status === 503 ? missingKeySource(error.detail) : null
+  if (missing) {
     return (
       <Notice
         kind="error"
-        title={t.start.missingKeyTitle}
+        title={missing.title}
         action={<a href={hrefFor('settings')}>{t.start.openSettings}</a>}
       >
-        {t.start.missingKeyBody}
+        {missing.body}
       </Notice>
     )
   }

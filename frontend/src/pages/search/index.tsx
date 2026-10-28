@@ -46,8 +46,9 @@ import type { Reference } from './reference'
 import { ReferenceBar } from './ReferenceBar'
 import { ResultRow } from './ResultRow'
 import { searchStrings as s } from './strings'
-import { useJamendoImport } from './useJamendoImport'
-import type { ImportOutcome } from './useJamendoImport'
+import type { ImportWording } from './strings'
+import { useSearchImport } from './useSearchImport'
+import type { ImportOutcome } from './useSearchImport'
 import styles from './SearchPage.module.css'
 
 const PAGE_SIZE = 20
@@ -73,7 +74,7 @@ interface ResultSet {
   unembedded: number
   model: string
   elapsedMs: number
-  /** The best match was weak, so Jamendo may have more. Absent in results saved by an older version. */
+  /** The best match was weak, so Jamendo or Freesound may have more. Absent in results saved by an older version. */
   weak?: boolean
   /** The reference song as the backend used it. Absent in results saved by an older version. */
   reference?: SearchReference | null
@@ -85,7 +86,7 @@ interface ResultSet {
   rerank?: RerankInfo | null
   /** The items from before the rerank, for Undo. */
   preRerank?: SearchItem[]
-  /** Tracks imported from Jamendo for this search, marked "New". */
+  /** Tracks imported for this search, marked "New". */
   newTrackIds?: number[]
   /** How many tracks the last import for this search added; unset until one has finished. */
   imported?: number | null
@@ -285,7 +286,7 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
           toast.error(`${s.errors.loadMoreFailed}: ${errorMessage(caught)}`)
         } else if (refresh) {
           // Keep what is on screen: the import itself worked.
-          toast.error(`${s.jamendo.rerunFailed}: ${errorMessage(caught)}`)
+          toast.error(`${s.importing.rerunFailed}: ${errorMessage(caught)}`)
         } else {
           setResults(null)
           setProblem(problemFor(caught))
@@ -330,23 +331,23 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
   // The import is for the search on screen. When it ends the same search runs again, so the
   // new tracks are ranked with the catalog.
   const onImported = useCallback(
-    ({ text: importedText, newTrackIds }: ImportOutcome) => {
+    ({ text: importedText, newTrackIds, wording }: ImportOutcome) => {
       const shown = resultsRef.current
       if (shown && shown.request.text === importedText) {
         runCount.current += 1
         void run(shown.request, [], runBase + runCount.current, { newTrackIds, imported: newTrackIds.length }, true)
       } else if (newTrackIds.length > 0) {
-        toast.info(s.jamendo.addedElsewhere(newTrackIds.length, importedText))
+        toast.info(wording.addedElsewhere(newTrackIds.length, importedText))
       }
     },
     [run, runBase, toast],
   )
-  const jamendo = useJamendoImport({
+  const searchImport = useSearchImport({
     text: results?.request.text,
     filters: results?.request.filters,
     onFinished: onImported,
   })
-  const resetImport = jamendo.reset
+  const resetImport = searchImport.reset
 
   const submit = ({ text: override, reference: chosen = reference, weight = referenceWeight }: SubmitOptions = {}) => {
     const query = (override ?? text).trim()
@@ -594,27 +595,28 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
               {problem.message}
             </Notice>
           ) : null}
-          {jamendo.active ? (
+          {searchImport.active ? (
             <InlineJobProgress
-              key={jamendo.active.job.id}
-              job={jamendo.active.job}
-              title={s.jamendo.progressTitle(jamendo.active.text)}
-              onSettled={jamendo.onSettled}
+              key={searchImport.active.job.id}
+              job={searchImport.active.job}
+              title={searchImport.wording.progressTitle(searchImport.active.text)}
+              onSettled={searchImport.onSettled}
             />
           ) : null}
-          <StartError error={jamendo.error} />
-          {jamendo.failure ? (
-            <Notice kind="error" title={s.jamendo.failedTitle}>
-              {jamendo.failure}
+          <StartError error={searchImport.error} />
+          {searchImport.failure ? (
+            <Notice kind="error" title={searchImport.wording.failedTitle}>
+              {searchImport.failure}
             </Notice>
           ) : null}
           {results ? (
             <ResultsView
               results={results}
               loading={loading}
-              canImport={!jamendo.active}
-              importPending={jamendo.pending}
-              onImport={jamendo.start}
+              wording={searchImport.wording}
+              canImport={!searchImport.active}
+              importPending={searchImport.pending}
+              onImport={searchImport.start}
               rerankReady={llmStatus.data?.ready === true}
               rerankCount={llmStatus.data?.rerank_top_n}
               reranking={reranking}
@@ -645,6 +647,8 @@ interface ResultsViewProps {
   results: ResultSet
   loading: boolean
   loadingMore: boolean
+  /** The wording of the import, which names the sources it uses. */
+  wording: ImportWording
   /** No import is running, so one may start (a text search only). */
   canImport: boolean
   importPending: boolean
@@ -667,6 +671,7 @@ function ResultsView({
   results,
   loading,
   loadingMore,
+  wording,
   canImport,
   importPending,
   onImport,
@@ -687,7 +692,7 @@ function ResultsView({
   // A search by reference song has no ratings and no rerank.
   const hasReference = Boolean(results.request.reference)
   const fresh = new Set(newTrackIds)
-  const importButtonText = importPending ? s.jamendo.starting : s.jamendo.action
+  const importButtonText = importPending ? s.importing.starting : wording.action
   // Weak results: the notice carries the one import button, so the quiet one below is hidden.
   // The LLM calling the list poor counts as weak, even when the similarity score was not.
   const suggestImport =
@@ -752,11 +757,11 @@ function ResultsView({
               </Button>
             }
           >
-            {s.jamendo.weakNotice}
+            {wording.weakNotice}
           </Notice>
         ) : null}
         {imported != null ? (
-          <Notice>{imported > 0 ? s.jamendo.added(imported) : s.jamendo.noneFound}</Notice>
+          <Notice>{imported > 0 ? wording.added(imported) : wording.noneFound}</Notice>
         ) : null}
         {relaxed.length > 0 ? (
           <Notice kind="warning">{s.results.relaxed(relaxed.join('; '))}</Notice>
@@ -766,7 +771,7 @@ function ResultsView({
         ))}
         {unembedded > 0 ? <Notice>{s.results.unembedded(unembedded)}</Notice> : null}
       </div>
-      {parsed ? <QueryReading parsed={parsed} llm={llm} /> : null}
+      {parsed ? <QueryReading parsed={parsed} llm={llm} wording={wording} /> : null}
       {items.length === 0 ? (
         <EmptyState title={s.results.empty} description={s.results.emptyHint} />
       ) : (

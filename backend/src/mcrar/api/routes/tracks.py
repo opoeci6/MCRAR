@@ -1,7 +1,9 @@
 """Catalog tracks: list, detail, audio stream and credits download.
 
 Audio is never proxied. A Jamendo track answers with a 307 redirect to a fresh stream URL (the
-stored one expires, so it is looked up again and kept in memory for 30 minutes). A local track
+stored one expires, so it is looked up again and kept in memory for 30 minutes). A Freesound
+track answers with a 307 redirect to its stored preview URL (stable, no API call and no key), but
+only when that is an https URL on freesound.org, else 404. A local track
 is served from the file path stored in the catalog, with HTTP Range support (Starlette's
 ``FileResponse`` answers ``Range`` with 206), and no request ever supplies a path.
 """
@@ -23,6 +25,7 @@ from mcrar.licensing import track_credits
 from mcrar.recommend.request import SOURCES
 from mcrar.secrets import SecretError
 from mcrar.sources import JamendoError
+from mcrar.sources.freesound import is_freesound_https
 
 router = APIRouter()
 
@@ -167,6 +170,12 @@ def stream(track_id: int, state: StateDep) -> Response:
         return _local_file(track)
     if track.source == "jamendo":
         return RedirectResponse(_fresh_jamendo_url(state, track), status_code=307)
+    if track.source == "freesound":
+        # The preview URL on the Freesound CDN is stable and needs no key: redirect to the
+        # stored one, but never to a URL that is not https on freesound.org.
+        if not track.stream_url or not is_freesound_https(track.stream_url):
+            raise LookupError("this track has no playable audio")
+        return RedirectResponse(track.stream_url, status_code=307)
     raise LookupError("this track has no playable audio")
 
 

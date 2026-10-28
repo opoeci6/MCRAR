@@ -11,7 +11,7 @@ import { ChevronDownIcon, PauseIcon, PlayIcon } from '../../ui/icons'
 import { LicenseBadge } from '../../ui/LicenseBadge'
 import { RatingControl } from '../../ui/RatingControl'
 import { ScoreBreakdown } from '../../ui/ScoreBreakdown'
-import { searchStrings } from './strings'
+import { importSourceName, searchStrings } from './strings'
 import { STRONG_TAG_SCORE } from './tags'
 import styles from './ResultRow.module.css'
 
@@ -21,7 +21,7 @@ const percent = (value: number) => Math.round(Math.min(1, Math.max(0, value)) * 
 
 export interface ResultRowProps {
   item: SearchItem
-  /** The track was imported from Jamendo for this search. */
+  /** The track was imported (from Jamendo or Freesound) for this search. */
   isNew?: boolean
   /** Show the rating control. Off in a search by reference song, which has no ratings. */
   rateable?: boolean
@@ -78,7 +78,7 @@ export function ResultRow({ item, isNew = false, rateable = true, onOpen, onRate
             {item.artist ? r.byArtist(item.artist) : r.unknownArtist}
           </span>
           {isNew ? (
-            <span className={styles.newChip} title={r.newHint}>
+            <span className={styles.newChip} title={r.newHint(importSourceName(item.source))}>
               {r.isNew}
             </span>
           ) : null}

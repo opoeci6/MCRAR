@@ -26,6 +26,7 @@ def test_list_is_empty_with_the_known_names(tmp_path: Path) -> None:
     assert body["items"] == []
     assert [k["name"] for k in body["known"]] == [
         "jamendo_client_id",
+        "freesound_api_key",
         *(f"llm_api_key_{p}" for p in PRESET_IDS),
     ]
     assert all(k["description"] for k in body["known"])

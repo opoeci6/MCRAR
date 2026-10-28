@@ -1,3 +1,4 @@
+import { trackFeatureStrings } from '../../features/track/strings'
 import { UI_LOCALE } from '../../strings'
 
 /** Text of the Library page. Add this page's strings here, not in src/strings.ts. */
@@ -16,7 +17,7 @@ export const libraryStrings = {
     embedded: (model: string, count: number) => `${count} embedded with ${model}`,
     noEmbeddings: 'No tracks are embedded yet. Use "Re-embed missing tracks" to enable text search.',
     none: 'none',
-    sourceNames: { jamendo: 'Jamendo', local: 'Local folders' } as Record<string, string>,
+    sourceNames: { ...trackFeatureStrings.sourceNames, local: 'Local folders' } as Record<string, string>,
   },
 
   tracks: {
@@ -25,10 +26,9 @@ export const libraryStrings = {
     filterSource: 'Source',
     filterRisk: 'Licence risk',
     any: 'Any',
-    sourceOptions: [
-      { value: 'jamendo', label: 'Jamendo' },
-      { value: 'local', label: 'Local folder' },
-    ],
+    sourceOptions: Object.entries({ ...trackFeatureStrings.sourceNames, local: 'Local folder' }).map(
+      ([value, label]) => ({ value, label }),
+    ),
     riskOptions: [
       { value: 'green', label: 'Safe' },
       { value: 'amber', label: 'Check terms' },
@@ -63,6 +63,7 @@ export const libraryStrings = {
     heading: 'Add music',
     tabs: 'Ways to add music',
     jamendo: 'Jamendo',
+    freesound: 'Freesound',
     local: 'Local folder',
     maintenance: 'Maintenance',
   },
@@ -84,6 +85,49 @@ export const libraryStrings = {
     embed: 'Also embed the tracks for text search',
     embedHint: 'Takes longer. You can do it later with "Re-embed missing tracks".',
     submit: 'Add from Jamendo',
+    starting: 'Starting',
+  },
+
+  freesound: {
+    intro:
+      "Music, loops and ambience from Freesound. Short sound effects aren't supported yet. The licence of each sound is kept with it.",
+    search: 'Search words',
+    searchHint: 'What to look for, for example "ambient pad". Optional if you give tags.',
+    tags: 'Freesound tags',
+    tagsHint:
+      'Comma separated, for example "loop, ambient". Use letters a to z, digits, "-" and "_". Optional if you give search words.',
+    tagInvalid: 'Tags can only use lowercase letters, digits, "-" and "_".',
+    tagTooMany: 'Use at most 10 tags.',
+    searchTooLong: 'Use at most 200 characters.',
+    needQueryOrTag: 'Enter search words or at least one tag.',
+    licenses: 'Licences',
+    licenseNames: {
+      cc0: 'CC0 (public domain)',
+      by: 'CC BY (credit the author)',
+      'by-nc': 'CC BY-NC (no commercial use)',
+      'sampling+': 'Sampling+ (only transformed use)',
+    } as Record<string, string>,
+    licensesRequired: 'Choose at least one licence.',
+    durationMin: 'Shortest sound (seconds)',
+    durationMax: 'Longest sound (seconds)',
+    durationInvalid: 'Enter a number of seconds, 0 or more.',
+    durationMaxTooBig: 'Enter at most 3600 seconds.',
+    durationOrder: 'The longest sound must not be shorter than the shortest.',
+    sort: 'Order by',
+    sortOptions: [
+      { value: 'score', label: 'Best match' },
+      { value: 'downloads_desc', label: 'Most downloaded' },
+      { value: 'rating_desc', label: 'Highest rated' },
+      { value: 'created_desc', label: 'Newest' },
+      { value: 'duration_desc', label: 'Longest' },
+      { value: 'duration_asc', label: 'Shortest' },
+    ],
+    limit: 'Number of sounds',
+    limitHint: 'From 1 to 500.',
+    limitInvalid: 'Enter a whole number from 1 to 500.',
+    embed: 'Also embed the sounds for text search',
+    embedHint: 'Takes longer. You can do it later with "Re-embed missing tracks".',
+    submit: 'Add from Freesound',
     starting: 'Starting',
   },
 
@@ -124,6 +168,7 @@ export const libraryStrings = {
     panel: 'Job progress',
     kindNames: {
       'ingest-jamendo': 'Add from Jamendo',
+      'ingest-freesound': 'Freesound import',
       'ingest-local': 'Add from folder',
       'reprocess-embed': 'Re-embed missing tracks',
       'reprocess-tag': 'Re-tag catalog',
@@ -189,6 +234,7 @@ export const libraryStrings = {
       if (params.path) parts.push(String(params.path))
       if (params.tags) parts.push(`tags: ${list(params.tags)}`)
       if (params.search) parts.push(`search: ${String(params.search)}`)
+      if (params.query) parts.push(`search: ${String(params.query)}`)
       if (params.text) parts.push(`search: ${String(params.text)}`)
       if (params.license) parts.push(String(params.license))
       if (params.what) parts.push(String(params.what))

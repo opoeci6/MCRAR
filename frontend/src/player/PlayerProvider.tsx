@@ -9,8 +9,8 @@ import type { PlayableTrack, PlayerApi, PlayerTime, PlayOptions } from './player
 
 /**
  * Owns the one `<audio>` element of the app. The source is the backend's stream URL, which
- * redirects to the CDN (Jamendo) or serves the local file with Range support, so the browser
- * does the buffering and seeking and no audio byte passes through JavaScript.
+ * redirects to the CDN (Jamendo) or the preview (Freesound), or serves the local file with Range
+ * support, so the browser does the buffering and seeking and no audio byte passes through JavaScript.
  * Needs a ToastProvider above it (a playback error shows "Couldn't play this track").
  */
 export function PlayerProvider({ children }: { children: ReactNode }) {

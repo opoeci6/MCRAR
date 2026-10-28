@@ -9,6 +9,7 @@ import { request } from './client'
 import type {
   AnalyzeResponse,
   CreditsFormat,
+  FreesoundIngestRequest,
   Health,
   JamendoIngestRequest,
   Job,
@@ -32,6 +33,7 @@ import type {
   SceneLabel,
   SceneLabelRequest,
   SearchImportRequest,
+  SearchImportSources,
   SearchRequest,
   SearchResponse,
   SecretsList,
@@ -70,9 +72,13 @@ export const search = (body: SearchRequest, o?: CallOptions) =>
 export const rerankSearch = (body: SearchRequest, o?: CallOptions) =>
   request<SearchResponse>('POST', '/api/search/rerank', { ...o, body })
 
-/** Starts a job that imports Jamendo candidates for a search. Re-run the search when it is done. */
+/** Starts a job that imports Jamendo and/or Freesound candidates for a search. Re-run the search when it is done. */
 export const importForSearch = (body: SearchImportRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/search/import', { ...o, body })
+
+/** The sources a search import can use now (those with their key or client id set). */
+export const getImportSources = (o?: CallOptions) =>
+  request<SearchImportSources>('GET', '/api/search/import/sources', o)
 
 // -- reference song -------------------------------------------------------------------------
 
@@ -108,7 +114,7 @@ export const listTracks = (params: TrackListParams = {}, o?: CallOptions) =>
 export const getTrack = (trackId: number, o?: CallOptions) =>
   request<TrackDetail>('GET', `/api/tracks/${id(trackId)}`, o)
 
-/** The `src` of an <audio> element. The backend redirects Jamendo to its CDN or serves the file. */
+/** The `src` of an <audio> element. The backend redirects Jamendo to its CDN and Freesound to its preview, or serves the file. */
 export const trackStreamUrl = (trackId: number) => `/api/tracks/${id(trackId)}/stream`
 
 /** Download link for the credits of one track. */
@@ -225,7 +231,10 @@ export const deleteSecret = (name: string, o?: CallOptions) =>
 export const ingestJamendo = (body: JamendoIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/jamendo', { ...o, body })
 
-export const ingestLocal = (body: LocalIngestRequest, o?: CallOptions) =>
+export const ingestFreesound = (body: FreesoundIngestRequest, o?: CallOptions) =>
+  request<{ job: Job }>('POST', '/api/ingest/freesound', { ...o, body })
+
+export const ingestLocal =(body: LocalIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/local', { ...o, body })
 
 export const reprocess = (body: ReprocessRequest, o?: CallOptions) =>

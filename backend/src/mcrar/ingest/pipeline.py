@@ -5,9 +5,9 @@ Design
   today, embeddings in M3a) are skipped per track when ``Stage.is_current`` says so, unless
   ``force``. Audio is obtained at most once per track, and not at all when every stage is
   current.
-- Jamendo audio is downloaded by a small thread pool up to ``PREFETCH`` tracks ahead of the one
-  being analysed, held in memory only. Analysis and every database write stay on the calling
-  thread.
+- Jamendo and Freesound audio (Freesound: the mp3 preview) is downloaded by a small thread pool
+  up to ``PREFETCH`` tracks ahead of the one being analysed, held in memory only. Analysis and
+  every database write stay on the calling thread.
 - Per-track failures are logged (``ingest_log``) and the run goes on. Auth and rate-limit errors
   (and a failing search) abort the run: the exception is re-raised after cleanup, with the
   partial :class:`IngestReport` attached as its ``report`` attribute. Ctrl+C returns the partial
@@ -26,7 +26,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass, field, fields
 from pathlib import Path
@@ -39,7 +39,13 @@ from mcrar.licensing import LicenseInfo, parse_license
 from mcrar.ml.embedders.base import Embedder
 from mcrar.ml.embedders.source import EMBED_MAX_SECONDS, embed_audio_source
 from mcrar.ml.errors import EmbedderMemoryError
-from mcrar.sources import JamendoAuthError, JamendoRateLimitError, SourceTrack
+from mcrar.sources import (
+    FreesoundAuthError,
+    FreesoundRateLimitError,
+    JamendoAuthError,
+    JamendoRateLimitError,
+    SourceTrack,
+)
 from mcrar.sources.local_folder import iter_audio_files, scan_local
 
 logger = logging.getLogger(__name__)
@@ -52,7 +58,13 @@ NO_STREAM = "no audio stream"
 INTERRUPTED = "interrupted"
 REFRESH_BATCH = 50  # Jamendo tracks whose stream URLs are refreshed with one API request
 # Errors that end the run instead of failing one track: they would hit every following track.
-_ABORT_ERRORS = (JamendoAuthError, JamendoRateLimitError, EmbedderMemoryError)
+_ABORT_ERRORS = (
+    JamendoAuthError,
+    JamendoRateLimitError,
+    FreesoundAuthError,
+    FreesoundRateLimitError,
+    EmbedderMemoryError,
+)
 _POLL_S = 0.25
 
 Audio = bytes | Path
@@ -189,6 +201,29 @@ class JamendoQuery:
     def to_kwargs(self) -> dict[str, Any]:
         """The ``JamendoClient.search_tracks`` keyword arguments that are actually set."""
         return {f.name: v for f in fields(self) if (v := getattr(self, f.name))}
+
+
+@dataclass(frozen=True)
+class FreesoundQuery:
+    """One Freesound search for :func:`ingest_freesound_queries` (the arguments of
+    ``FreesoundClient.search_tracks``; a ``None`` duration bound is open)."""
+
+    query: str = ""
+    licenses: Sequence[str] = ("cc0", "by")
+    duration_min_s: float | None = 10.0
+    duration_max_s: float | None = 600.0
+    music_like: bool = True
+    sort: str = "score"
+
+    def to_kwargs(self) -> dict[str, Any]:
+        return {
+            "query": self.query,
+            "licenses": list(self.licenses),
+            "duration_min_s": self.duration_min_s,
+            "duration_max_s": self.duration_max_s,
+            "music_like": self.music_like,
+            "sort": self.sort,
+        }
 
 
 ProgressCallback = Callable[[IngestEvent], None]
@@ -448,6 +483,42 @@ def _drive(
     return aborted, error
 
 
+def _ingest_remote(
+    source: str,
+    client: Any,
+    repo: CatalogRepository,
+    find_tracks: Callable[[], Iterator[SourceTrack] | Sequence[SourceTrack]],
+    *,
+    total: int | None,
+    force: bool,
+    stages: Sequence[Stage] | None,
+    on_progress: ProgressCallback | None,
+) -> IngestReport:
+    """Store the tracks ``find_tracks()`` yields, then run the stages on their downloaded audio.
+
+    ``find_tracks`` is called inside the guarded block (a failing search aborts the run with
+    its report attached) and iterated lazily. The shared body of the Jamendo and Freesound runs.
+    """
+    run = _Run(source, repo, _default_stages(stages), force, total, on_progress)
+    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
+
+    def make_items() -> Iterator[_Prepared]:
+        for src in find_tracks():
+            item = run.prepare(src, parse_license(src.license_url))
+            if any(needs_audio(s) for s in item.needs):
+                _start_fetch(executor, client, item, src)
+            yield item
+
+    aborted, error = _drive(run, executor, make_items)
+    return _finish(run, aborted, error)
+
+
+def _by_ids(client: Any, wanted: Sequence[str]) -> Iterator[SourceTrack]:
+    """The tracks of ``client.get_tracks`` for ``wanted``, looked up ``REFRESH_BATCH`` at a time."""
+    for start in range(0, len(wanted), REFRESH_BATCH):
+        yield from client.get_tracks(wanted[start : start + REFRESH_BATCH])
+
+
 def ingest_jamendo(
     client: Any,
     repo: CatalogRepository,
@@ -465,18 +536,16 @@ def ingest_jamendo(
     report with ``aborted="interrupted"``.
     """
     kwargs = query.to_kwargs() if isinstance(query, JamendoQuery) else dict(query)
-    run = _Run("jamendo", repo, _default_stages(stages), force, limit, on_progress)
-    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
-
-    def make_items() -> Iterator[_Prepared]:
-        for src in client.search_tracks(**kwargs, limit=limit):
-            item = run.prepare(src, parse_license(src.license_url))
-            if any(needs_audio(s) for s in item.needs):
-                _start_fetch(executor, client, item, src)
-            yield item
-
-    aborted, error = _drive(run, executor, make_items)
-    return _finish(run, aborted, error)
+    return _ingest_remote(
+        "jamendo",
+        client,
+        repo,
+        lambda: client.search_tracks(**kwargs, limit=limit),
+        total=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
 
 
 def ingest_jamendo_ids(
@@ -495,19 +564,16 @@ def ingest_jamendo_ids(
     and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
     wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))
-    run = _Run("jamendo", repo, _default_stages(stages), force, len(wanted), on_progress)
-    executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
-
-    def make_items() -> Iterator[_Prepared]:
-        for start in range(0, len(wanted), REFRESH_BATCH):
-            for src in client.get_tracks(wanted[start : start + REFRESH_BATCH]):
-                item = run.prepare(src, parse_license(src.license_url))
-                if any(needs_audio(s) for s in item.needs):
-                    _start_fetch(executor, client, item, src)
-                yield item
-
-    aborted, error = _drive(run, executor, make_items)
-    return _finish(run, aborted, error)
+    return _ingest_remote(
+        "jamendo",
+        client,
+        repo,
+        lambda: _by_ids(client, wanted),
+        total=len(wanted),
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
 
 
 def ingest_jamendo_queries(
@@ -529,17 +595,43 @@ def ingest_jamendo_queries(
     upsert or download and does not count. The progress total is ``max_new`` (an upper bound).
     Failures, aborts and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
+    return _ingest_new_from_queries(
+        "jamendo",
+        client,
+        repo,
+        [lambda q=q: client.search_tracks(**q.to_kwargs(), limit=scan_limit) for q in queries],
+        max_new=max_new,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def _ingest_new_from_queries(
+    source: str,
+    client: Any,
+    repo: CatalogRepository,
+    searches: Sequence[Callable[[], Iterable[SourceTrack]]],
+    *,
+    max_new: int,
+    force: bool,
+    stages: Sequence[Stage] | None,
+    on_progress: ProgressCallback | None,
+) -> IngestReport:
+    """The shared body of :func:`ingest_jamendo_queries` and :func:`ingest_freesound_queries`:
+    take the first ``max_new`` tracks of ``source`` that are not in the catalog from ``searches``
+    (each a function that starts one search, called only when the earlier ones ran out)."""
     if max_new < 1:
         raise ValueError("max_new must be at least 1")
-    run = _Run("jamendo", repo, _default_stages(stages), force, max_new, on_progress)
+    run = _Run(source, repo, _default_stages(stages), force, max_new, on_progress)
     executor = ThreadPoolExecutor(max_workers=FETCH_WORKERS, thread_name_prefix="mcrar-fetch")
 
     def make_items() -> Iterator[_Prepared]:
         taken = 0
         seen_ids: set[str] = set()
-        for query in queries:
-            for src in client.search_tracks(**query.to_kwargs(), limit=scan_limit):
-                if src.source_id in seen_ids or repo.get_track_by_source("jamendo", src.source_id):
+        for search in searches:
+            for src in search():
+                if src.source_id in seen_ids or repo.get_track_by_source(source, src.source_id):
                     continue
                 seen_ids.add(src.source_id)
                 item = run.prepare(src, parse_license(src.license_url))
@@ -552,6 +644,130 @@ def ingest_jamendo_queries(
 
     aborted, error = _drive(run, executor, make_items)
     return _finish(run, aborted, error)
+
+
+def combine_reports(reports: Sequence[IngestReport]) -> IngestReport:
+    """One report for runs done one after the other: the counts, failures, elapsed time and new
+    track ids add up (in run order); ``aborted`` is the first run's reason, if any."""
+    return IngestReport(
+        seen=sum(r.seen for r in reports),
+        new=sum(r.new for r in reports),
+        updated=sum(r.updated for r in reports),
+        processed=sum(r.processed for r in reports),
+        skipped=sum(r.skipped for r in reports),
+        failed=sum(r.failed for r in reports),
+        failures=[f for r in reports for f in r.failures],
+        elapsed_s=sum(r.elapsed_s for r in reports),
+        aborted=next((r.aborted for r in reports if r.aborted), None),
+        new_track_ids=[i for r in reports for i in r.new_track_ids],
+    )
+
+
+# --------------------------------------------------------------------------------------
+# Freesound
+# --------------------------------------------------------------------------------------
+
+
+def ingest_freesound(
+    client: Any,
+    repo: CatalogRepository,
+    *,
+    query: str = "",
+    tags: Sequence[str] = (),
+    licenses: Sequence[str] = ("cc0", "by"),
+    duration_min_s: float = 10.0,
+    duration_max_s: float = 600.0,
+    sort: str = "score",
+    limit: int = 50,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest up to ``limit`` music-like sounds matching the filters from a ``FreesoundClient``.
+
+    The audio is the sound's mp3 preview. Raises ``FreesoundAuthError`` /
+    ``FreesoundRateLimitError`` (or whatever the search itself raised, such as a ValueError
+    for a bad tag) after cleanup; the partial report is available as ``exc.report``. Ctrl+C
+    returns a report with ``aborted="interrupted"``.
+    """
+    return _ingest_remote(
+        "freesound",
+        client,
+        repo,
+        lambda: client.search_tracks(
+            query=query,
+            tags=list(tags),
+            licenses=list(licenses),
+            duration_min_s=duration_min_s,
+            duration_max_s=duration_max_s,
+            sort=sort,
+            limit=limit,
+        ),
+        total=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def ingest_freesound_queries(
+    client: Any,
+    repo: CatalogRepository,
+    queries: Sequence[FreesoundQuery],
+    *,
+    limit: int,
+    scan_limit: int = 150,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the first ``limit`` sounds that are not in the catalog yet from ``queries``.
+
+    Works like :func:`ingest_jamendo_queries`: the queries run in order, each scanning up to
+    ``scan_limit`` results (one page of the API by default), lazily; a sound that is already in
+    the catalog or came up in an earlier query of this run is skipped before any upsert or
+    download and does not count. The progress total is ``limit`` (an upper bound).
+    """
+    if limit < 1:
+        raise ValueError("limit must be at least 1")
+    return _ingest_new_from_queries(
+        "freesound",
+        client,
+        repo,
+        [lambda q=q: client.search_tracks(**q.to_kwargs(), limit=scan_limit) for q in queries],
+        max_new=limit,
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
+
+
+def ingest_freesound_ids(
+    client: Any,
+    repo: CatalogRepository,
+    ids: Sequence[str | int],
+    *,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest the Freesound sounds with these ids (looked up with ``client.get_tracks``).
+
+    ``stages=[]`` stores the metadata and licence only. Ids Freesound no longer knows (or that
+    have no preview) are simply not seen. Failures, aborts and Ctrl+C behave as in
+    :func:`ingest_freesound`.
+    """
+    wanted = list(dict.fromkeys(str(i).strip() for i in ids if str(i).strip()))
+    return _ingest_remote(
+        "freesound",
+        client,
+        repo,
+        lambda: _by_ids(client, wanted),
+        total=len(wanted),
+        force=force,
+        stages=stages,
+        on_progress=on_progress,
+    )
 
 
 # --------------------------------------------------------------------------------------
@@ -585,6 +801,7 @@ def reprocess_catalog(
     *,
     stages: Sequence[Stage],
     client: Any = None,
+    freesound_client: Any = None,
     source: str | None = None,
     force: bool = False,
     limit: int | None = None,
@@ -596,9 +813,10 @@ def reprocess_catalog(
     ``limit`` caps the number of tracks that actually need work. Jamendo tracks need a
     ``client``: their stream URLs are refreshed with ``client.get_tracks`` in batches of
     ``REFRESH_BATCH``, just before the downloads (the stored URLs carry expiring tokens), and
-    audio is downloaded by the same prefetching pool as :func:`ingest_jamendo`. Local tracks
-    are read from their stored ``local_path``. Failures, aborts and Ctrl+C behave as in
-    :func:`ingest_jamendo`.
+    audio is downloaded by the same prefetching pool as :func:`ingest_jamendo`. Freesound tracks
+    need a ``freesound_client``: it downloads the stored preview URL (which does not expire, so
+    there is no refresh). Local tracks are read from their stored ``local_path``. Failures,
+    aborts and Ctrl+C behave as in :func:`ingest_jamendo`.
     """
     stage_list = list(stages)
     if not stage_list:
@@ -618,6 +836,19 @@ def reprocess_catalog(
                 item.error = "track no longer available from Jamendo"
             else:
                 _start_fetch(executor, client, item, fresh[track.source_id])
+        elif track.source == "freesound":
+            # The stored preview URL is stable: no refresh, the client only downloads it.
+            if freesound_client is None:
+                item.error = "no Freesound client to download the preview"
+            else:
+                preview = SourceTrack(
+                    source=track.source,
+                    source_id=track.source_id,
+                    title=track.title or track.source_id,
+                    artist=track.artist,
+                    stream_url=track.stream_url,
+                )
+                _start_fetch(executor, freesound_client, item, preview)
         elif track.source == "local" and track.local_path:
             item.get_audio = lambda p=Path(track.local_path): p
         elif track.source == "local":

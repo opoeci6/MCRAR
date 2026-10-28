@@ -22,6 +22,29 @@
   gap: var(--space-3);
 }
 
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 550;
+}
+
+.error {
+  font-size: var(--text-xs);
+  color: var(--risk-red-fg);
+  font-weight: 550;
+}
+
 .submit {
   display: flex;
   align-items: center;

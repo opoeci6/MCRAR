@@ -76,7 +76,7 @@ def test_everything_is_resolved_and_validated() -> None:
     [
         ({"max_risk": "purple"}, "max_risk must be one of: green, amber, red"),
         ({"vocal": "choir"}, "vocal must be one of: vocal, instrumental"),
-        ({"sources": ["jamendo", "spotify"]}, "source must be one of: jamendo, local"),
+        ({"sources": ["jamendo", "spotify"]}, "source must be one of: jamendo, freesound, local"),
         ({"genres": ["polka"]}, "unknown genre label 'polka'; choose from: blues"),
         ({"moods": ["jazz"]}, "unknown moodtheme label 'jazz'"),
         ({"bpm": (120, 80)}, "bpm_min must not exceed bpm_max"),
@@ -95,6 +95,11 @@ def test_the_cli_spelling_of_the_names() -> None:
         build_filters(VOCAB, max_risk="purple", arg=flag_name)
     with pytest.raises(ValueError, match="--source must be one of"):
         build_filters(VOCAB, sources=[""], arg=flag_name)
+
+
+def test_freesound_is_an_accepted_source() -> None:
+    filters = build_filters(VOCAB, sources=["freesound", "jamendo", "freesound"])
+    assert filters.sources == ("freesound", "jamendo")
 
 
 def test_the_sources_match_the_cli() -> None:

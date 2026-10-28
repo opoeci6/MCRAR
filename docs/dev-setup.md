@@ -116,6 +116,22 @@ Secrets: `MCRAR_SECRET_<NAME>` environment variables always win over the configu
 Manage them with `mcrar secrets set|list|delete`. The `keyring` backend is opt-in
 (`uv sync --extra keyring`) because it writes to Windows Credential Manager.
 
+### API keys for the catalog sources
+
+- **Jamendo** needs a client id: `mcrar secrets set jamendo_client_id` (or Settings → API keys).
+- **Freesound** needs an API key (free, **for non-commercial use only**):
+  1. Create a free account at <https://freesound.org> and sign in.
+  2. Apply for an API key at <https://freesound.org/apiv2/apply> (use the "Client secret/Api key"
+     value it shows).
+  3. Store it with
+     `scripts/with-env.sh uv run --directory backend mcrar secrets set freesound_api_key`, or under
+     Settings → API keys once the settings page has a Freesound field (the API already accepts
+     `PUT /api/secrets/freesound_api_key`).
+     `MCRAR_SECRET_FREESOUND_API_KEY` in the environment works too. It lands in
+     `.secrets/secrets.toml`, never in a URL, a log or the job params.
+  4. Try it: `mcrar ingest freesound --query "calm ambient pad" --limit 5`. Freesound allows about
+     60 requests a minute and 2,000 a day; the command prints today's request count.
+
 ## Never install globally
 
 Rules for everyone, including agents:

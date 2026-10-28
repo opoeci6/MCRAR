@@ -179,6 +179,56 @@ def test_a_track_gone_from_jamendo_is_404(tmp_path: Path) -> None:
         assert "no longer available" in response.json()["detail"]
 
 
+def freesound_track(client, url: str | None, n: int = 1) -> int:
+    return client.repo.upsert_track(
+        TrackRecord(source="freesound", source_id=str(n), title="Rain", stream_url=url)
+    )
+
+
+def test_a_freesound_stream_redirects_to_the_stored_preview_without_any_lookup(
+    tmp_path: Path,
+) -> None:
+    preview = "https://cdn.freesound.org/previews/1/1_1-hq.mp3"
+    jamendo = FakeStreamJamendo(error=RuntimeError("must not be called"))
+    # no Freesound key (the factory raises) and a Jamendo client that fails if asked
+    with make_client(tmp_path, jamendo=jamendo) as client:
+        track_id = freesound_track(client, preview)
+        response = client.get(f"/api/tracks/{track_id}/stream", follow_redirects=False)
+        assert response.status_code == 307 and response.headers["location"] == preview
+        assert response.content == b""
+        assert jamendo.lookups == []
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        None,
+        "",
+        "http://cdn.freesound.org/previews/1/p.mp3",  # not https
+        "https://evil.example/previews/1/p.mp3",
+        "https://freesound.org.evil.example/p.mp3",
+        "https://notfreesound.org/p.mp3",
+        "https://cdn.freesound.org@evil.example/p.mp3",
+        "file:///etc/passwd",
+        "javascript:alert(1)",
+    ],
+)
+def test_a_freesound_stream_to_another_host_is_404(tmp_path: Path, url: str | None) -> None:
+    with make_client(tmp_path) as client:
+        track_id = freesound_track(client, url)
+        response = client.get(f"/api/tracks/{track_id}/stream", follow_redirects=False)
+        assert response.status_code == 404
+        assert "location" not in response.headers
+
+
+def test_a_freesound_stream_on_the_bare_domain_or_a_subdomain_is_accepted(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        for n, url in enumerate(("https://freesound.org/p.mp3", "https://a.b.freesound.org/p.mp3")):
+            track_id = freesound_track(client, url, n=n + 1)
+            response = client.get(f"/api/tracks/{track_id}/stream", follow_redirects=False)
+            assert response.status_code == 307 and response.headers["location"] == url
+
+
 def local_track(client, tmp_path: Path, name: str = "a.wav") -> tuple[int, Path]:
     wav = write_wav(tmp_path / "audio" / name, seconds=1.0)
     track_id = client.repo.upsert_track(

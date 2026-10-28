@@ -4,7 +4,7 @@
  */
 
 export type Risk = 'green' | 'amber' | 'red' | 'unknown'
-export type Source = 'jamendo' | 'local'
+export type Source = 'jamendo' | 'freesound' | 'local'
 export type Vocal = 'vocal' | 'instrumental'
 export type CreditsFormat = 'txt' | 'md' | 'json'
 /** 0 = not a fit, 1 = OK, 2 = good fit. */
@@ -633,13 +633,55 @@ export interface JamendoIngestRequest {
   force?: boolean
 }
 
-/** Searches Jamendo for the text of a search and imports the candidates found. */
+export type FreesoundLicense = 'cc0' | 'by' | 'by-nc' | 'sampling+'
+
+export type FreesoundSort =
+  | 'score'
+  | 'duration_desc'
+  | 'duration_asc'
+  | 'created_desc'
+  | 'created_asc'
+  | 'downloads_desc'
+  | 'downloads_asc'
+  | 'rating_desc'
+  | 'rating_asc'
+
+/** Imports music-like sounds from Freesound; needs a query or at least one tag. */
+export interface FreesoundIngestRequest {
+  /** Up to 200 characters. */
+  query?: string
+  /** Up to 10, each of a-z, 0-9, `_` and `-`. */
+  tags?: string[]
+  /** At least one; the backend defaults to cc0 and by. */
+  licenses?: FreesoundLicense[]
+  /** The backend defaults to 10. */
+  duration_min_s?: number
+  /** Up to 3600; the backend defaults to 600. */
+  duration_max_s?: number
+  sort?: FreesoundSort
+  /** 1 to 500; the backend defaults to 50. */
+  limit?: number
+  embed?: boolean
+  force?: boolean
+}
+
+/** A remote source a search import can add tracks from. */
+export type ImportSource = 'jamendo' | 'freesound'
+
+/** Searches Jamendo and/or Freesound for the text of a search and imports the candidates found. */
 export interface SearchImportRequest {
   text: string
   /** The filters of the search, the same object that `SearchRequest` takes. */
   filters?: SearchFilters
-  /** 1 to 100; the backend defaults to 50. */
+  /** 1 to 100 new tracks in all, split between the sources; the backend defaults to 50. */
   limit?: number
+  /** Omitted: every source whose secret is set. A list uses exactly those (503 when one is missing). */
+  sources?: ImportSource[]
+}
+
+/** GET /api/search/import/sources: the sources whose secret is set, never a value. */
+export interface SearchImportSources {
+  sources: ImportSource[]
 }
 
 export interface LocalIngestRequest {

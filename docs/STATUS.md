@@ -24,13 +24,14 @@ Last updated: 2026-10-26.
 | M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
 | QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
+| M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
 | M11 | Not started | — | See `docs/PLAN.md` §5 |
 
-Test suite on `dev`, counted after the fixes of 2026-10-27 (§3.15):
-- Backend, default env: 1,927 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 1,924 passed, 31 skipped.
+Test suite on `dev`, counted after M12 (2026-10-28):
+- Backend, default env: 2,223 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,220 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 423 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 458 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -554,6 +555,54 @@ The owner's list from labelling, with their choices (plan of 2026-10-27, branch 
   decoding was dropped: it would save at most about 0.2 s and change the catalog vectors.
 - **Torch caches** are redirected into `.cache/` (§5.2).
 
+### 3.16 Freesound (M12, 2026-10-28)
+- **Why:** M8 (Spotify) is on hold; Freesound has a free key and CC licences, and its previews may
+  be fetched and analysed, so it feeds the catalog like Jamendo.
+- **Owner's scope:**
+  - Music-like sounds only: the Music and Soundscapes categories, 10 to 600 s by default.
+  - **Short sound effects are a future enhancement.** They need a general-audio model (the
+    default CLAP is music and speech, MuQ-MuLan is music only) and results without BPM, key or
+    genre.
+  - "Search for more" comes before SFX.
+- **Terms** (freesound.org/help/tos_api):
+  - Free for non-commercial use only, which matches the README note planned for the end.
+  - One key per application, not to be shared, so each user enters their own
+    (`freesound_api_key`; Settings or `mcrar secrets set`).
+  - Apps may process and analyse content and keep limited intermediate copies.
+  - No full copies of the database.
+- **How it works:**
+  - Source code: `sources/freesound.py` (header-only token, redaction, `Retry-After`, a 7-day
+    response cache, a daily usage counter).
+  - Ingest: `ingest_freesound`, `ingest_freesound_ids` and `ingest_freesound_queries`.
+    `POST /api/ingest/freesound` starts a job of kind `ingest-freesound`, also as
+    `mcrar ingest freesound`, from the Library's Freesound tab.
+  - Playback redirects to the stored preview on `freesound.org` only.
+  - Audio is the hq mp3 preview, held in memory and never written to disk. Originals need a
+    Freesound login, so Download opens the sound page.
+- **Licences:**
+  - CC0 and CC BY are green and imported by default; CC BY-NC (red) only when chosen.
+  - Sampling+ is a new family, `sampling-plus`, **red**: it allows only transformed use, not a
+    sound as-is in a game.
+  - `gen_ai_preference` is stored in `source_tags`, but doesn't block ingest: our embeddings are
+    for search, not generative training. All but 3 of 60 sampled sounds said
+    "no-additional-preferences".
+- **Music-like filter:** `category:("Music" OR "Soundscapes")`. On "calm ambient loop" the
+  categories seen were Music 47, Sound effects 7, Soundscapes 5 and Instrument samples 1. The
+  first tag-based filter let 9 sound effects in 100 through; the category filter let none.
+- **"Search for more":**
+  - It uses every source that has a key, in one `ingest-query` job: Jamendo first, up to half
+    the limit, then Freesound with the rest.
+  - Freesound queries are the LLM keywords and then the text, at most 3; CC0 and BY, plus BY-NC
+    only when the search allows red.
+  - `GET /api/search/import/sources` tells the page which sources are usable, and the wording
+    follows it.
+- **Checked with real keys** on a catalog copy (port 8010):
+  - a 20-sound import of "calm ambient loop": 20 new, none failed, 12 CC BY 4.0 and 8 CC0, all
+    embedded (default model only) and tagged;
+  - previews play from `cdn.freesound.org`;
+  - "calm piano loop for a menu screen" ranked a Freesound piano loop 4th among Jamendo tracks;
+  - "search for more" with limit 4 gave 2 Jamendo and 2 Freesound in 26 s.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -655,6 +704,12 @@ These can follow in any order:
 - **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with
   the collaborator; see §3.1 for the API facts and their choices. It includes LLM query generation
   for Spotify, moved from M7.
+- **Freesound follow-ups (M12):**
+  - Sound effects, as a future milestone: a general-audio model and SFX-specific results.
+  - Imports embed with the default model only. "Re-embed missing tracks" adds the others, as
+    for Jamendo.
+  - Jamendo's "search for more" terms can be loose. "Gentle harp lullaby" brought two unrelated
+    Jamendo tracks, while Freesound's matched.
 - **Other platforms** (researched 2026-10-27; numbers marked "reported" are from third-party
   pages). MCRAR can only analyse audio it may fetch, so a platform either feeds the catalog or is a
   link-out section like Spotify.

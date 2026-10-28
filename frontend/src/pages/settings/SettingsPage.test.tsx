@@ -410,11 +410,14 @@ describe('Settings: search tuning', () => {
   })
 })
 
-/** The "API keys" section once it has loaded its status. */
-async function jamendoKeys() {
+/** The block of one key in the "API keys" section (its heading and everything under it). */
+async function keyField(title: string) {
   const region = await screen.findByRole('region', { name: 'API keys' })
-  return within(region)
+  const heading = await within(region).findByRole('heading', { name: title })
+  return within(heading.parentElement!)
 }
+
+const jamendoKeys = () => keyField('Jamendo client id')
 
 describe('Settings: API keys', () => {
   it('saves the key, clears the input and never shows the value', async () => {
@@ -501,6 +504,45 @@ describe('Settings: API keys', () => {
     const keys = await jamendoKeys()
     expect(await keys.findByText('Set (environment variable)')).toBeInTheDocument()
     expect(keys.getByRole('button', { name: 'Remove key' })).toBeDisabled()
+  })
+
+  it('shows the Freesound key field and saves it under its own name', async () => {
+    const user = userEvent.setup()
+    let stored = false
+    const api = stubApi({
+      ...routes(),
+      'GET /api/secrets': () => ({
+        backend: 'file',
+        items: stored ? [{ name: 'freesound_api_key', source: 'file' }] : [],
+        known: [],
+      }),
+      'PUT /api/secrets/freesound_api_key': () => {
+        stored = true
+        return new Response(null, { status: 204 })
+      },
+    })
+    renderWithProviders(<SettingsPage />)
+    const keys = await keyField('Freesound API key')
+    expect(await keys.findByText('Not set')).toBeInTheDocument()
+    expect(keys.getByText(/free for non-commercial use/)).toBeInTheDocument()
+    expect(keys.getByRole('link', { name: /freesound\.org\/apiv2\/apply/ })).toHaveAttribute(
+      'href',
+      'https://freesound.org/apiv2/apply',
+    )
+
+    const input = keys.getByLabelText('API key')
+    expect(input).toHaveAttribute('type', 'password')
+    await user.type(input, 'fs-key-13579')
+    await user.click(keys.getByRole('button', { name: 'Save key' }))
+
+    expect(await keys.findByText('Set (stored in file)')).toBeInTheDocument()
+    expect(putBodies(api, '/api/secrets/freesound_api_key')).toEqual([{ value: 'fs-key-13579' }])
+    expect(putBodies(api, '/api/secrets/jamendo_client_id')).toEqual([])
+    expect(input).toHaveValue('')
+    expect(document.body.textContent).not.toContain('fs-key-13579')
+    expect(screen.getByText('Freesound API key saved.')).toBeInTheDocument()
+    // The Jamendo field is a separate key and stays not set.
+    expect((await jamendoKeys()).getByText('Not set')).toBeInTheDocument()
   })
 })
 

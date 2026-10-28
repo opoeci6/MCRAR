@@ -6,7 +6,14 @@ import json
 from pathlib import Path
 
 import pytest
-from ml_support import FakeEmbedder, FakeJamendo, add_jamendo, add_local, write_wav
+from ml_support import (
+    FakeEmbedder,
+    FakeJamendo,
+    add_freesound,
+    add_jamendo,
+    add_local,
+    write_wav,
+)
 from typer.testing import CliRunner
 
 from mcrar import cli
@@ -17,7 +24,7 @@ from mcrar.config import get_settings
 from mcrar.ingest import pipeline
 from mcrar.ml import MODELS, EmbedderMemoryError, ModelLoadError
 from mcrar.secrets import SecretError
-from mcrar.sources import SourceTrack
+from mcrar.sources import FreesoundError, SourceTrack
 
 runner = CliRunner()
 
@@ -147,7 +154,7 @@ def test_embed_rejects_unknown_models_and_sources(no_torch: None) -> None:
     assert "unknown model 'nope'" in unknown.output
     bad_source = runner.invoke(app, ["embed", "--source", "spotify"])
     assert bad_source.exit_code == 2
-    assert "--source must be one of: jamendo, local" in bad_source.output
+    assert "--source must be one of: jamendo, freesound, local" in bad_source.output
 
 
 # -- mcrar embed ---------------------------------------------------------------------------------
@@ -268,6 +275,52 @@ def test_embed_reports_missing_jamendo_credentials(
     assert result.exit_code == 1
     assert "jamendo_client_id" in result.output and "--source local" in result.output
     assert loader.calls == []  # no model was loaded for nothing
+
+
+def test_embed_source_freesound_downloads_previews_with_the_freesound_client(
+    monkeypatch: pytest.MonkeyPatch, loader: Loader
+) -> None:
+    with open_catalog(get_settings()) as repo:
+        add_freesound(repo, 1)
+        add_freesound(repo, 2)
+        add_jamendo(repo, 9)
+    freesound = FakeJamendo()
+
+    def no_jamendo(settings: object, use_cache: bool) -> None:
+        raise AssertionError("no Jamendo client is needed")
+
+    monkeypatch.setattr(cli, "_freesound_client", lambda settings, use_cache: freesound)
+    monkeypatch.setattr(cli, "_jamendo_client", no_jamendo)
+    result = runner.invoke(app, ["embed", "--models", "clap", "--source", "freesound"])
+    assert result.exit_code == 0, result.output
+    assert "2 processed" in result.output
+    assert sorted(i for i, _ in freesound.fetched) == ["1", "2"] and freesound.get_calls == []
+
+
+def test_embed_reports_a_missing_freesound_key_only_when_it_was_asked_for(
+    monkeypatch: pytest.MonkeyPatch, loader: Loader
+) -> None:
+    with open_catalog(get_settings()) as repo:
+        add_freesound(repo, 1)
+        add_jamendo(repo, 9)
+
+    def no_key(settings: object, use_cache: bool) -> None:
+        raise FreesoundError(
+            "No Freesound API key is configured; mcrar secrets set freesound_api_key"
+        )
+
+    monkeypatch.setattr(cli, "_freesound_client", no_key)
+    monkeypatch.setattr(cli, "_jamendo_client", lambda settings, use_cache: FakeJamendo())
+    asked = runner.invoke(app, ["embed", "--models", "clap", "--source", "freesound"])
+    assert asked.exit_code == 1 and "freesound_api_key" in asked.output
+    assert loader.calls == []  # no model was loaded for nothing
+    # a whole-catalog run warns and carries on: the Freesound track fails, the rest is embedded
+    whole = runner.invoke(app, ["embed", "--models", "clap"])
+    assert whole.exit_code == 0, whole.output
+    assert "warning: Freesound tracks will fail" in whole.output
+    assert (
+        "no Freesound client" in whole.output and "1 processed, 0 skipped, 1 failed" in whole.output
+    )
 
 
 def test_embed_prints_failures_and_still_exits_zero(loader: Loader, tmp_path: Path) -> None:

@@ -319,6 +319,13 @@ def _jamendo_client(settings: Settings, use_cache: bool):  # noqa: ANN202 - lazy
     return JamendoClient.from_settings(settings, use_cache=use_cache)
 
 
+def _freesound_client(settings: Settings, use_cache: bool):  # noqa: ANN202 - lazy import
+    """Build the Freesound client (a seam for tests)."""
+    from mcrar.sources import FreesoundClient
+
+    return FreesoundClient.from_settings(settings, use_cache=use_cache)
+
+
 def _print_progress(event) -> None:  # noqa: ANN001 - IngestEvent, imported lazily
     if event.kind not in ("track_done", "track_skipped", "track_failed"):
         return
@@ -433,6 +440,104 @@ def ingest_jamendo_cmd(
             _print_summary(report)
         usage = client.usage()
         _line(f"Jamendo API requests in {usage['month']}: {usage['requests']}")
+    if problem is not None:
+        raise _fail(problem, 1)
+    _ingest_exit(report)
+
+
+@ingest_app.command("freesound")
+def ingest_freesound_cmd(
+    query: Annotated[str, typer.Option(help="Free-text search.")] = "",
+    tags: Annotated[
+        list[str] | None,
+        typer.Option("--tag", help="A tag every sound must have; repeat for several."),
+    ] = None,
+    licenses: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--license",
+            help="Licence to accept: cc0, by, by-nc or sampling+; repeat for several. "
+            "Default: cc0 and by.",
+        ),
+    ] = None,
+    min_duration: Annotated[float, typer.Option(min=0, help="Shortest sound in seconds.")] = 10.0,
+    max_duration: Annotated[float, typer.Option(min=0, help="Longest sound in seconds.")] = 600.0,
+    sort: Annotated[str, typer.Option(help="Freesound sort, e.g. score or downloads_desc.")] = (
+        "score"
+    ),
+    limit: Annotated[int, typer.Option(min=1, help="Maximum number of sounds.")] = 50,
+    force: Annotated[bool, typer.Option("--force", help="Re-analyse up-to-date tracks.")] = False,
+    no_cache: Annotated[
+        bool, typer.Option("--no-cache", help="Bypass the Freesound response cache.")
+    ] = False,
+    embed: Annotated[
+        str | None,
+        typer.Option(
+            "--embed",
+            help="Embed with these models, e.g. clap,glap. Default: the default_embedder setting.",
+        ),
+    ] = None,
+    no_embed: Annotated[
+        bool, typer.Option("--no-embed", help="Analyse only; do not embed.")
+    ] = False,
+) -> None:
+    """Fetch music-like sounds from Freesound (music, loops, ambience; 10 s or longer by default),
+    store their metadata and licences, analyse and embed the mp3 preview."""
+    from contextlib import closing
+
+    from mcrar.catalog import open_catalog
+    from mcrar.ingest import ingest_freesound
+    from mcrar.ml import ModelError
+    from mcrar.sources import FreesoundError
+    from mcrar.sources.freesound import SORTS, build_filter
+
+    tag_list = [t.strip() for t in tags or [] if t.strip()]
+    licence_list = licenses or ["cc0", "by"]
+    if not query.strip() and not tag_list:
+        raise _fail("give --query or at least one --tag")
+    try:  # bad tags, licences, sort or durations fail before anything is opened
+        build_filter(
+            tags=tag_list,
+            licenses=licence_list,
+            duration_min_s=min_duration,
+            duration_max_s=max_duration,
+        )
+        if sort not in SORTS:
+            raise ValueError(f"--sort must be one of: {', '.join(SORTS)}")
+    except ValueError as exc:
+        raise _fail(str(exc)) from None
+    settings = _settings()
+    keys = _ingest_embed_keys(embed, no_embed, settings)
+    try:
+        client = _freesound_client(settings, not no_cache)
+    except (FreesoundError, SecretError) as exc:
+        raise _fail(str(exc), 1) from None
+    with closing(client), open_catalog(settings) as repo:
+        problem: str | None = None
+        try:
+            with _ingest_stages(keys, settings) as stages:
+                report = ingest_freesound(
+                    client,
+                    repo,
+                    query=query,
+                    tags=tag_list,
+                    licenses=licence_list,
+                    duration_min_s=min_duration,
+                    duration_max_s=max_duration,
+                    sort=sort,
+                    limit=limit,
+                    force=force,
+                    stages=stages,
+                    on_progress=_print_progress,
+                )
+        except (FreesoundError, ModelError) as exc:
+            report, problem = getattr(exc, "report", None), str(exc)
+        except Exception as exc:  # never show a traceback
+            report, problem = getattr(exc, "report", None), f"ingest failed ({type(exc).__name__})"
+        if report is not None:
+            _print_summary(report)
+        usage = client.usage()
+        _line(f"Freesound API requests on {usage['day']}: {usage['requests']}")
     if problem is not None:
         raise _fail(problem, 1)
     _ingest_exit(report)
@@ -613,7 +718,7 @@ def catalog_failures(
 
 models_app = typer.Typer(help="Text-audio embedding models.", no_args_is_help=True)
 app.add_typer(models_app, name="models")
-SOURCES = ("jamendo", "local")
+SOURCES = ("jamendo", "freesound", "local")
 
 
 def _load_embedder(
@@ -735,7 +840,7 @@ def embed(
         ),
     ] = None,
     source: Annotated[
-        str | None, typer.Option(help="Only tracks of this source: jamendo or local.")
+        str | None, typer.Option(help="Only tracks of this source: jamendo, freesound or local.")
     ] = None,
     force: Annotated[
         bool, typer.Option("--force", help="Re-embed tracks that already have embeddings.")
@@ -754,7 +859,7 @@ def embed(
     from mcrar.catalog import open_catalog
     from mcrar.ingest import EmbeddingStage, reprocess_catalog
     from mcrar.ml import MODELS, ModelError
-    from mcrar.sources import JamendoError
+    from mcrar.sources import FreesoundError, JamendoError
 
     if source is not None and source not in SOURCES:
         raise _fail(f"--source must be one of: {', '.join(SOURCES)}")
@@ -769,13 +874,21 @@ def embed(
         if not todo:
             _line("Nothing to embed: every selected track already has these embeddings.")
             return
-        client = None
+        client = freesound = None
         counts = repo.stats()["tracks_by_source"]
-        if source != "local" and counts.get("jamendo", 0) > 0:
+        if source in (None, "jamendo") and counts.get("jamendo", 0) > 0:
             try:
                 client = _jamendo_client(settings, True)
             except (JamendoError, SecretError) as exc:
                 raise _fail(f"{exc} (use --source local to skip Jamendo tracks)", 1) from None
+        if source in (None, "freesound") and counts.get("freesound", 0) > 0:
+            try:
+                freesound = _freesound_client(settings, True)
+            except (FreesoundError, SecretError) as exc:
+                if source == "freesound":
+                    raise _fail(str(exc), 1) from None
+                # A whole-catalog run goes on: the Freesound tracks fail one by one.
+                _line(f"warning: Freesound tracks will fail: {exc}", err=True)
         problem: str | None = None
         report = None
         try:
@@ -784,18 +897,20 @@ def embed(
                     repo,
                     stages=[EmbeddingStage(e) for e in embedders],
                     client=client,
+                    freesound_client=freesound,
                     source=source,
                     force=force,
                     limit=limit,
                     on_progress=_print_progress,
                 )
-        except (JamendoError, ModelError) as exc:
+        except (JamendoError, FreesoundError, ModelError) as exc:
             report, problem = getattr(exc, "report", None), str(exc)
         except Exception as exc:  # never show a traceback
             report, problem = getattr(exc, "report", None), f"embed failed ({type(exc).__name__})"
         finally:
-            if client is not None:
-                client.close()
+            for opened in (client, freesound):
+                if opened is not None:
+                    opened.close()
         if report is not None:
             _print_summary(report)
     if problem is not None:
@@ -1573,7 +1688,9 @@ def search(
     duration: Annotated[
         str | None, typer.Option(help="Duration in seconds: 0-30, or one value (maximum).")
     ] = None,
-    source: Annotated[str | None, typer.Option(help="Only this source: jamendo or local.")] = None,
+    source: Annotated[
+        str | None, typer.Option(help="Only this source: jamendo, freesound or local.")
+    ] = None,
     limit: Annotated[int, typer.Option(min=1, help="Results to show.")] = 10,
     offset: Annotated[int, typer.Option(min=0, help="Results to skip.")] = 0,
     as_json: Annotated[bool, typer.Option("--json", help="Print JSON.")] = False,
@@ -1623,7 +1740,9 @@ def search(
     if not text.strip() and filters == SearchFilters() and not has_reference:
         raise _fail("give a search text or at least one filter")
     if not (settings.data_dir / CATALOG_FILENAME).is_file():
-        raise _fail("the catalog is empty; add tracks first: mcrar ingest jamendo|local", 1)
+        raise _fail(
+            "the catalog is empty; add tracks first: mcrar ingest jamendo|freesound|local", 1
+        )
 
     models: list = []  # the embedder, loaded once for the reference file and the text
 

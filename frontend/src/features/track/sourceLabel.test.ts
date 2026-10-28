@@ -4,6 +4,7 @@ import { sourceLabel } from './sourceLabel'
 describe('sourceLabel', () => {
   it('names the known sources', () => {
     expect(sourceLabel('jamendo')).toBe('Jamendo')
+    expect(sourceLabel('freesound')).toBe('Freesound')
     expect(sourceLabel('local')).toBe('Local')
   })
 

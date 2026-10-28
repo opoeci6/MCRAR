@@ -14,6 +14,7 @@ Family = Literal[
     "cc-by-nc",
     "cc-by-nc-sa",
     "cc-by-nc-nd",
+    "sampling-plus",
     "pixabay",
     "fal",
     "custom",

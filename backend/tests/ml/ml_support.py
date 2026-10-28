@@ -135,6 +135,19 @@ def add_jamendo(repo: CatalogRepository, n: int, *, stream_url: str | None = Non
     )
 
 
+def add_freesound(repo: CatalogRepository, n: int, *, stream_url: str | None = None) -> int:
+    """A stored Freesound track; its preview URL is stable (it is never refreshed)."""
+    return repo.upsert_track(
+        TrackRecord(
+            source="freesound",
+            source_id=str(n),
+            title=f"Sound {n}",
+            stream_url=stream_url or f"https://cdn.freesound.org/previews/{n}/{n}_1-hq.mp3",
+            risk="green",
+        )
+    )
+
+
 def add_local(repo: CatalogRepository, name: str, path: Path | None) -> int:
     return repo.upsert_track(
         TrackRecord(
