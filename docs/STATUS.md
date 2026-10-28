@@ -685,6 +685,22 @@ M3b is merged and the real catalog is tagged. Still open:
     `gpt-6-luna` if the owner wants the same model there.
   - **Unchecked providers.** JSON mode for SiliconFlow, Z.AI and Gemini is from the docs and
     hasn't been checked with a real key; the step-down covers a wrong guess.
+- **Demo library build (in progress since 2026-10-28, for the demo on Thu 2026-10-29).**
+  - What: about 500 music-like Freesound sounds imported into the real catalog. The backup is
+    `data/catalog.pre-m12.db`.
+  - How: through the owner's server (port 8000), by the agent's scratch script
+    `fs_library.py`.
+    - 22 themes of 25 sounds each: ambient loop, game music loop, chiptune, 8-bit, orchestral,
+      epic battle, boss fight, menu, calm piano, medieval, fantasy village, dungeon, horror,
+      sci-fi, space drone, forest, rain, synthwave, lofi, jazz loop, tension, acoustic guitar
+      loop.
+    - Licences CC0 and CC BY; most downloaded first.
+    - It takes about 4 to 10 minutes per theme.
+  - **After it finishes:**
+    1. Run `mcrar embed --models glap,muq-mulan --source freesound`, so model switching covers
+       the new sounds.
+    2. Check a few demo searches.
+    3. Update the §4 catalog row with the final counts.
 - **M9 to finish (after the labels):** both labellers label their part (about 150 tracks each,
   `docs/labelling.md`): the owner part A in their own catalog, the collaborator part B from
   `data/scene-pack.json` following `docs/handover/M9-labelling.md` (forward message drafted
