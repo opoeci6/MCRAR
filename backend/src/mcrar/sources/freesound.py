@@ -93,12 +93,11 @@ _LICENSE_NAME_URLS: dict[str, str] = {
     "attribution non-commercial": "https://creativecommons.org/licenses/by-nc/4.0/",
     "sampling+": "https://creativecommons.org/licenses/sampling+/1.0/",
 }
-# "Music-like" content as a tag clause. The Broad Sound Taxonomy ``category`` values are not
-# verified yet; revisit this (and use a category filter) after the check with a real API key.
-MUSIC_LIKE_FILTER = (
-    "tag:(music OR loop OR ambience OR ambient OR soundscape OR atmosphere OR drone "
-    "OR melody OR soundtrack OR pad)"
-)
+# "Music-like" content: Freesound's Broad Sound Taxonomy category. Checked with a real key on
+# 2026-10-28 ("calm ambient loop"): the categories seen were Music, Soundscapes, Sound effects
+# and Instrument samples; this clause returned only Music and Soundscapes, where a tag clause
+# (music, loop, ambience, ...) also let sound effects through.
+MUSIC_LIKE_FILTER = 'category:("Music" OR "Soundscapes")'
 
 _TAG_RE = re.compile(r"[a-z0-9_-]+")
 _ID_RE = re.compile(r"[0-9]+")

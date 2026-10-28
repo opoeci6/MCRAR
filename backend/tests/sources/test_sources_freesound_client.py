@@ -53,11 +53,8 @@ def test_default_params(fake: FakeTime) -> None:
     )
 
 
-def test_music_like_filter_is_a_tag_clause() -> None:
-    assert MUSIC_LIKE_FILTER == (
-        "tag:(music OR loop OR ambience OR ambient OR soundscape OR atmosphere OR drone "
-        "OR melody OR soundtrack OR pad)"
-    )
+def test_music_like_filter_is_the_music_and_soundscape_categories() -> None:
+    assert MUSIC_LIKE_FILTER == 'category:("Music" OR "Soundscapes")'
 
 
 def test_filter_with_query_tags_licenses_durations_and_sort(fake: FakeTime) -> None:
