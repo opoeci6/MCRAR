@@ -13,7 +13,11 @@ Design
   :mod:`mcrar.recommend.jamendo_query` and :mod:`mcrar.recommend.freesound_query` and the run
   stops after ``limit`` new tracks in all (Jamendo first, then Freesound with what is left). It
   embeds with the default model and with CLAP. ``GET /api/search/import/sources`` lists the
-  sources that have their secret set.
+  sources that have their secret set. A source that fails only adds a warning; the job fails when
+  every source did.
+- ``POST /api/ingest/links`` adds the tracks named by pasted Jamendo and Freesound links (kind
+  ``ingest-links``, see :mod:`mcrar.sources.links`). No valid link is a 422, a needed key that is
+  not set a 503.
 - The job runs the same pipeline as the CLI (:mod:`mcrar.ingest.pipeline`) with the stages of
   :func:`mcrar.ingest.stages.build_stages`. Embedders come from the server's model pool, the same
   loaded model search uses; the job never closes it. Without torch an ingest still analyses the
@@ -49,7 +53,7 @@ from mcrar.secrets import SecretError
 from mcrar.sources import FreesoundError, JamendoError
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from mcrar.ingest.pipeline import IngestReport, Stage
 
@@ -65,6 +69,12 @@ NO_IMPORT_SOURCE_MESSAGE = (
     "Neither a Jamendo client id nor a Freesound API key is set: add one in Settings"
 )
 IMPORT_NEEDS_TEXT_MESSAGE = "describe the music to search for"
+IMPORT_NO_REMOTE_SOURCE_MESSAGE = (
+    "the Source filter has no Jamendo or Freesound: only those can be searched for more"
+)
+LINKS_NEED_LINK_MESSAGE = "no Jamendo or Freesound track link found"
+REMOTE_SOURCES = ("jamendo", "freesound")
+SOURCE_LABELS = {"jamendo": "Jamendo", "freesound": "Freesound"}
 NO_EMBED_WARNING = (
     "embedding skipped: torch is not installed, so tracks are analysed but not embedded "
     "(install the ml extra: uv sync --extra ml)"
@@ -127,6 +137,14 @@ class SearchImportBody(BaseModel):
     filters: FiltersBody = Field(default_factory=FiltersBody)
     limit: int = Field(50, ge=1, le=100)
     sources: list[Literal["jamendo", "freesound"]] | None = Field(None, min_length=1, max_length=2)
+
+
+class LinksIngestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=10000)
+    embed: bool = True
+    force: bool = False
 
 
 class LocalIngestBody(BaseModel):
@@ -267,22 +285,28 @@ def ingest_freesound_route(body: FreesoundIngestBody, state: StateDep) -> dict[s
     return _start(state, "ingest-freesound", body.model_dump(), run, cleanup=client.close)
 
 
-def _open_import_sources(state: AppState, wanted: list[str] | None) -> dict[str, Any]:
+def _open_import_sources(
+    state: AppState, wanted: list[str] | None, allowed: Sequence[str] | None = None
+) -> dict[str, Any]:
     """The clients for a search import, in run order (Jamendo, then Freesound).
 
     ``wanted=None`` opens every source whose secret is set (503 when there is none); a list
-    opens exactly those (503 with the first missing source's message). Nothing stays open on a
+    opens exactly those (503 with the first missing source's message). ``allowed`` (the search's
+    Source filter, None for no restriction) limits the ``wanted=None`` case to those sources; when
+    that leaves a single source, its own missing secret is the 503. Nothing stays open on a
     failure.
     """
+    names = [n for n in REMOTE_SOURCES if allowed is None or n in allowed]
+    strict = wanted is not None or len(names) == 1
     clients: dict[str, Any] = {}
     try:
         for name, opener in (("jamendo", _open_jamendo), ("freesound", _open_freesound)):
-            if wanted is not None and name not in wanted:
+            if name not in (wanted if wanted is not None else names):
                 continue
             try:
                 clients[name] = opener(state)
             except HTTPException:
-                if wanted is not None:
+                if strict:
                     raise
         if not clients:
             raise HTTPException(status_code=503, detail=NO_IMPORT_SOURCE_MESSAGE)
@@ -319,52 +343,88 @@ def _run_search_import(
     limit: int,
 ) -> IngestReport:
     """Run the import source by source (see :func:`search_import_route` for the budget rule)."""
-    from mcrar.ingest import combine_reports, ingest_freesound_queries, ingest_jamendo_queries
+    from mcrar.ingest import ingest_freesound_queries, ingest_jamendo_queries
     from mcrar.ingest.stages import TAGGING_EMBEDDER, build_stages
 
     # The tagging heads read CLAP vectors, so CLAP is embedded whatever the default is.
     keys = dict.fromkeys([state.settings.default_embedder, TAGGING_EMBEDDER])
     stages = build_stages(state.settings, [state.pool.get(key) for key in keys])
 
-    reports: list[IngestReport] = []
-    for position, (name, client) in enumerate(clients.items()):
+    def step(position: int, name: str, reports: list[IngestReport]) -> IngestReport | None:
         remaining = limit - sum(r.new for r in reports)
         budget = -(-remaining // (len(clients) - position))  # ceil: the last source gets it all
         if budget < 1:
-            break
+            return None
         offset = sum(r.seen for r in reports)
 
-        def relay(event: Any, offset: int = offset) -> None:
+        def relay(event: Any) -> None:
             # One progress bar over the whole job: indexes continue, the total is the limit.
             sink.on_event(replace(event, index=event.index + offset, total=limit))
 
+        if name == "jamendo":
+            return ingest_jamendo_queries(
+                clients[name],
+                state.repo,
+                queries=jamendo_searches,
+                max_new=budget,
+                stages=stages,
+                on_progress=relay,
+            )
+        return ingest_freesound_queries(
+            clients[name],
+            state.repo,
+            freesound_searches,
+            limit=budget,
+            stages=stages,
+            on_progress=relay,
+        )
+
+    return _run_sources(sink, list(clients), step)
+
+
+def _run_sources(
+    sink: ProgressSink,
+    names: Sequence[str],
+    step: Callable[[int, str, list[IngestReport]], IngestReport | None],
+) -> IngestReport:
+    """Run ``step(position, name, reports_so_far)`` for each source in turn, one combined report.
+
+    A step returns None to stop (nothing left to do), a report that is ``aborted`` also stops the
+    run. A Jamendo or Freesound error does not end the run: its partial report is kept, a warning
+    says which source failed and the next source goes on; only when every source failed is the
+    last error raised (with the combined partial report attached). Any other error (a cancel, an
+    embedder out of memory, ...) ends the run at once with the combined partial report.
+    """
+    from mcrar.ingest import combine_reports
+
+    reports: list[IngestReport] = []
+    failure: Exception | None = None
+    finished = 0
+    for position, name in enumerate(names):
         try:
-            if name == "jamendo":
-                report = ingest_jamendo_queries(
-                    client,
-                    state.repo,
-                    queries=jamendo_searches,
-                    max_new=budget,
-                    stages=stages,
-                    on_progress=relay,
-                )
-            else:
-                report = ingest_freesound_queries(
-                    client,
-                    state.repo,
-                    freesound_searches,
-                    limit=budget,
-                    stages=stages,
-                    on_progress=relay,
-                )
+            report = step(position, name, reports)
+        except (JamendoError, FreesoundError) as exc:
+            partial = getattr(exc, "report", None)
+            if partial is not None:  # its tracks count; its abort is this warning, not the job's
+                reports.append(replace(partial, aborted=None))
+            sink.warning(f"{SOURCE_LABELS[name]} failed: {exc}")
+            failure = exc
+            continue
         except Exception as exc:
             partial = getattr(exc, "report", None)
             if partial is not None:  # what the earlier sources added counts too
                 exc.report = combine_reports([*reports, partial])  # type: ignore[attr-defined]
             raise
+        if report is None:
+            break
         reports.append(report)
+        finished += 1
         if report.aborted:  # interrupted: do not start the next source
             break
+    if failure is not None and not finished:
+        if reports:
+            failure.report = combine_reports(reports)  # type: ignore[attr-defined]
+        raise failure
     return combine_reports(reports)
 
 
@@ -374,10 +434,13 @@ def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, An
     them next time.
 
     ``sources`` omitted means every source whose secret is set; a list means exactly those (a
-    missing secret is a 503). The sources run one after the other, Jamendo first, in one job. The
-    budget is ``limit`` new tracks in all: every source but the last may take up to its equal
-    share (rounded up), and the last takes what is left, so a source that finds fewer new tracks
-    than its share leaves the rest to the next one (never more than ``limit`` in total).
+    missing secret is a 503). When the search has a Source filter, only the remote sources in it
+    are used (a filter without one, or a ``sources`` entry outside it, is a 422). The sources run
+    one after the other, Jamendo first, in one job; one that fails (a rejected key, a rate limit)
+    only adds a warning, and the job fails only when every source did. The budget is ``limit`` new
+    tracks in all: every source but the last may take up to its equal share (rounded up), and the
+    last takes what is left, so a source that finds fewer new tracks than its share leaves the
+    rest to the next one (never more than ``limit`` in total).
     """
     from mcrar.recommend.freesound_query import freesound_queries
     from mcrar.recommend.jamendo_query import jamendo_queries
@@ -386,9 +449,18 @@ def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, An
     parsed = state.search.parse(SearchRequest(text=body.text, filters=filters))
     if not parsed.semantic_text:
         raise ValueError(IMPORT_NEEDS_TEXT_MESSAGE)
+    allowed = parsed.filters.sources  # the search's Source filter; None means every source
+    if allowed is not None:
+        if not any(name in allowed for name in REMOTE_SOURCES):
+            raise ValueError(IMPORT_NO_REMOTE_SOURCE_MESSAGE)
+        outside = [name for name in body.sources or () if name not in allowed]
+        if outside:
+            raise ValueError(
+                f"{', '.join(outside)} is not in the search's Source filter ({', '.join(allowed)})"
+            )
     if not state.torch_available():  # new tracks cannot be ranked without embeddings
         raise HTTPException(status_code=503, detail=NO_TORCH_MESSAGE)
-    clients = _open_import_sources(state, body.sources)
+    clients = _open_import_sources(state, body.sources, allowed)
     queries = {
         "jamendo": jamendo_queries(parsed.semantic_text, parsed.filters, parsed.search_terms),
         "freesound": freesound_queries(parsed.semantic_text, parsed.filters, parsed.search_terms),
@@ -411,6 +483,79 @@ def search_import_route(body: SearchImportBody, state: StateDep) -> dict[str, An
         "sources": list(clients),
     }
     return _start(state, "ingest-query", params, run, cleanup=lambda: _close_all(clients))
+
+
+@router.post("/api/ingest/links", status_code=202)
+def ingest_links_route(body: LinksIngestBody, state: StateDep) -> dict[str, Any]:
+    """Add the Jamendo and Freesound tracks named by the links in ``text`` (kind ``ingest-links``).
+
+    Jamendo ids run first, then Freesound ids, in one job with one progress bar. The report is
+    an ingest report plus ``already`` (in the catalog before the run, still refreshed),
+    ``not_found`` (not in the catalog after the run) and ``invalid`` (not a track link).
+    """
+    from mcrar.ingest import LinksReport, ingest_freesound_ids, ingest_jamendo_ids
+    from mcrar.sources.links import parse_track_links
+
+    links = parse_track_links(body.text)  # more than MAX_LINKS ids is a ValueError (422)
+    ids = {"jamendo": links.jamendo, "freesound": links.freesound}
+    if not any(ids.values()):
+        shown = [entry[:80] for entry in links.invalid[:3]]
+        more = f" and {len(links.invalid) - 3} more" if len(links.invalid) > 3 else ""
+        hint = f" (not recognised: {', '.join(shown)}{more})" if shown else ""
+        raise ValueError(LINKS_NEED_LINK_MESSAGE + hint)
+    clients: dict[str, Any] = {}
+    try:
+        if ids["jamendo"]:
+            clients["jamendo"] = _open_jamendo(state)
+        if ids["freesound"]:
+            clients["freesound"] = _open_freesound(state)
+    except HTTPException:
+        _close_all(clients)
+        raise
+
+    wanted = [(source, track_id) for source, found in ids.items() for track_id in found]
+
+    def in_catalog(known: bool) -> list[str]:
+        return [
+            f"{source}:{track_id}"
+            for source, track_id in wanted
+            if (state.repo.get_track_by_source(source, track_id) is not None) is known
+        ]
+
+    already = in_catalog(True)
+    invalid = list(links.invalid)
+    total = len(wanted)
+
+    def run(sink: ProgressSink) -> IngestReport:
+        try:
+            stages = _ingest_stages(state, body.embed, sink)
+
+            def step(position: int, name: str, reports: list[IngestReport]) -> IngestReport:
+                offset = sum(r.seen for r in reports)
+
+                def relay(event: Any) -> None:
+                    # One progress bar over the whole job: indexes continue, the total is all ids.
+                    sink.on_event(replace(event, index=event.index + offset, total=total))
+
+                ingest = ingest_jamendo_ids if name == "jamendo" else ingest_freesound_ids
+                return ingest(
+                    clients[name],
+                    state.repo,
+                    ids[name],
+                    force=body.force,
+                    stages=stages,
+                    on_progress=relay,
+                )
+
+            report = _run_sources(sink, list(clients), step)
+        finally:
+            _close_all(clients)
+        return LinksReport(
+            **vars(report), already=already, not_found=in_catalog(False), invalid=invalid
+        )
+
+    params = {"jamendo": len(ids["jamendo"]), "freesound": len(ids["freesound"])}
+    return _start(state, "ingest-links", params, run, cleanup=lambda: _close_all(clients))
 
 
 @router.post("/api/ingest/local", status_code=202)

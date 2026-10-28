@@ -69,12 +69,15 @@ def list_tracks(
     risk: str | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    q: Annotated[str | None, Query(max_length=200)] = None,
 ) -> dict[str, Any]:
     if source is not None and source not in SOURCES:
         raise ValueError(f"source must be one of: {', '.join(SOURCES)}")
     if risk is not None and risk not in ("green", "amber", "red", "unknown"):
         raise ValueError("risk must be one of: green, amber, red, unknown")
-    tracks, total = state.repo.list_tracks(source=source, risk=risk, limit=limit, offset=offset)
+    tracks, total = state.repo.list_tracks(
+        source=source, risk=risk, limit=limit, offset=offset, q=(q or "").strip() or None
+    )
     return {
         "items": [track_summary(t) for t in tracks],
         "total": total,

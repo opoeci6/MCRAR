@@ -278,6 +278,14 @@ _UPSERT_FEATURES_SQL = (
 )
 
 
+_TEXT_COLUMNS = ("title", "artist", "album")  # what the library text filter looks in
+
+
+def _escape_like(word: str) -> str:
+    """``word`` with the LIKE wildcards escaped (use with ``ESCAPE '\\'``)."""
+    return word.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -527,10 +535,13 @@ class CatalogRepository:
         risk: str | None = None,
         limit: int = 50,
         offset: int = 0,
+        q: str | None = None,
     ) -> tuple[list[StoredTrack], int]:
         """One page of tracks ordered by id, and how many tracks match in total.
 
         ``source`` and ``risk`` match exactly (``risk`` is the track's own level, not a maximum).
+        ``q`` is split on whitespace and every word must appear in the title, artist or album
+        (case-insensitive for ASCII letters, as SQLite folds them).
         """
         if risk is not None and risk not in RISKS:
             raise ValueError(f"risk must be one of {RISKS}, got {risk!r}")
@@ -539,6 +550,15 @@ class CatalogRepository:
             if value is not None:
                 where.append(f"{column} = ?")
                 params.append(value)
+        for word in (q or "").split():
+            # SQLite's lower() and LIKE fold ASCII letters only: both sides are treated alike.
+            pattern = "%" + _escape_like(word) + "%"
+            where.append(
+                "("
+                + " OR ".join(f"lower({c}) LIKE lower(?) ESCAPE '\\'" for c in _TEXT_COLUMNS)
+                + ")"
+            )
+            params += [pattern] * len(_TEXT_COLUMNS)
         clause = f" WHERE {' AND '.join(where)}" if where else ""
         total = int(self._query(f"SELECT COUNT(*) FROM tracks{clause}", tuple(params))[0][0])
         rows = self._query(

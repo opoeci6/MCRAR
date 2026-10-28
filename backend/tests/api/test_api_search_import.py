@@ -9,9 +9,13 @@ import pytest
 from api_support import IngestFreesound, IngestJamendo, make_client, parse_sse, wait_done
 from recommend_support import MODEL_ID, fake_features
 
-from mcrar.api.routes.ingest import NO_FREESOUND_MESSAGE, NO_IMPORT_SOURCE_MESSAGE
+from mcrar.api.routes.ingest import (
+    IMPORT_NO_REMOTE_SOURCE_MESSAGE,
+    NO_FREESOUND_MESSAGE,
+    NO_IMPORT_SOURCE_MESSAGE,
+)
 from mcrar.ingest import pipeline
-from mcrar.sources import JamendoError
+from mcrar.sources import FreesoundAuthError, JamendoAuthError, JamendoError
 
 URL = "/api/search/import"
 
@@ -329,6 +333,60 @@ def test_explicit_sources_use_exactly_those(tmp_path: Path) -> None:
         assert len(freesound.queries) == 1
 
 
+def test_the_source_filter_limits_the_import_to_the_remote_sources_in_it(tmp_path: Path) -> None:
+    jamendo, freesound = IngestJamendo(5), IngestFreesound(5)
+    with make_client(tmp_path, jamendo=jamendo, freesound=freesound) as client:
+        body = {"text": "calm", "limit": 4, "filters": {"sources": ["freesound", "local"]}}
+        job = client.post(URL, json=body).json()["job"]
+        assert job["params"]["sources"] == ["freesound"]
+        assert wait_done(client, job["id"])["report"]["new"] == 4  # the whole limit
+        assert jamendo.queries == [] and len(freesound.queries) == 1
+        assert not jamendo.closed  # never even opened
+
+
+def test_the_source_filter_keeps_only_the_sources_that_have_a_secret(tmp_path: Path) -> None:
+    freesound = IngestFreesound(5)
+    with make_client(tmp_path, jamendo=JamendoError("no id"), freesound=freesound) as client:
+        body = {"text": "calm", "limit": 2, "filters": {"sources": ["jamendo", "freesound"]}}
+        job = client.post(URL, json=body).json()["job"]
+        assert job["params"]["sources"] == ["freesound"]
+        assert wait_done(client, job["id"])["report"]["new"] == 2
+
+
+def test_a_source_filter_naming_only_a_source_without_a_secret_is_503(tmp_path: Path) -> None:
+    with make_client(tmp_path, jamendo=IngestJamendo(5)) as client:  # no Freesound key
+        body = {"text": "calm", "filters": {"sources": ["freesound"]}}
+        response = client.post(URL, json=body)
+        assert response.status_code == 503
+        assert response.json() == {"detail": NO_FREESOUND_MESSAGE}
+        assert client.get("/api/jobs").json() == {"jobs": []}
+
+
+def test_a_source_filter_without_a_remote_source_is_422(tmp_path: Path) -> None:
+    jamendo = IngestJamendo(5)
+    with make_client(tmp_path, jamendo=jamendo, freesound=IngestFreesound(5)) as client:
+        body = {"text": "calm", "filters": {"sources": ["local"]}}
+        response = client.post(URL, json=body)
+        assert response.status_code == 422
+        assert response.json() == {"detail": IMPORT_NO_REMOTE_SOURCE_MESSAGE}
+        assert client.get("/api/jobs").json() == {"jobs": []}
+        assert jamendo.queries == []
+
+
+def test_explicit_sources_outside_the_source_filter_are_422(tmp_path: Path) -> None:
+    with make_client(tmp_path, jamendo=IngestJamendo(5), freesound=IngestFreesound(5)) as client:
+        body = {
+            "text": "calm",
+            "sources": ["jamendo", "freesound"],
+            "filters": {"sources": ["freesound"]},
+        }
+        response = client.post(URL, json=body)
+        assert response.status_code == 422 and "jamendo" in response.json()["detail"]
+        assert client.get("/api/jobs").json() == {"jobs": []}
+        inside = {**body, "sources": ["freesound"]}
+        assert client.post(URL, json=inside).status_code == 202
+
+
 def test_an_explicit_source_without_its_secret_is_503_and_nothing_stays_open(
     tmp_path: Path,
 ) -> None:
@@ -373,20 +431,101 @@ def test_the_usable_sources_are_listed_without_secrets(tmp_path: Path) -> None:
             assert client.get(url).json() == {"sources": expected}
 
 
-def test_a_failing_second_source_fails_the_job_but_keeps_the_first_ones_report(
+class BrokenJamendo(IngestJamendo):
+    def search_tracks(self, **kwargs):  # noqa: ANN003, ANN201
+        raise JamendoAuthError("bad key")
+
+
+class BrokenFreesound(IngestFreesound):
+    def search_tracks(self, **kwargs):  # noqa: ANN003, ANN201
+        raise FreesoundAuthError("bad key")
+
+
+def _warnings(client, job_id: str) -> list[str]:  # noqa: ANN001
+    events = parse_sse(client.get(f"/api/jobs/{job_id}/events").text)
+    return [e["data"]["message"] for e in events if e["event"] == "warning"]
+
+
+def test_a_failing_first_source_only_warns_and_the_next_gets_the_whole_budget(
     tmp_path: Path,
 ) -> None:
-    from mcrar.sources import FreesoundAuthError
+    jamendo, freesound = BrokenJamendo(5), IngestFreesound(30)
+    with make_client(tmp_path, jamendo=jamendo, freesound=freesound) as client:
+        job = client.post(URL, json={"text": "calm", "limit": 6}).json()["job"]
+        done = wait_done(client, job["id"])
+        assert done["status"] == "done" and done["error"] is None
+        report = done["report"]
+        assert report["new"] == 6  # Jamendo's share was 3; Freesound got all 6
+        found = _new(client, "freesound", 7001, 6)
+        assert report["new_track_ids"] == [t.id for t in found]
+        warnings = _warnings(client, job["id"])
+        assert len(warnings) == 1 and warnings[0].startswith("Jamendo failed:")
+        assert jamendo.closed and freesound.closed
 
-    class BrokenFreesound(IngestFreesound):
-        def search_tracks(self, **kwargs):  # noqa: ANN003, ANN201
-            raise FreesoundAuthError("bad key")
 
+def test_a_failing_second_source_only_warns_and_keeps_the_first_ones_tracks(
+    tmp_path: Path,
+) -> None:
     with make_client(tmp_path, jamendo=IngestJamendo(2), freesound=BrokenFreesound(1)) as client:
         job = client.post(URL, json={"text": "calm", "limit": 6}).json()["job"]
         done = wait_done(client, job["id"])
-        assert done["status"] == "failed" and "FreesoundAuthError" in done["error"]
+        assert done["status"] == "done" and done["error"] is None
         assert done["report"]["new"] == 2  # Jamendo's tracks are in the report
+        found = _new(client, "jamendo", 9001, 2)
+        assert done["report"]["new_track_ids"] == [t.id for t in found]
+        warnings = _warnings(client, job["id"])
+        assert len(warnings) == 1 and warnings[0].startswith("Freesound failed:")
+
+
+def test_every_source_failing_fails_the_job_with_the_last_error(tmp_path: Path) -> None:
+    with make_client(tmp_path, jamendo=BrokenJamendo(1), freesound=BrokenFreesound(1)) as client:
+        job = client.post(URL, json={"text": "calm", "limit": 6}).json()["job"]
+        done = wait_done(client, job["id"])
+        assert done["status"] == "failed" and "FreesoundAuthError" in done["error"]
+        assert len(_warnings(client, job["id"])) == 2
+
+
+def test_a_source_failing_after_adding_tracks_keeps_them_in_the_failed_report(
+    tmp_path: Path,
+) -> None:
+    class HalfBrokenJamendo(IngestJamendo):
+        def search_tracks(self, **kwargs):  # noqa: ANN003, ANN201
+            found = super().search_tracks(**kwargs)
+
+            def tracks():  # noqa: ANN202
+                yield from found
+                raise JamendoAuthError("bad key")
+
+            return tracks()
+
+    with make_client(
+        tmp_path, jamendo=HalfBrokenJamendo(2), freesound=BrokenFreesound(1)
+    ) as client:
+        job = client.post(URL, json={"text": "calm", "limit": 6}).json()["job"]
+        done = wait_done(client, job["id"])
+        assert done["status"] == "failed"
+        assert done["report"]["new"] == 2  # what Jamendo added before it failed
+
+
+def test_a_source_failing_midway_does_not_mark_a_done_job_aborted(tmp_path: Path) -> None:
+    class HalfBrokenJamendo(IngestJamendo):
+        def search_tracks(self, **kwargs):  # noqa: ANN003, ANN201
+            found = super().search_tracks(**kwargs)
+
+            def tracks():  # noqa: ANN202
+                yield from found
+                raise JamendoAuthError("bad key")
+
+            return tracks()
+
+    with make_client(
+        tmp_path, jamendo=HalfBrokenJamendo(2), freesound=IngestFreesound(30)
+    ) as client:
+        job = client.post(URL, json={"text": "calm", "limit": 6}).json()["job"]
+        done = wait_done(client, job["id"])
+        assert done["status"] == "done" and done["report"]["aborted"] is None
+        assert done["report"]["new"] == 6  # Jamendo's 2, then Freesound's 4
+        assert _warnings(client, job["id"])[0].startswith("Jamendo failed:")
 
 
 def test_cancelling_during_the_second_source_keeps_both_sources_tracks(

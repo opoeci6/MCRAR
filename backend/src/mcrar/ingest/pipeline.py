@@ -174,6 +174,18 @@ class IngestReport:
 
 
 @dataclass(frozen=True)
+class LinksReport(IngestReport):
+    """The report of an add-by-link run. ``already`` are the requested tracks that were in the
+    catalog before the run, ``not_found`` the ones still missing after it (the source does not
+    know the id, or it has no audio), ``invalid`` the entries that were not track links. Each
+    entry is ``"<source>:<id>"`` (``invalid`` ones as written)."""
+
+    already: list[str] = field(default_factory=list)
+    not_found: list[str] = field(default_factory=list)
+    invalid: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class IngestEvent:
     """Progress notification. ``total`` is None (or an upper bound) when not known up front."""
 

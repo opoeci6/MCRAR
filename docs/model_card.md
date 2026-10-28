@@ -76,9 +76,9 @@ Every method uses the same held-out test items within each label set. All model 
 
 | Variant | Test n | Primary (95% CI) |
 |---|---|---|
-| zeroshot-catalog | — | 0.3071 |
-| zeroshot-catalog-centered | — | 0.4071 |
-| logreg-hybrid | — | 0.4143 |
+| zeroshot-catalog | 269 | 0.3071 |
+| zeroshot-catalog-centered | 269 | 0.4071 |
+| logreg-hybrid | 269 | 0.4143 |
 
 ### MLP versus the linear baseline
 
