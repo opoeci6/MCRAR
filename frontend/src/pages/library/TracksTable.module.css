@@ -18,6 +18,10 @@
   min-width: 180px;
 }
 
+.filters > .search {
+  flex: 1 1 260px;
+}
+
 .scroll {
   overflow-x: auto;
   background: var(--color-surface);

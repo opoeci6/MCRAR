@@ -160,6 +160,12 @@ function Report({ report }: { report: JobReport }) {
     [t.jobs.report.failed, report.failed],
     [t.jobs.report.elapsed, t.jobs.report.seconds(report.elapsed_s)],
   ]
+  // Only a job from links has these lists, and an empty one says nothing.
+  const linkLines = [
+    report.already?.length ? t.jobs.report.already(report.already.length) : '',
+    report.not_found?.length ? t.jobs.report.notFound(t.jobs.report.shortList(report.not_found)) : '',
+    report.invalid?.length ? t.jobs.report.invalid(t.jobs.report.shortList(report.invalid)) : '',
+  ].filter(Boolean)
   return (
     <div className={styles.report}>
       <h4>{t.jobs.report.heading}</h4>
@@ -172,6 +178,13 @@ function Report({ report }: { report: JobReport }) {
         ))}
       </dl>
       {report.aborted ? <Notice kind="warning">{t.jobs.report.aborted(report.aborted)}</Notice> : null}
+      {linkLines.length > 0 ? (
+        <ul className={styles.linkLines}>
+          {linkLines.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+      ) : null}
       {report.failures.length > 0 ? (
         <details className={styles.failures}>
           <summary>{t.jobs.report.failures(report.failures.length, report.failures_total)}</summary>

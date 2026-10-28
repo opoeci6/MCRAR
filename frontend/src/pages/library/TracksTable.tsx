@@ -16,10 +16,17 @@ import { LicenseBadge } from '../../ui/LicenseBadge'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
 import { Spinner } from '../../ui/Spinner'
+import { TextInput } from '../../ui/TextInput'
 import { libraryStrings as t } from './strings'
 import styles from './TracksTable.module.css'
 
 export const PAGE_SIZE = 50
+
+/** How long the search box rests before the list is loaded again, so typing is not a request per key. */
+export const SEARCH_DELAY_MS = 300
+
+/** The longest search the backend takes. */
+const SEARCH_MAX = 200
 
 export interface TracksTableProps {
   /** Changes when the catalog changed (a job finished): the page is loaded again. */
@@ -31,6 +38,9 @@ export interface TracksTableProps {
 export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
   const [source, setSource] = usePersistentState<Source | ''>('library.source', '')
   const [risk, setRisk] = usePersistentState<Risk | ''>('library.risk', '')
+  const [query, setQuery] = usePersistentState('library.q', '')
+  // The search the list is loaded for: `query` once it has rested.
+  const [search, setSearch] = useState(() => query.trim())
   const [offset, setOffset] = usePersistentState('library.offset', 0)
   const [openId, setOpenId] = useState<number | null>(null)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -41,22 +51,48 @@ export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
     headingRef.current?.focus()
   }, [focusSignal, setOffset])
 
+  useEffect(() => {
+    const wanted = query.trim()
+    if (wanted === search) return
+    const timer = setTimeout(() => {
+      setSearch(wanted)
+      setOffset(0)
+    }, SEARCH_DELAY_MS)
+    return () => clearTimeout(timer)
+  }, [query, search, setOffset])
+
   const tracks = useAsync(
     (signal) =>
       listTracks(
-        { source: source || undefined, risk: risk || undefined, limit: PAGE_SIZE, offset },
+        {
+          source: source || undefined,
+          risk: risk || undefined,
+          q: search || undefined,
+          limit: PAGE_SIZE,
+          offset,
+        },
         { signal },
       ),
-    [source, risk, offset, refreshKey],
+    [source, risk, search, offset, refreshKey],
   )
 
-  const filtered = source !== '' || risk !== ''
+  const filtered = source !== '' || risk !== '' || search !== ''
   return (
     <section className={styles.section} aria-labelledby="library-tracks-heading">
       <h2 id="library-tracks-heading" tabIndex={-1} ref={headingRef}>
         {t.tracks.heading}
       </h2>
       <div className={styles.filters}>
+        <TextInput
+          className={styles.search}
+          type="search"
+          label={t.tracks.filterSearch}
+          placeholder={t.tracks.searchPlaceholder}
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          maxLength={SEARCH_MAX}
+          autoComplete="off"
+        />
         <Select
           label={t.tracks.filterSource}
           value={source}

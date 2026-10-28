@@ -131,6 +131,83 @@ describe('Library catalog overview and tracks', () => {
     })
   })
 
+  describe('the search box', () => {
+    const tracksUrls = (api: ReturnType<typeof stubApi>) =>
+      api.mock.calls.map(([input]) => String(input)).filter((u) => u.startsWith('/api/tracks'))
+    const searchBox = () => screen.getByRole('searchbox', { name: 'Search title or artist' })
+
+    it('asks for the words typed once typing has rested, and starts at the first page', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(baseRoutes({ 'GET /api/tracks': (url: URL) => page(Number(url.searchParams.get('offset') ?? 0), 120) }))
+      renderWithProviders(<LibraryPage />)
+      await screen.findByRole('table', { name: 'Tracks in the catalog' })
+      expect(searchBox()).toHaveAttribute('placeholder', 'Title, artist or album')
+      expect(tracksUrls(api)[0]).not.toContain('q=')
+
+      await user.click(screen.getByRole('button', { name: 'Next' }))
+      await waitFor(() => expect(tracksUrls(api).some((u) => u.includes('offset=50'))).toBe(true))
+      const before = tracksUrls(api).length
+
+      await user.type(searchBox(), ' rain  window ')
+      // Not a request per keystroke: nothing is asked for while the typing is going on.
+      expect(tracksUrls(api)).toHaveLength(before)
+      await waitFor(() => {
+        const last = tracksUrls(api)[tracksUrls(api).length - 1]!
+        expect(new URL(last, 'http://x').searchParams.get('q')).toBe('rain  window')
+        expect(last).toContain('offset=0')
+      })
+      expect(tracksUrls(api)).toHaveLength(before + 1)
+    })
+
+    it('does not send blank text', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(baseRoutes())
+      renderWithProviders(<LibraryPage />)
+      await screen.findByRole('table', { name: 'Tracks in the catalog' })
+      await user.type(searchBox(), '   ')
+      await new Promise((resolve) => setTimeout(resolve, 450))
+      expect(tracksUrls(api)).toHaveLength(1)
+      expect(tracksUrls(api)[0]).not.toContain('q=')
+    })
+
+    it('says no track matches when a search finds nothing, and clearing it removes q', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(
+        baseRoutes({
+          'GET /api/tracks': (url: URL) =>
+            url.searchParams.get('q') ? page(0, 0, []) : page(0, 1),
+        }),
+      )
+      renderWithProviders(<LibraryPage />)
+      await screen.findByRole('table', { name: 'Tracks in the catalog' })
+
+      await user.type(searchBox(), 'zzz')
+      expect(await screen.findByText('No tracks match these filters.')).toBeInTheDocument()
+      expect(screen.queryByText(/The catalog is empty/)).not.toBeInTheDocument()
+      // The box stays, so the search can be changed.
+      expect(searchBox()).toHaveValue('zzz')
+
+      await user.clear(searchBox())
+      expect(await screen.findByRole('table', { name: 'Tracks in the catalog' })).toBeInTheDocument()
+      expect(tracksUrls(api)[tracksUrls(api).length - 1]).not.toContain('q=')
+    })
+
+    it('keeps the search with the other filters', async () => {
+      const user = userEvent.setup()
+      const api = stubApi(baseRoutes())
+      renderWithProviders(<LibraryPage />)
+      await screen.findByRole('table', { name: 'Tracks in the catalog' })
+      await user.type(searchBox(), 'rain')
+      await waitFor(() => expect(tracksUrls(api).some((u) => u.includes('q=rain'))).toBe(true))
+      await user.selectOptions(screen.getByLabelText('Source'), 'local')
+      await waitFor(() => {
+        const last = tracksUrls(api)[tracksUrls(api).length - 1]!
+        expect(last).toContain('q=rain')
+        expect(last).toContain('source=local')
+      })
+    })
+  })
+
   it('plays a track from the table', async () => {
     const user = userEvent.setup()
     stubApi(baseRoutes())
@@ -410,12 +487,12 @@ describe('Library: Freesound', () => {
     return { user, api, form, submit: () => user.click(form.getByRole('button', { name: 'Add from Freesound' })) }
   }
 
-  it('adds a Freesound tab between Jamendo and Local folder', async () => {
+  it('adds a Freesound tab after Jamendo', async () => {
     stubApi(baseRoutes())
     renderWithProviders(<LibraryPage />)
     await screen.findByTestId('stat-tracks')
     const tabs = within(screen.getByRole('tablist', { name: 'Ways to add music' })).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Jamendo', 'Freesound', 'Local folder', 'Maintenance'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Jamendo', 'Freesound', 'By link', 'Local folder', 'Maintenance'])
   })
 
   it('starts with the defaults and an explanatory note', async () => {
@@ -616,5 +693,134 @@ describe('Library: Freesound', () => {
     expect(within(screen.getByLabelText('Source')).getByRole('option', { name: 'Freesound' })).toHaveValue(
       'freesound',
     )
+  })
+})
+
+describe('Library: By link', () => {
+  const LINKS_JOB = job({ id: 'l1', kind: 'ingest-links', params: { jamendo: 1, freesound: 1 } })
+  const TEXT = 'https://www.jamendo.com/track/1234/song\nfreesound:456'
+
+  async function openLinks(extra: Routes = {}) {
+    const user = userEvent.setup()
+    const api = stubApi(baseRoutes({ 'POST /api/ingest/links': jsonResponse({ job: LINKS_JOB }, 202), ...extra }))
+    renderWithProviders(<LibraryPage />)
+    await screen.findByTestId('stat-tracks')
+    await user.click(screen.getByRole('tab', { name: 'By link' }))
+    const form = within(screen.getByRole('tabpanel', { name: 'By link' }))
+    const box = () => form.getByRole('textbox', { name: 'Jamendo or Freesound links' })
+    const submit = () => user.click(form.getByRole('button', { name: 'Add tracks' }))
+    const fill = async (text = TEXT) => {
+      // Pasted: a typed newline would be an Enter in a form, which is not what is meant.
+      await user.click(box())
+      await user.paste(text)
+    }
+    return { user, api, form, box, submit, fill }
+  }
+
+  it('adds the tab after Freesound', async () => {
+    stubApi(baseRoutes())
+    renderWithProviders(<LibraryPage />)
+    await screen.findByTestId('stat-tracks')
+    const tabs = within(screen.getByRole('tablist', { name: 'Ways to add music' })).getAllByRole('tab')
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      'Jamendo',
+      'Freesound',
+      'By link',
+      'Local folder',
+      'Maintenance',
+    ])
+  })
+
+  it('has a hint and embeds by default, and cannot be sent empty', async () => {
+    const { api, form, box, submit, fill, user } = await openLinks()
+    expect(
+      form.getByText("One per line. Paste the track's page address from jamendo.com or freesound.org."),
+    ).toBeInTheDocument()
+    expect(form.getByLabelText(/Analyse and embed/)).toBeChecked()
+    const button = form.getByRole('button', { name: 'Add tracks' })
+    expect(button).toBeDisabled()
+    await user.type(box(), '  ')
+    expect(button).toBeDisabled()
+    await fill()
+    expect(button).toBeEnabled()
+    await submit()
+    await waitFor(() => expect(bodyOf(api, '/api/ingest/links')).toBeDefined())
+  })
+
+  it('sends the text as pasted and the embed choice, then follows the job', async () => {
+    const { api, form, user, submit, fill } = await openLinks()
+    await fill()
+    await user.click(form.getByLabelText(/Analyse and embed/))
+    await submit()
+    await waitFor(() => expect(bodyOf(api, '/api/ingest/links')).toEqual({ text: TEXT, embed: false }))
+    const panel = await screen.findByRole('region', { name: 'Job progress' })
+    expect(FakeEventSource.instances[0]!.url).toBe('/api/jobs/l1/events')
+    expect(panel).toHaveTextContent('Add by link')
+  })
+
+  it('shows the detail of a 422', async () => {
+    const { submit, fill } = await openLinks({
+      'POST /api/ingest/links': jsonResponse({ detail: 'No valid Jamendo or Freesound links found' }, 422),
+    })
+    await fill('hello')
+    await submit()
+    expect(await screen.findByRole('alert')).toHaveTextContent('No valid Jamendo or Freesound links found')
+  })
+
+  it('links to Settings when a key is missing (503)', async () => {
+    const { submit, fill } = await openLinks({
+      'POST /api/ingest/links': jsonResponse({ detail: 'Freesound API key is not set: add it in Settings' }, 503),
+    })
+    await fill()
+    await submit()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Freesound API key is not set')
+    expect(within(alert).getByRole('link', { name: 'Open Settings' })).toHaveAttribute('href', '#/settings')
+  })
+
+  it('explains a 409', async () => {
+    const { submit, fill } = await openLinks({
+      'POST /api/ingest/links': jsonResponse({ detail: 'job other is already running' }, 409),
+    })
+    await fill()
+    await submit()
+    expect(await screen.findByText('Another job is running')).toBeInTheDocument()
+  })
+
+  describe('the report', () => {
+    const finish = async (extra: Record<string, unknown>) => {
+      const ctx = await openLinks()
+      await ctx.fill()
+      await ctx.submit()
+      const panel = await screen.findByRole('region', { name: 'Job progress' })
+      source().emit('done', { report: { ...REPORT, failures: [], failures_total: 0, failed: 0, ...extra } })
+      await within(panel).findByText('Finished')
+      return panel
+    }
+
+    it('lists what was already there, not found and not understood', async () => {
+      const panel = await finish({
+        already: ['jamendo:1', 'freesound:2'],
+        not_found: ['jamendo:3', 'freesound:4'],
+        invalid: ['https://example.org/nope', 'hello'],
+      })
+      expect(within(panel).getByText('Already in your library: 2')).toBeInTheDocument()
+      expect(within(panel).getByText('Not found (or no preview): jamendo:3, freesound:4')).toBeInTheDocument()
+      expect(within(panel).getByText('Not understood: https://example.org/nope, hello')).toBeInTheDocument()
+    })
+
+    it('shortens a long list', async () => {
+      const panel = await finish({ not_found: Array.from({ length: 8 }, (_, i) => `jamendo:${i + 1}`) })
+      expect(
+        within(panel).getByText('Not found (or no preview): jamendo:1, jamendo:2, jamendo:3, jamendo:4, jamendo:5 and 3 more'),
+      ).toBeInTheDocument()
+    })
+
+    it('says nothing for empty or missing lists', async () => {
+      const panel = await finish({ already: [], not_found: [] })
+      expect(within(panel).queryByText(/Already in your library/)).not.toBeInTheDocument()
+      expect(within(panel).queryByText(/Not found/)).not.toBeInTheDocument()
+      expect(within(panel).queryByText(/Not understood/)).not.toBeInTheDocument()
+    })
   })
 })

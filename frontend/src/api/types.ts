@@ -307,6 +307,8 @@ export interface TrackDetail extends TrackSummary {
 export interface TrackListParams {
   source?: Source
   risk?: Risk
+  /** Up to 200 characters; words are all matched against title, artist and album. */
+  q?: string
   limit?: number
   offset?: number
 }
@@ -614,6 +616,12 @@ export interface JobReport {
   aborted?: string | null
   /** Tracks this job added to the catalog (import-for-search jobs). */
   new_track_ids?: number[]
+  /** Links jobs only: tracks that were in the catalog already, like `"jamendo:123"`. */
+  already?: string[]
+  /** Links jobs only: tracks the source did not know or that have no preview. */
+  not_found?: string[]
+  /** Links jobs only: the text of the links that were not understood, as pasted. */
+  invalid?: string[]
 }
 
 export interface JobDetail extends Job {
@@ -629,6 +637,14 @@ export interface JamendoIngestRequest {
   commercial_only?: boolean
   order?: string | null
   limit?: number
+  embed?: boolean
+  force?: boolean
+}
+
+/** Adds the tracks that Jamendo and Freesound links point to. */
+export interface LinksIngestRequest {
+  /** 1 to 10000 characters: up to 50 links, one per line. */
+  text: string
   embed?: boolean
   force?: boolean
 }

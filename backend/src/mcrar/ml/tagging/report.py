@@ -56,12 +56,15 @@ def metric_tables(registry: dict) -> str:
             if metrics is None:
                 lines.append(f"| {entry['variant']} | — | not evaluated |" + " — |" * len(columns))
                 continue
-            cells = [entry["variant"], str(metrics.get("n", "—")), _primary(metrics)]
+            # Scene entries record the number of labelled tracks as ``n_tracks``.
+            count = metrics.get("n", metrics.get("n_tracks", "—"))
+            cells = [entry["variant"], str(count), _primary(metrics)]
             lines.append(
                 "| " + " | ".join(cells + [_number(metrics.get(k)) for k in columns]) + " |"
             )
         if not spec["entries"]:
-            lines.append("| Pending data run | — | — | " + " | ".join("—" for _ in columns) + " |")
+            pending = ["Pending data run", "—", "—", *("—" for _ in columns)]
+            lines.append("| " + " | ".join(pending) + " |")
         lines.append("")
     return "\n".join(lines)
 

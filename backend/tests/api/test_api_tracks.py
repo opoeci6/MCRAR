@@ -51,6 +51,70 @@ def test_list_rejects_bad_arguments(tmp_path: Path) -> None:
         assert client.get("/api/tracks", params={"offset": -1}).status_code == 422
 
 
+def _titles(client, **params) -> tuple[set[str], int]:  # noqa: ANN001, ANN003
+    body = client.get("/api/tracks", params={"limit": 200, **params}).json()
+    return {t["title"] for t in body["items"]}, body["total"]
+
+
+def _add_text_tracks(client) -> None:  # noqa: ANN001
+    for source_id, title, artist, album in (
+        ("t1", "Zebra Crossing", "Quiet Fox", "Night Drive"),
+        ("t2", "Plain", "Zebra Quartet", None),
+        ("t3", "100% Pure", "Fox", "Snake_Case"),
+        ("t4", "Other", None, "Zebra Songs"),
+        ("t5", "Étude", "Anon", None),
+    ):
+        client.repo.upsert_track(
+            TrackRecord(
+                source="local", source_id=source_id, title=title, artist=artist, album=album
+            )
+        )
+
+
+def test_list_text_filter_matches_title_artist_or_album_case_insensitively(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        _add_text_tracks(client)
+        assert _titles(client, q="zebra") == ({"Zebra Crossing", "Plain", "Other"}, 3)
+        assert _titles(client, q="ZEBRA") == _titles(client, q="zebra")
+        assert _titles(client, q="quartet") == ({"Plain"}, 1)  # artist
+        assert _titles(client, q="drive") == ({"Zebra Crossing"}, 1)  # album
+        assert _titles(client, q="plain") == ({"Plain"}, 1)  # title
+        assert _titles(client, q="Étude") == ({"Étude"}, 1)  # non-ASCII: matched as written
+        assert _titles(client, q="tude") == ({"Étude"}, 1)
+
+
+def test_list_text_filter_needs_every_word_and_keeps_total_in_step(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        _add_text_tracks(client)
+        assert _titles(client, q="zebra fox") == ({"Zebra Crossing"}, 1)  # title + artist
+        assert _titles(client, q="  fox   zebra ") == ({"Zebra Crossing"}, 1)
+        assert _titles(client, q="zebra nothing") == (set(), 0)
+        page = client.get("/api/tracks", params={"q": "zebra", "limit": 1, "offset": 1}).json()
+        assert page["total"] == 3 and len(page["items"]) == 1
+        only_local = client.get("/api/tracks", params={"q": "zebra", "source": "jamendo"}).json()
+        assert only_local["total"] == 0  # combines with the other filters
+
+
+def test_list_text_filter_treats_like_wildcards_literally(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        _add_text_tracks(client)
+        assert _titles(client, q="%") == ({"100% Pure"}, 1)
+        assert _titles(client, q="_") == ({"100% Pure"}, 1)  # the album "Snake_Case"
+        assert _titles(client, q="e_c") == ({"100% Pure"}, 1)  # not "any one character"
+        assert _titles(client, q="\\") == (set(), 0)
+
+
+def test_list_empty_text_filter_is_no_filter_and_too_long_is_422(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        _add_text_tracks(client)
+        everything = client.get("/api/tracks").json()["total"]
+        assert everything == 26
+        for blank in ("", "   "):
+            assert client.get("/api/tracks", params={"q": blank}).json()["total"] == everything
+        assert client.get("/api/tracks", params={"q": "a" * 200}).status_code == 200
+        assert client.get("/api/tracks", params={"q": "a" * 201}).status_code == 422
+
+
 def test_detail_has_features_licence_and_a_download_url_only_when_allowed(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         quest = client.get(f"/api/tracks/{client.ids['Epic Quest']}").json()
