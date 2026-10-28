@@ -23,7 +23,8 @@ Last updated: 2026-10-26.
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
 | M9 Game-scene tags | Code done (2026-10-26); **waiting for hand labels** | `dev` | 14 scenes, zero-shot (two variants), scene and intensity filters, Labelling tab, `mcrar scenes …`; P@10 and the head decision follow the labels. See §3.13 |
 | QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
-| M8, M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
+| M11 | Not started | — | See `docs/PLAN.md` §5 |
 
 Test suite on `dev`, counted after the fixes of 2026-10-27 (§3.15):
 - Backend, default env: 1,927 passed, 30 skipped.
@@ -81,6 +82,19 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **Spotify is metadata and search only.** Since 2024–2026 its API gives no audio, no audio
   features and no previews for new apps, and Development Mode is limited to about 5 users. ML
   runs only on audio we can fetch: Jamendo, local folders and asset packs, and Freesound later.
+  - **Checked again 2026-10-27:**
+    - `GET /search` returns at most 10 items per request, 5 by default; more need `offset`
+      pages. This has applied since Feb 2026.
+    - Removed fields: `popularity`, `available_markets` and `linked_from` on tracks, `label` on
+      albums, and `followers` on artists.
+    - The batch `GET /tracks`, `/artists` and `/albums` are gone; `GET /tracks/{id}` remains.
+    - A Development Mode app works only while its owner has Premium.
+    - Since July 2026, quotas count per developer account, and a 429 may carry
+      `reason: "QUOTA_EXCEEDED"`.
+  - **Owner's choices for when M8 resumes:**
+    - the section loads on click ("Show matches on Spotify"), never with every search;
+    - link out only, no embed player;
+    - the keys come from someone with Premium (the owner has none), entered by the human.
 - **No commercial mode (since 2026-10-15).** It used to default to on and refuse anything
   trained on or calibrated with non-commercial data (MuQ-MuLan weights, MTG-Jamendo and DEAM
   labels). The owner removed it: every model and head is usable, and the README will say the
@@ -638,8 +652,31 @@ M3b is merged and the real catalog is tagged. Still open:
 
 ### 5.3 Next milestone (waiting for the owner's go)
 These can follow in any order:
-- M8: the Spotify metadata section. It now includes LLM query generation for Spotify, moved
-  from M7.
+- **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with
+  the collaborator; see §3.1 for the API facts and their choices. It includes LLM query generation
+  for Spotify, moved from M7.
+- **Other platforms** (researched 2026-10-27; numbers marked "reported" are from third-party
+  pages). MCRAR can only analyse audio it may fetch, so a platform either feeds the catalog or is a
+  link-out section like Spotify.
+  - **Freesound:** the best fit, already in PLAN as "later".
+    - A free API key gives search and mp3/ogg previews without OAuth; original files need OAuth2.
+    - Licences are CC0, CC BY and CC BY-NC.
+    - Reported limits: about 60 requests a minute and 2,000 a day.
+    - Mostly sound effects, loops and ambience, which game developers need. It would ingest and
+      embed like Jamendo.
+  - **Openverse:** an open API (anonymous, or a token for more) over audio from Jamendo,
+    Freesound and Wikimedia Commons. Mostly duplicates; Wikimedia Commons recordings would be
+    new. Low priority.
+  - **SoundCloud:** app registration needs an Artist Pro account. Client credentials covers
+    search and playback, and its tokens are capped (reported 50 per 12 h per app).
+    - Most tracks are all rights reserved, so it would be a link-out section like Spotify. Some
+      tracks carry a CC licence in their metadata.
+    - Whether its terms allow analysing streams for ML is unverified and likely not. Read the API
+      Terms first.
+  - **To check before proposing:** Internet Archive netlabels (open API, many CC releases,
+    inconsistent licence data) and ccMixter (query API, CC remixes and instrumentals).
+  - **Not usable:** OpenGameArt (no API, and we don't scrape), Pixabay (its API has no music) and
+    Free Music Archive (API closed).
 
 M11 (desktop packaging) comes last.
 
