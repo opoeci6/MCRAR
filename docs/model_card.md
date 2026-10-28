@@ -72,6 +72,14 @@ Every method uses the same held-out test items within each label set. All model 
 | zeroshot-calibrated | 181 | -0.0017 [-0.0459, 0.0281] | 0.0472 | 0.1321 |
 | zeroshot-unsupervised | 181 | -1.3038 [-1.8715, -0.8616] | 0.0581 | 0.1932 |
 
+### scene
+
+| Variant | Test n | Primary (95% CI) |
+|---|---|---|
+| zeroshot-catalog | — | 0.3071 |
+| zeroshot-catalog-centered | — | 0.4071 |
+| logreg-hybrid | — | 0.4143 |
+
 ### MLP versus the linear baseline
 
 - genre: MLP macro_f1 0.5080 does not exceed the linear baseline (0.5106). These are test point estimates, not a paired significance test.
@@ -107,6 +115,52 @@ Selection is the highest finite test primary metric among all entries; ties use 
 | moodtheme | moodtheme-mlp@b2ac67d |
 | valence | valence-mlp@f2069d3 |
 | arousal | arousal-mlp@51348c6 |
+| scene | scene-logreg-hybrid@5f5ba48 |
+
+## Game scenes
+
+Hand labels from `mcrar scenes eval` (2026-10-28T08:02:07+00:00): 269 labelled tracks, 269 with a CLAP embedding. Labellers: Simon (149 labelled, 0 skipped), owner (150 labelled, 0 skipped). A scene counts as present when at least half of a track's labellers marked it. Pool metrics are P@10 and average precision on those tracks; the trained head is cross-validated (5 folds, seed 0) and the mean P@10 covers the scenes with at least 5 positives. Selected entry: scene-logreg-hybrid@5f5ba48.
+
+| Scene | Positives | zeroshot-catalog | zeroshot-catalog-centered | logreg-hybrid |
+|---|---|---|---|---|
+| combat | 46 | 0.40 / 0.30 | 0.40 / 0.33 | 0.60 / 0.45 |
+| boss | 29 | 0.40 / 0.39 | 0.50 / 0.43 | 0.50 / 0.47 |
+| exploration | 61 | 0.30 / 0.32 | 0.40 / 0.40 | 0.60 / 0.52 |
+| menu | 66 | 0.30 / 0.33 | 0.70 / 0.47 | 0.60 / 0.52 |
+| town | 56 | 0.50 / 0.32 | 0.70 / 0.49 | 0.60 / 0.53 |
+| puzzle | 22 | 0.40 / 0.25 | 0.10 / 0.14 | 0.00 / 0.14 |
+| stealth | 28 | 0.40 / 0.29 | 0.20 / 0.24 | 0.20 / 0.38 |
+| horror | 35 | 0.70 / 0.52 | 0.90 / 0.71 | 1.00 / 0.76 |
+| victory | 10 | 0.10 / 0.10 | 0.20 / 0.14 | 0.10 / 0.09 |
+| defeat | 10 | 0.00 / 0.05 | 0.20 / 0.07 | 0.10 / 0.12 |
+| credits | 31 | 0.10 / 0.15 | 0.30 / 0.17 | 0.20 / 0.20 |
+| cutscene | 54 | 0.50 / 0.32 | 0.30 / 0.31 | 0.50 / 0.49 |
+| chase | 17 | 0.10 / 0.17 | 0.10 / 0.11 | 0.30 / 0.25 |
+| ambient | 68 | 0.10 / 0.33 | 0.70 / 0.53 | 0.50 / 0.51 |
+| mean P@k | | 0.31 | 0.41 | 0.41 |
+
+Catalog top-10 per entry: precision over the labelled tracks of the list (labelled / unlabelled in the list). The head was trained on these labels, so its numbers are in-sample.
+
+| Scene | zeroshot-catalog | zeroshot-catalog-centered | logreg-hybrid |
+|---|---|---|---|
+| combat | 0.75 (4/6) | 0.40 (5/5) | n/a |
+| boss | 0.50 (4/6) | 0.50 (2/8) | n/a |
+| exploration | 0.29 (7/3) | 0.40 (10/0) | n/a |
+| menu | 0.40 (5/5) | 0.67 (9/1) | n/a |
+| town | 0.43 (7/3) | 0.25 (4/6) | n/a |
+| puzzle | 0.50 (2/8) | 0.00 (3/7) | n/a |
+| stealth | 0.50 (4/6) | 0.25 (4/6) | n/a |
+| horror | 0.83 (6/4) | 1.00 (1/9) | n/a |
+| victory | n/a (0/10) | 0.33 (3/7) | n/a |
+| defeat | 0.00 (3/7) | 0.00 (2/8) | n/a |
+| credits | 0.20 (5/5) | 0.17 (6/4) | n/a |
+| cutscene | 0.50 (6/4) | 0.20 (5/5) | n/a |
+| chase | 0.25 (4/6) | 0.11 (9/1) | n/a |
+| ambient | 0.17 (6/4) | 0.50 (2/8) | n/a |
+
+Intensity, Spearman rho against low=1, mid=2, high=3: energy 0.66 (n=153); arousal 0.66 (n=153).
+
+Agreement between owner and Simon on 30 shared tracks: mean Cohen's kappa 0.24; intensity exact match 0.33 (n=3).
 
 ## Heads and calibration
 
