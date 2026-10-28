@@ -9,6 +9,7 @@ from typing import Any
 
 import httpx
 
+from mcrar.sources.freesound import FreesoundClient
 from mcrar.sources.jamendo import JamendoClient
 
 SECRET = "SECRET123"
@@ -83,6 +84,64 @@ def error_envelope(message: str, code: int = 5) -> dict[str, Any]:
     }
 
 
+FS_SOUND: dict[str, Any] = {
+    "id": 456789,
+    "url": "https://freesound.org/people/someone/sounds/456789/",
+    "name": "Warm pad loop",
+    "tags": ["loop", "pad", "ambient"],
+    "description": "A slowly evolving warm pad.",
+    "license": "https://creativecommons.org/licenses/by/4.0/",
+    "username": "someone",
+    "duration": 42.5,
+    "previews": {
+        "preview-hq-mp3": "https://cdn.freesound.org/previews/456/456789_1-hq.mp3",
+        "preview-lq-mp3": "https://cdn.freesound.org/previews/456/456789_1-lq.mp3",
+        "preview-hq-ogg": "https://cdn.freesound.org/previews/456/456789_1-hq.ogg",
+        "preview-lq-ogg": "https://cdn.freesound.org/previews/456/456789_1-lq.ogg",
+    },
+    "pack": "https://freesound.org/apiv2/packs/9999/",
+    "category": "Music",
+    "gen_ai_preference": "no-preference",
+    "created": "2019-03-04T12:34:56.789",
+    "num_downloads": 12,
+    "avg_rating": 4.5,
+    "type": "wav",
+    "samplerate": 44100,
+    "channels": 2,
+}
+
+
+def sound_json(n: int) -> dict[str, Any]:
+    data = copy.deepcopy(FS_SOUND)
+    data["id"] = n
+    data["name"] = f"Sound {n}"
+    data["previews"]["preview-hq-mp3"] = f"https://cdn.freesound.org/previews/0/{n}-hq.mp3"
+    return data
+
+
+def search_page(results: list[dict[str, Any]], *, next_page: int | None = None) -> dict[str, Any]:
+    return {
+        "count": len(results),
+        "next": f"https://freesound.org/apiv2/search/?page={next_page}" if next_page else None,
+        "previous": None,
+        "results": results,
+    }
+
+
+def fs_paged_backend(total: int) -> Backend:
+    """A fake Freesound catalog of ``total`` sounds honouring page and page_size."""
+
+    def respond(request: httpx.Request, _n: int) -> httpx.Response:
+        params = request.url.params
+        size, page = int(params["page_size"]), int(params.get("page", "1"))
+        first = (page - 1) * size
+        ids = list(range(first + 1, min(total, first + size) + 1))
+        more = page + 1 if first + size < total else None
+        return json_response(search_page([sound_json(i) for i in ids], next_page=more))
+
+    return Backend(respond)
+
+
 class FakeTime:
     """Injectable clock and sleep: sleeping advances the clock and records the delay."""
 
@@ -143,6 +202,24 @@ def make_client(
     kwargs.setdefault("min_interval_s", 0)
     return JamendoClient(
         client_id,
+        cache_dir=cache_dir,
+        transport=backend.transport,
+        clock=fake.clock,
+        sleep=fake.sleep,
+        **kwargs,
+    )
+
+
+def make_freesound_client(
+    backend: Backend,
+    fake: FakeTime,
+    cache_dir: Path | None = None,
+    api_key: str = SECRET,
+    **kwargs: Any,
+) -> FreesoundClient:
+    kwargs.setdefault("min_interval_s", 0)
+    return FreesoundClient(
+        api_key,
         cache_dir=cache_dir,
         transport=backend.transport,
         clock=fake.clock,

@@ -1,4 +1,4 @@
-"""Parse license URLs (Jamendo `license_ccurl`) and short codes into `LicenseInfo`."""
+"""Parse license URLs (Jamendo `license_ccurl`, Freesound `license`) and short codes."""
 
 from __future__ import annotations
 
@@ -19,13 +19,17 @@ _TRAITS: dict[str, tuple[bool, bool, bool, bool, Risk]] = {
     "cc-by-nc": (False, True, False, True, "red"),
     "cc-by-nc-sa": (False, True, True, True, "red"),
     "cc-by-nc-nd": (False, False, False, True, "red"),
+    # CC Sampling+ 1.0 (Freesound): only parts of the work may be sampled and transformed, and
+    # the work itself may not be used as is for commercial purposes, so a track used whole in a
+    # game is not covered: not commercial_ok, hence red.
+    "sampling-plus": (False, True, False, True, "red"),
     "pixabay": (True, True, False, False, "green"),
     "fal": (True, True, True, True, "amber"),
 }
 
 _CC_URL = re.compile(
     r"^(?:https?://)?(?:www\.)?creativecommons\.org/(?P<kind>licenses|publicdomain)/"
-    r"(?P<slug>[a-z-]+)/(?P<ver>\d+(?:\.\d+)?)(?:/(?P<jur>[a-z-]+))?"
+    r"(?P<slug>[a-z-]+|sampling\+)/(?P<ver>\d+(?:\.\d+)?)(?:/(?P<jur>[a-z-]+))?"
     r"(?:/deed(?:\.[a-z-]+)?)?/?(?:[?#].*)?$"
 )
 _FAL_URL = re.compile(r"^(?:https?://)?(?:www\.)?artlibre\.org/licen[cs]e/lal(?:/[a-z-]*)?/?$")
@@ -33,6 +37,7 @@ _CC_CODE = re.compile(
     r"^cc-?(?:(?P<zero>0|zero)|by(?:-(?P<mods>nc-sa|nc-nd|nc|nd|sa))?)"
     r"(?:-(?P<ver>\d+(?:\.\d+)?))?(?:-(?P<jur>[a-z]{2,}))?$"
 )
+_SAMPLING_PLUS_CODE = re.compile(r"^(?:cc-)?sampling\+(?:-(?P<ver>\d+(?:\.\d+)?))?$")
 
 _URL_FAMILIES: dict[tuple[str, str], Family] = {
     ("licenses", "by"): "cc-by",
@@ -41,6 +46,7 @@ _URL_FAMILIES: dict[tuple[str, str], Family] = {
     ("licenses", "by-nc"): "cc-by-nc",
     ("licenses", "by-nc-sa"): "cc-by-nc-sa",
     ("licenses", "by-nc-nd"): "cc-by-nc-nd",
+    ("licenses", "sampling+"): "sampling-plus",
     ("publicdomain", "zero"): "cc0",
     ("publicdomain", "mark"): "pdm",
 }
@@ -78,6 +84,12 @@ def _build(
         version, jur = version or "1.0", None
         code = f"Public Domain Mark {version}"
         url = f"https://creativecommons.org/publicdomain/mark/{version}/"
+    elif family == "sampling-plus":
+        version, jur = version or "1.0", None
+        code, url = (
+            f"CC Sampling+ {version}",
+            f"https://creativecommons.org/licenses/sampling+/{version}/",
+        )
     elif family == "pixabay":
         code, url = "Pixabay Content License", PIXABAY_URL
     elif family == "fal":
@@ -137,6 +149,9 @@ def _from_code(text: str) -> LicenseInfo | None:
         )
     if named is not None:
         return _build(named)
+    sampling = _SAMPLING_PLUS_CODE.match(norm)
+    if sampling is not None:
+        return _build("sampling-plus", sampling["ver"])
     m = _CC_CODE.match(norm)
     if m is None:
         return None
