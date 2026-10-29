@@ -744,10 +744,10 @@ The owner will make the GitHub repository public. Before that, on branch `docs-p
 | Secrets | `.secrets/secrets.toml` | `jamendo_client_id` (the client secret is not needed); `llm_api_key_openai` (since 2026-10-19); `freesound_api_key` (since 2026-10-28) |
 | LLM settings | `config/settings.toml` `[llm]` | enabled with the OpenAI preset (default model `gpt-6-luna`) since 2026-10-19 |
 | Listening-test page | https://claude.ai/artifact/NPEKNfqBEZZBDeHx8ZD2J4 | private; ratings stored in its database |
-| Presentation deck | `.cache/MCRAR presentation.pptx` | Build It! final presentation (Thu 2026-10-29), from the course template next to it; 6 slides, speaker notes, the demo video embedded on slide 5. Names are placeholders |
+| Presentation deck | `.cache/MCRAR presentation.pptx` | Build It! final presentation (Thu 2026-10-29), from the course template next to it; 6 slides, speaker notes. Names are placeholders. Slide 5 has the owner's own version of the demo video, with sound (replaced by the owner on 2026-10-28). Slide 6 has a QR code for the public repository with its URL. Edit this file in place: a rebuild from the sources would bring back the silent video. A backup from before the QR is in `.cache/presentation-src/backup/` |
 | Demo video | `.cache/MCRAR demo.mp4` | 1:34, silent, 1080p, step captions; recorded by script on a catalog copy (port 8010). Recording plan for a manual re-take: `.cache/MCRAR demo script.md` |
 | Talk script | `.cache/MCRAR presentation script.md`; private page https://claude.ai/artifact/QmeuMW87nxYMgoDwjRedMk | who says what, timings, the demo talk-along, likely and tricky questions (ranking, the ML, the slide numbers, CLAP's training data, the LLM and rerank) |
-| Presentation sources | `.cache/presentation-src/` (README inside) | deck builder, screenshot and video recorders, PowerPoint COM scripts, screenshots |
+| Presentation sources | `.cache/presentation-src/` (README inside) | deck builder, screenshot and video recorders, PowerPoint COM scripts, screenshots, the QR scripts (`make_qr.py`, `add_qr.ps1`) |
 
 ### 4.1 Cleanup candidates (measured 2026-10-28; nothing deleted yet)
 Each deletion waits for the owner's word. The plan is to do them at the end of the project.
