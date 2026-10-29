@@ -960,3 +960,9 @@ These others can follow in any order:
 - **Pushes of `dev`:** 2026-10-20 (M7, player bar, model list, up to `fab2caf`); 2026-10-26
   (M10, M9 code and the labelling handover, up to `d09b72e`). The 2026-10-26 push was checked for
   forbidden paths and stored secrets; the no-`ml` suite ran right after it (green).
+- **Push of 2026-10-28** (going public, §3.18): `dev` `d09b72e..4609953` (37 commits: QoL 1 and
+  2, M9 results, M12, the review fixes, the docs for the public repo). `main` was fast-forwarded
+  from the initial commit to the same `4609953`. Before the push, all ran green:
+  - both suites (default and without the `ml` extra);
+  - the stored-secret scan over every ref;
+  - the forbidden-path check.
