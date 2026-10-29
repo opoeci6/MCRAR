@@ -39,8 +39,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 
 - **Branches.** One branch per milestone or fix, cut from `dev`, merged into `dev` with
   `--no-ff`. `main` follows `dev` (fast-forwarded on 2026-10-28, §3.18). Both are pushed to
-  GitHub (`opoeci6/MCRAR`). It was private; the owner makes it public after the 2026-10-28
-  docs pass. Merged local branches are kept.
+  GitHub (`opoeci6/MCRAR`), **public since 2026-10-28** (private before). Merged local branches
+  are kept.
 - **Pushing.** Push `dev` only when the owner asks. Before every push: run the default suite in
   the normal env **and** in a scratch venv without the `ml` extra (as CI does), and grep the
   outgoing commits for **every** value in `.secrets/secrets.toml` (the Jamendo client id, the
@@ -722,7 +722,9 @@ The owner will make the GitHub repository public. Before that, on branch `docs-p
 
   PyInstaller is no longer the plan.
 - **The labeller name "Simon"** appears in the model card, `registry.json` and this file, and is
-  already in the history. It is kept unless the collaborator objects.
+  already in the history. It stays: it is not the collaborator's legal name.
+- **Public on 2026-10-28.** The owner switched the visibility. The README and both screenshots
+  render on GitHub, and CI is green on `dev` and `main` (runs #17 and #18 at `76019bd`).
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 
