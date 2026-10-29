@@ -104,14 +104,14 @@ function putBodies(mock: ReturnType<typeof stubApi>, path: string) {
 }
 
 describe('Settings: model', () => {
-  it('offers a research-only embedder like any other and labels its licence', async () => {
+  it('offers a non-commercial embedder like any other, by name only', async () => {
     stubApi(routes())
     renderWithProviders(<SettingsPage />)
     const select = await screen.findByLabelText('Default embedder')
     const muq = within(select).getByRole('option', { name: /muq-mulan/ })
     expect(muq).toBeEnabled()
-    expect(muq).toHaveTextContent('research only')
-    expect(within(select).getByRole('option', { name: /^clap/ })).toHaveTextContent('commercial use OK')
+    expect(muq).toHaveTextContent(/^muq-mulan \(OpenMuQ\/MuQ-MuLan\)$/)
+    expect(within(select).getByRole('option', { name: /^clap/ })).toHaveTextContent(/^clap \(laion\/clap\)$/)
     expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled()
   })
 

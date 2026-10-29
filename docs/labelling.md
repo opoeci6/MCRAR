@@ -1,5 +1,10 @@
 # Labelling game scenes (M9)
 
+> **M9 is done (2026-10-28):** 269 labelled tracks from two labellers. The trained hybrid head
+> won narrowly and is selected; the labellers agreed little (mean Cohen's kappa 0.24). Results
+> are in `docs/model_card.md`, "Game scenes", and the decisions in STATUS §3.13. The workflow
+> below still applies to new labels.
+
 The scene tags (combat, boss, menu, ...) come from text prompts, with no data to check them
 against. Hand labels fix that: they tell us which of the zero-shot variants is better, and
 they can train a small head on top. This page says what a label means and how the two of us

@@ -18,6 +18,7 @@ MUST_BE_IGNORED = [
     "models/scratch.bin",
     "backend/.venv/x",
     "frontend/node_modules/x",
+    ".claude/CLAUDE.md",
 ]
 
 # The trained tag heads and their registry are committed (M3b): small, licence recorded.

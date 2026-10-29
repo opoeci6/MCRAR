@@ -26,11 +26,11 @@ Last updated: 2026-10-28.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker and drop follow after the demo |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 | Not started | — | See `docs/PLAN.md` §5 |
+| M11 Packaging | Planned (2026-10-28) | — | Portable Windows zip (own Python, CPU PyTorch, UI in the browser) right after the presentation; then the local-music picker; then a desktop window (pywebview). See §3.18 and §5.3 |
 
-Test suite on `dev`, counted after M12 (2026-10-28):
-- Backend, default env: 2,340 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,337 passed, 31 skipped.
+Test suite on `dev`, counted after the docs pass for going public (2026-10-28):
+- Backend, default env: 2,341 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,338 passed, 31 skipped.
 - 29 real-model tests run with `-m models`.
 - Frontend: 487 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
@@ -38,8 +38,9 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 ## 2. How we work
 
 - **Branches.** One branch per milestone or fix, cut from `dev`, merged into `dev` with
-  `--no-ff`. `main` still holds only the initial commit. `dev` is pushed to GitHub
-  (`opoeci6/MCRAR`, private). Merged local branches are kept.
+  `--no-ff`. `main` follows `dev` (fast-forwarded on 2026-10-28, §3.18). Both are pushed to
+  GitHub (`opoeci6/MCRAR`). It was private; the owner makes it public after the 2026-10-28
+  docs pass. Merged local branches are kept.
 - **Pushing.** Push `dev` only when the owner asks. Before every push: run the default suite in
   the normal env **and** in a scratch venv without the `ml` extra (as CI does), and grep the
   outgoing commits for **every** value in `.secrets/secrets.toml` (the Jamendo client id, the
@@ -48,7 +49,8 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 - **Commit identity.** The human is the author; agents are credited with a `Co-authored-by`
   trailer (`AGENTS.md` §6). Claude Code commits end with
   `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Never committed:** `.claude/` (the owner's Claude Code settings), `data/`, `.secrets/`,
+- **Never committed:** `.claude/` (the owner's Claude Code settings; git-ignored since
+  2026-10-28), `data/`, `.secrets/`,
   `.tools/`, `.cache/`, `config/settings.toml`. Under `models/` only `heads/` and
   `registry.json` are trackable.
 - **Agents.**
@@ -84,7 +86,7 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
 ### 3.1 Product and licensing
 - **Spotify is metadata and search only.** Since 2024–2026 its API gives no audio, no audio
   features and no previews for new apps, and Development Mode is limited to about 5 users. ML
-  runs only on audio we can fetch: Jamendo, local folders and asset packs, and Freesound later.
+  runs only on audio we can fetch: Jamendo, local folders and asset packs, and Freesound (M12).
   - **Checked again 2026-10-27:**
     - `GET /search` returns at most 10 items per request, 5 by default; more need `offset`
       pages. This has applied since Feb 2026.
@@ -100,9 +102,9 @@ CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are 
     - the keys come from someone with Premium (the owner has none), entered by the human.
 - **No commercial mode (since 2026-10-15).** It used to default to on and refuse anything
   trained on or calibrated with non-commercial data (MuQ-MuLan weights, MTG-Jamendo and DEAM
-  labels). The owner removed it: every model and head is usable, and the README will say the
-  project is not for commercial use (for example hosting it as a service) because of those
-  licences. `commercial_ok` stays in the registries as licence information. A leftover
+  labels). The owner removed it: every model and head is usable, and the README and `NOTICE.md`
+  say (since 2026-10-28, §3.18) that the project is not for commercial use (for example hosting
+  it as a service) because of those licences. `commercial_ok` stays in the registries as licence information. A leftover
   `commercial_mode` line in `config/settings.toml` is ignored and dropped on the next save.
 - **Licence risk for game use** (`mcrar.licensing`):
   - green: CC0, PDM, CC BY, Pixabay
@@ -674,6 +676,54 @@ with new QoL items (plan of 2026-10-28, branch `qol-2`).
   browsing reads files in place, so moving them breaks playback; dropped files are copies that
   use disk space.
 
+### 3.18 Going public (2026-10-28)
+The owner will make the GitHub repository public. Before that, on branch `docs-public`:
+- **History check.** No stored secret appears anywhere in the history of any ref (the Jamendo
+  client id, the Freesound key and the LLM key: 0 hits each). Commit authors use GitHub noreply
+  addresses. Going public publishes the whole history, so removing a doc now would only tidy
+  the current version.
+- **Docs stay, with an index.** The owner's choice: PLAN, STATUS and the handovers remain public
+  as the project record. The new `docs/README.md` sorts the docs into user guides, ML, development
+  and project record. Every doc was checked against the code. Fixes:
+  - PLAN has a dated note on where it ended up.
+  - The M9 handover and the labelling guide say M9 is done.
+  - `dev-setup.md`: the Freesound key field is in Settings; packaging changed.
+  - `llm.md`: the import now uses Jamendo and/or Freesound.
+- **Licences.** `LICENSE` stays plain MIT for the code. The new `NOTICE.md` explains why the
+  project as a whole is non-commercial:
+  - the mood/theme heads fitted on MTG-Jamendo are CC BY-NC-SA 4.0 and shared under it;
+  - the valence/arousal heads fitted on DEAM are CC BY-NC;
+  - the optional MuQ-MuLan is CC BY-NC 4.0.
+
+  It also has the dataset citations and the music-licence disclaimer. The README says the same in
+  short, as decided on 2026-10-15 (§3.1).
+- **README rewritten:**
+  - what MCRAR does, with two screenshots in `docs/images/`;
+  - how it works;
+  - running it from source (PowerShell);
+  - licences and credits.
+- **Model selector:** Settings → Model no longer labels models "commercial use OK" or "research
+  only" (owner, 2026-10-28). The app as a whole is non-commercial, so the labels misled. The API
+  still reports `commercial_ok` per embedder as information. The music licence badges and "Safe
+  for commercial game" are unrelated and unchanged.
+- **`.claude/` is git-ignored** (the owner's Claude Code folder), and the hygiene test checks it.
+- **`main` follows `dev`.** It held only the initial commit, so it was fast-forwarded to `dev`.
+  GitHub shows `main`, so visitors now see the current code and README.
+- **Packaging (M11), the owner's order:**
+  1. a portable Windows zip with its own Python and CPU PyTorch that opens the UI in the
+     browser, right after the presentation;
+  2. the local-music picker (§3.17);
+  3. a desktop window (pywebview).
+
+  Not before the presentation: a build can't be tested on a clean PC tonight, and the first run
+  has two gaps the preview must fix first:
+  - the CLAP download (about 0.8 GB) happens silently at the first search;
+  - an empty library only says "No tracks match", with no hint to add keys or a folder.
+
+  PyInstaller is no longer the plan.
+- **The labeller name "Simon"** appears in the model card, `registry.json` and this file, and is
+  already in the history. It is kept unless the collaborator objects.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -851,7 +901,17 @@ M3b is merged and the real catalog is tagged. Still open:
     is cut off below about 600 px.
 
 ### 5.3 Next milestone (waiting for the owner's go)
-These can follow in any order:
+The owner's order after the presentation (2026-10-28, §3.18):
+1. **M11 preview:** a portable Windows zip with its own Python and CPU PyTorch; `MCRAR.cmd`
+   starts the server and opens the browser; data, weights and keys stay in the app folder.
+   - It needs two first-run fixes: a visible status while CLAP downloads, and an empty-library
+     hint (add a key or a folder).
+   - Smoke test on a clean Windows.
+   - Released as a GitHub pre-release.
+2. **The local-music picker** ("Browse…" and drop/choose files, §3.17).
+3. **M11 desktop window** (pywebview, WebView2) around the same build.
+
+These others can follow in any order:
 - **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with
   the collaborator; see §3.1 for the API facts and their choices. It includes LLM query generation
   for Spotify, moved from M7.
@@ -864,7 +924,7 @@ These can follow in any order:
 - **Other platforms** (researched 2026-10-27; numbers marked "reported" are from third-party
   pages). MCRAR can only analyse audio it may fetch, so a platform either feeds the catalog or is a
   link-out section like Spotify.
-  - **Freesound:** the best fit, already in PLAN as "later".
+  - **Freesound:** the best fit, already in PLAN as "later" (since built as M12, §3.16).
     - A free API key gives search and mp3/ogg previews without OAuth; original files need OAuth2.
     - Licences are CC0, CC BY and CC BY-NC.
     - Reported limits: about 60 requests a minute and 2,000 a day.
@@ -883,8 +943,6 @@ These can follow in any order:
     inconsistent licence data) and ccMixter (query API, CC remixes and instrumentals).
   - **Not usable:** OpenGameArt (no API, and we don't scrape), Pixabay (its API has no music) and
     Free Music Archive (API closed).
-
-M11 (desktop packaging) comes last.
 
 ## 6. GitHub history
 

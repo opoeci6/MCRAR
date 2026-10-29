@@ -109,7 +109,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\with-env.ps1 uv --ve
 | Trained tag heads + registry (committed) | `models/heads/`, `models/registry.json` | everything else under `models/` is ignored |
 | API keys (dev) | `.secrets/secrets.toml` | `SecretStore` `file` backend |
 | Optional settings file | `config/settings.toml` | copy `config/settings.example.toml` |
-| Build output | `build/`, `dist/` | PyInstaller / Vite |
+| Built UI | `frontend/dist/` | `npm run build`; `mcrar serve` serves it at `/` |
+| Packaging output | `build/`, `dist/` | the packaged app (M11, planned) |
 
 Settings precedence: constructor args > `MCRAR_*` environment variables > `config/settings.toml` > defaults.
 Secrets: `MCRAR_SECRET_<NAME>` environment variables always win over the configured backend.
@@ -123,10 +124,8 @@ Manage them with `mcrar secrets set|list|delete`. The `keyring` backend is opt-i
   1. Create a free account at <https://freesound.org> and sign in.
   2. Apply for an API key at <https://freesound.org/apiv2/apply> (use the "Client secret/Api key"
      value it shows).
-  3. Store it with
-     `scripts/with-env.sh uv run --directory backend mcrar secrets set freesound_api_key`, or under
-     Settings → API keys once the settings page has a Freesound field (the API already accepts
-     `PUT /api/secrets/freesound_api_key`).
+  3. Store it under Settings → API keys, or with
+     `scripts/with-env.sh uv run --directory backend mcrar secrets set freesound_api_key`.
      `MCRAR_SECRET_FREESOUND_API_KEY` in the environment works too. It lands in
      `.secrets/secrets.toml`, never in a URL, a log or the job params.
   4. Try it: `mcrar ingest freesound --query "calm ambient pad" --limit 5`. Freesound allows about
@@ -150,7 +149,7 @@ Rules for everyone, including agents:
 
 - The **NVIDIA GPU driver** (PyTorch wheels bundle the CUDA runtime, so no CUDA toolkit is needed).
   `mcrar doctor` looks for `nvidia-smi`; without it everything still runs on CPU.
-- The **WebView2 runtime**, used by the desktop shell from milestone M11 (ships with Windows 10/11).
+- The **WebView2 runtime**, for the planned desktop window (M11; ships with Windows 10/11).
   `mcrar doctor` does a read-only registry lookup.
 
 Both produce a warning, not a failure, when missing.
