@@ -11,8 +11,6 @@ export const settingsStrings = {
     heading: 'Model',
     label: 'Default embedder',
     hint: 'The model that turns your search text and the music into comparable numbers.',
-    commercial: 'commercial use OK',
-    research: 'research only',
     save: 'Save model',
     saved: 'Model saved',
     status: {

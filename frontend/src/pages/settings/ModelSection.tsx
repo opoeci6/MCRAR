@@ -51,7 +51,7 @@ export function ModelSection({ view, onUpdated }: SectionProps) {
       >
         {view.embedders.map((embedder) => (
           <option key={embedder.key} value={embedder.key}>
-            {`${embedderName(embedder)}: ${embedder.commercial_ok ? t.model.commercial : t.model.research}`}
+            {embedderName(embedder)}
           </option>
         ))}
       </Select>
