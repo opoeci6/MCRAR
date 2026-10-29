@@ -220,6 +220,8 @@ __marimo__/
 .streamlit/secrets.toml
 
 # --- MCRAR project-local toolchain, caches, data and secrets ---
+# The owner's Claude Code settings and instructions stay local.
+/.claude/
 /.tools/
 /.cache/
 /.secrets/

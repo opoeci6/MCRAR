@@ -8,10 +8,11 @@ MCRAR works without an LLM. With one, using your own API key, it does two extra 
      works
    - genre and mood hints
    - an energy or tempo preference
-   - Jamendo keywords for "Search Jamendo for more"
+   - keywords for "Search Jamendo and Freesound for more" (the import; it names only the sources
+     whose key is set)
 2. **Reranks the top results, but only when you click "Rerank top 20 with LLM".** The model
    reorders the top results and explains each one. It also gives a verdict on how well they fit.
-   A `poor` verdict suggests a Jamendo import, even when the similarity score looked fine.
+   A `poor` verdict suggests that import, even when the similarity score looked fine.
 
 Code: `backend/src/mcrar/llm/` (providers), `recommend/llm_parse.py` and `recommend/llm_rerank.py`.
 
@@ -84,7 +85,7 @@ The presets were checked against each provider's documentation on 2026-10-19.
 
 - **The parse.**
   - It is cached per query text, filters and model: up to 256 entries, kept until the server
-    restarts. Load more and the Jamendo import reuse it.
+    restarts. Load more and the import reuse it.
   - The default timeout is 10 s (`llm.parse_timeout_s`).
 - **Fallback.**
   - When the parse fails (timeout, bad key, rate limit, invalid reply), the search uses the rule

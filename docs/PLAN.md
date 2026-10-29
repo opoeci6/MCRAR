@@ -13,6 +13,14 @@
 > reranks the top 20 on request. OpenAI-compatible services come first, then Anthropic. Spotify
 > query generation moved to M8, because there was no Spotify code yet.
 
+> **2026-10-28: where the plan ended up.** M0–M7, M9 and M10 are done, and so is Freesound
+> (listed under "Later" below; built as M12, music-like sounds only). M8 (Spotify) is on hold and
+> the optional M3c was not done. MCRAR runs as a local web app today (`mcrar serve`, the UI in
+> your browser); there is no `desktop/` shell yet. M11 changed: first a portable Windows zip with
+> its own Python and CPU PyTorch that opens the UI in the browser, then a desktop window
+> (pywebview) after the local-music picker. PyInstaller is no longer the plan. The current state
+> is in STATUS §1 and §5.3.
+
 ## Context
 
 This is a greenfield repo: only `README.md`, `LICENSE`, `.gitignore` and `.claude/` exist. The user wants a music recommender that:

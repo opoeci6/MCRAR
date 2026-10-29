@@ -1,5 +1,9 @@
 # Handover: label game scenes for M9 (part B)
 
+> **Done 2026-10-28.** Part B came back with 149 labels and was imported; with part A that makes
+> 269 labelled tracks. Results: `docs/model_card.md`, "Game scenes". This checklist is kept as
+> it was delivered.
+
 For the collaborator and the coding agent helping them. The owner labels part A; you label
 **part B**. What a label means and the whole workflow are in [`docs/labelling.md`](../labelling.md);
 this page is the short checklist for your side.
