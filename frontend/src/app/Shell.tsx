@@ -30,7 +30,7 @@ function OfflineBanner() {
   if (state !== 'offline') return null
   return (
     <Notice kind="error" title={strings.backend.offlineTitle} className={styles.banner}>
-      {strings.backend.offlineBody} <code>{strings.backend.offlineCommand}</code>
+      {strings.backend.offlineBody} <code>{strings.backend.offlineCommand}</code> {strings.backend.offlineBodyEnd}
     </Notice>
   )
 }

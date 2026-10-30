@@ -1,19 +1,16 @@
 import { useState } from 'react'
-import type { EmbedderInfo } from '../../api'
 import { errorMessage } from '../../api/useAsync'
 import { useToast } from '../../app/toastContext'
+import { useModelStatus } from '../../app/useModelStatus'
+import { embedderName, formatDownload } from '../../lib/format'
 import { Button } from '../../ui/Button'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
 import { envVarName } from './env'
 import type { SectionProps } from './types'
 import { settingsStrings as t } from './strings'
-import { useModelStatus } from './useModelStatus'
 import { useSettingsSave } from './useSettingsSave'
 import styles from './Section.module.css'
-
-/** The name of a model as the select shows it. */
-const embedderName = (embedder: EmbedderInfo) => `${embedder.key} (${embedder.model_id})`
 
 export function ModelSection({ view, onUpdated }: SectionProps) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -33,7 +30,13 @@ export function ModelSection({ view, onUpdated }: SectionProps) {
       const vram = status.gpu ? s.vram(Math.round(status.gpu.vram_allocated_mb)) : null
       statusText = [s.ready(model.device, model.dtype), vram].filter(Boolean).join(' · ')
     } else if (model?.state === 'loading' || status.waiting) {
-      statusText = s.loading(currentEmbedder ? embedderName(currentEmbedder) : current)
+      const name = currentEmbedder ? embedderName(currentEmbedder) : current
+      if (model?.phase === 'downloading' && model.download) {
+        const { done, total } = formatDownload(model.download.done_bytes, model.download.total_bytes)
+        statusText = s.downloading(name, done, total)
+      } else {
+        statusText = s.loading(name)
+      }
     } else if (!model) {
       statusText = s.absent
     }

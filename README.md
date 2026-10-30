@@ -10,7 +10,7 @@ game.
 
 > **Status: early.** MCRAR runs on your own PC as a local web app, tested on Windows. It was
 > built in three weeks for ShiftKey Labs' Build It! Machine Learning program (Fall 2026). A
-> packaged Windows build is planned; for now, run it from source (below).
+> Windows preview build runs without any setup (below); a desktop window is planned.
 
 ## What it does
 
@@ -58,6 +58,18 @@ we compared, with a permissive licence ([docs/embedder_bakeoff.md](docs/embedder
 The tag models and their scores are in [docs/model_card.md](docs/model_card.md). The LLM is
 described in [docs/llm.md](docs/llm.md): it only receives your search text, your filters and
 track metadata, never audio or keys.
+
+## Download the preview (Windows 10/11, 64-bit)
+
+1. Download `MCRAR-0.1.0-preview-win64.zip` (about 400 MB) from
+   [Releases](https://github.com/opoeci6/MCRAR/releases).
+2. Unzip it to a short path such as `C:\MCRAR` (it unpacks to about 1.3 GB).
+3. Double-click `MCRAR.cmd`. Your browser opens MCRAR; close the window to stop it.
+
+The first start downloads the CLAP model (about 0.8 GB), once. The preview runs on the CPU and
+needs no installation: Python, PyTorch, your library, settings, keys and models all stay inside
+that folder. Delete the folder to remove it. Then add music as described below (keys, then
+Library → Add music). The `README.txt` in the zip has the details.
 
 ## Run it from source (Windows 10/11)
 

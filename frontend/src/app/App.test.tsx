@@ -68,7 +68,10 @@ describe('App shell', () => {
     render(<App />)
     const banner = await screen.findByRole('alert')
     expect(banner).toHaveTextContent("Can't reach the backend")
-    expect(banner).toHaveTextContent('mcrar serve')
+    expect(banner).toHaveTextContent(
+      'Start MCRAR again: double-click MCRAR.cmd in the MCRAR folder, or run mcrar serve from source.',
+    )
+    expect(banner.querySelector('code')).toHaveTextContent('mcrar serve')
     expect(screen.getByText('Backend offline')).toBeInTheDocument()
   })
 

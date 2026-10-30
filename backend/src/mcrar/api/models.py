@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 
 from mcrar.ml import ModelError
+from mcrar.ml.registry import download_progress
 
 if TYPE_CHECKING:
     from mcrar.config import Settings
@@ -188,7 +189,9 @@ class ModelPool:
 
         ``state`` is ``loading``, ``ready`` or ``error`` (``error`` then carries the message);
         ``device`` and ``dtype`` come from the embedder when it is ready, else they are ``None``.
-        Cheap: it only reads the pool's bookkeeping.
+        A ``loading`` entry also has ``phase``: ``downloading`` with ``download`` (``done_bytes``,
+        ``total_bytes`` or ``None``) while the weights are being fetched, else ``loading``.
+        Cheap: it reads the pool's bookkeeping and, while downloading, the size of the cache.
         """
         with self._lock:
             models = dict(self._models)
@@ -206,6 +209,11 @@ class ModelPool:
                 else:
                     entry["state"] = "error"
                     entry["error"] = errors[key]
+            else:
+                progress = download_progress(key)
+                entry["phase"] = "loading" if progress is None else "downloading"
+                if progress is not None:
+                    entry["download"] = progress
             out.append(entry)
         return out
 

@@ -271,7 +271,7 @@ def test_status_tells_loading_ready_and_error_per_key() -> None:
     assert entered.wait(WAIT_S)
     assert pool.status() == [
         {"key": "clap", "state": "ready", "device": None, "dtype": None},
-        {"key": "glap", "state": "loading", "device": None, "dtype": None},
+        {"key": "glap", "state": "loading", "device": None, "dtype": None, "phase": "loading"},
         {
             "key": "muq-mulan",
             "state": "error",

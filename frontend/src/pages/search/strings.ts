@@ -89,8 +89,22 @@ export const searchStrings = {
     loadingMore: 'Loading more',
     empty: 'No tracks match',
     emptyHint: 'Try fewer or looser filters, or describe the music differently.',
+    libraryEmpty: 'Your library is empty',
+    libraryEmptyHint:
+      'Add some music, then search it. You can search Jamendo or Freesound (each needs a free API key, in Settings → API keys), add a link, or add a folder on this PC.',
+    addMusic: 'Add music',
     disclaimer:
       'Licence levels are guidance, not legal advice. Check the source page before you ship a track.',
+  },
+  /** The text model the search waits for; `name` is how Settings names it. */
+  model: {
+    /** `total` is null while the download size is unknown. */
+    downloading: (name: string, done: string, total: string | null) =>
+      `Downloading ${name}: ${total ? `${done} of ${total}` : `${done} so far`}. This happens once; searches start when it's done.`,
+    progressLabel: 'Download progress',
+    loading: (name: string) => `Loading ${name}…`,
+    errorTitle: "The model didn't load",
+    errorHint: 'Check your internet connection, then search again.',
   },
   /** The words of "search for more" that do not name a source; see `importWording` for the rest. */
   importing: {

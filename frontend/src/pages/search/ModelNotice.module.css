@@ -1,0 +1,6 @@
+.bar {
+  width: 100%;
+  height: 8px;
+  margin-top: var(--space-2);
+  accent-color: var(--color-accent);
+}

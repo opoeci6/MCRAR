@@ -18,6 +18,10 @@ export interface HealthModel {
   device: string | null
   dtype: string | null
   error?: string
+  /** Only while `state` is `loading`: fetching the weights, or putting them in memory. */
+  phase?: 'downloading' | 'loading'
+  /** Only while `phase` is `downloading`; `total_bytes` is null while the size is unknown. */
+  download?: { done_bytes: number; total_bytes: number | null }
 }
 
 export interface Health {

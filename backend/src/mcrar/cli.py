@@ -10,7 +10,7 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -2284,6 +2284,93 @@ def _is_loopback(host: str) -> bool:
         return False
 
 
+def _browser_url(host: str, port: int) -> str:
+    """The address a browser on this machine uses for a server listening on ``host``."""
+    name = host.strip().strip("[]")
+    if name in ("", "0.0.0.0", "localhost"):
+        name = "127.0.0.1"
+    elif name == "::":
+        name = "::1"
+    return f"http://[{name}]:{port}/" if ":" in name else f"http://{name}:{port}/"
+
+
+def _looks_like_mcrar(response: Any) -> bool:
+    """Whether an ``/api/health`` answer is the one of an MCRAR server."""
+    try:
+        body = response.json()
+    except ValueError:
+        return False
+    return (
+        response.status_code == 200
+        and isinstance(body, dict)
+        and body.get("status") == "ok"
+        and "version" in body
+    )
+
+
+def _can_bind(host: str, port: int) -> bool:
+    import socket
+
+    name = host.strip().strip("[]")
+    family = socket.AF_INET6 if ":" in name else socket.AF_INET
+    with socket.socket(family, socket.SOCK_STREAM) as sock:
+        if os.name != "nt":  # like uvicorn; on Windows it would let a second server in
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind((name, port))
+        except OSError:
+            return False
+    return True
+
+
+def _probe_server(host: str, port: int) -> str:
+    """What is on ``host``:``port``: ``mcrar`` (an MCRAR server), ``free`` or ``other``.
+
+    Binding comes first: on Windows a refused connection to a closed port takes about 2 s,
+    which would look like a timeout.
+    """
+    if _can_bind(host, port):
+        return "free"
+    import httpx
+
+    try:
+        # trust_env off: a proxy setting must not send this loopback request elsewhere
+        answer = httpx.get(_browser_url(host, port) + "api/health", timeout=2.0, trust_env=False)
+    except httpx.HTTPError:  # refused, timed out or not a web server: something holds the port
+        return "other"
+    return "mcrar" if _looks_like_mcrar(answer) else "other"
+
+
+def _open_browser_when_ready(
+    url: str, *, timeout_s: float = 60.0, interval_s: float = 0.25
+) -> None:
+    """Open ``url`` in the browser as soon as the server answers (in a daemon thread, so it
+    never holds the process back; gives up after ``timeout_s``)."""
+    import threading
+    import time
+    import webbrowser
+
+    import httpx
+
+    def wait_and_open() -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                answer = httpx.get(url + "api/health", timeout=2.0, trust_env=False)
+                ready = _looks_like_mcrar(answer)
+            except httpx.HTTPError:
+                ready = False
+            if ready:
+                try:
+                    webbrowser.open(url)
+                except Exception:  # no browser available: the URL was printed already
+                    pass
+                return
+            time.sleep(interval_s)
+
+    threading.Thread(target=wait_and_open, name="open-browser", daemon=True).start()
+
+
 @app.command()
 def serve(
     host: Annotated[
@@ -2307,8 +2394,18 @@ def serve(
     reload: Annotated[
         bool, typer.Option("--reload", help="Restart on code changes (development).")
     ] = False,
+    open_browser: Annotated[
+        bool,
+        typer.Option(
+            "--open/--no-open", help="Open the web UI in the browser once the server answers."
+        ),
+    ] = False,
 ) -> None:
-    """Run the HTTP API, and the built frontend when frontend/dist exists, on this machine."""
+    """Run the HTTP API, and the built frontend when frontend/dist exists, on this machine.
+
+    When an MCRAR server already answers on the address, nothing new is started (the browser
+    opens there with --open); another program on the port is an error.
+    """
     settings = _settings()
     host = host or settings.api_host
     port = port or settings.api_port
@@ -2323,12 +2420,28 @@ def serve(
             "address can use the API",
             err=True,
         )
+    url = _browser_url(host, port)
+    taken = _probe_server(host, port)
+    if taken == "mcrar":
+        _line(f"MCRAR is already running at {url}")
+        if open_browser:
+            import webbrowser
+
+            webbrowser.open(url)
+        return
+    if taken == "other":
+        raise _fail(
+            f"port {port} on {host} is in use by another program; "
+            "stop it or pick another port with --port"
+        )
     # The app factory runs inside uvicorn (possibly a reload subprocess) and reads its
     # configuration from the environment, so hand the choices over that way.
     os.environ["MCRAR_API_HOST"] = host
     os.environ["MCRAR_API_PORT"] = str(port)
     if warm:
         os.environ["MCRAR_API_WARM"] = "1"
+    if open_browser:
+        _open_browser_when_ready(url)
     import uvicorn
 
     uvicorn.run("mcrar.api.app:create_app", factory=True, host=host, port=port, reload=reload)

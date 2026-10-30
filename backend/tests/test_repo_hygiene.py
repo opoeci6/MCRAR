@@ -19,10 +19,20 @@ MUST_BE_IGNORED = [
     "backend/.venv/x",
     "frontend/node_modules/x",
     ".claude/CLAUDE.md",
+    "build/preview/MCRAR-0.1.0-preview/MCRAR.cmd",
+    "dist/MCRAR-0.1.0-preview-win64.zip",
+    "frontend/dist/index.html",
 ]
 
-# The trained tag heads and their registry are committed (M3b): small, licence recorded.
-MUST_BE_TRACKABLE = ["models/heads/genre.npz", "models/registry.json"]
+# The trained tag heads and their registry are committed (M3b): small, licence recorded. The
+# Windows launcher, its readme and the build script are committed too (M11).
+MUST_BE_TRACKABLE = [
+    "models/heads/genre.npz",
+    "models/registry.json",
+    "packaging/windows/MCRAR.cmd",
+    "packaging/windows/README.txt",
+    "scripts/build-preview.ps1",
+]
 
 pytestmark = pytest.mark.skipif(
     shutil.which("git") is None or not (REPO / ".git").exists(),
