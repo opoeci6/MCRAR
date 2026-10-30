@@ -26,7 +26,7 @@ Last updated: 2026-10-30.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker and drop follow after the demo |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Preview built (2026-10-30) | `dev` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`, smoke-tested on the owner's PC; a clean-Windows test and the GitHub pre-release are next. Then the local-music picker; then a desktop window (pywebview). See §3.19 and §5.3 |
+| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: the local-music picker, then a desktop window (pywebview). See §3.19 and §5.3 |
 
 Test suite, counted on `m11-preview` (2026-10-30):
 - Backend, default env: 2,397 passed, 30 skipped.
@@ -818,6 +818,8 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
 | Demo video | `.cache/MCRAR demo.mp4` | 1:34, silent, 1080p, step captions; recorded by script on a catalog copy (port 8010). Recording plan for a manual re-take: `.cache/MCRAR demo script.md` |
 | Talk script | `.cache/MCRAR presentation script.md`; private page https://claude.ai/artifact/QmeuMW87nxYMgoDwjRedMk | who says what, timings, the demo talk-along, likely and tricky questions (ranking, the ML, the slide numbers, CLAP's training data, the LLM and rerank) |
 | Presentation sources | `.cache/presentation-src/` (README inside) | deck builder, screenshot and video recorders, PowerPoint COM scripts, screenshots, the QR scripts (`make_qr.py`, `add_qr.ps1`) |
+| Preview build | `dist/MCRAR-0.1.0-preview-win64.zip`, `dist/release-notes-v0.1.0-preview.md`; stage `build/preview/` | the zip uploaded as `v0.1.0-preview` (2026-10-30) and its release notes; the stage (about 1 GB) can be deleted, `scripts/build-preview.ps1` rebuilds both |
+| No-ml test venv | `.cache/ci-venv-m11/` | scratch venv without the `ml` extra for the pre-push suite; recreated by `uv sync --locked` |
 
 ### 4.1 Cleanup candidates (measured 2026-10-28; nothing deleted yet)
 Each deletion waits for the owner's word. The plan is to do them at the end of the project.
@@ -972,13 +974,13 @@ M3b is merged and the real catalog is tagged. Still open:
   - **Narrow windows.** The search hint with a reference ("Optional: steer it with words, …")
     is cut off below about 600 px.
 
-### 5.3 Next milestone (waiting for the owner's go)
+### 5.3 Next milestone
 The owner's order after the presentation (2026-10-28, §3.18):
-1. **M11 preview:** built, smoke-tested on the owner's PC and run on a school machine without
-   admin rights (§3.19). Left: the GitHub pre-release `v0.1.0-preview` (the owner uploads the
-   zip built from the pushed commit), and some day a run on a Windows without the VC++
-   redistributable.
-2. **The local-music picker** ("Browse…" and drop/choose files, §3.17).
+1. **M11 preview: done.** Released 2026-10-30 as the GitHub pre-release
+   [`v0.1.0-preview`](https://github.com/opoeci6/MCRAR/releases/tag/v0.1.0-preview) (§3.19).
+   Still untested: a Windows without the VC++ redistributable. Releases are manual for now (the
+   owner uploads the zip); a GitHub Actions release workflow on a `v*` tag was deferred.
+2. **The local-music picker, next** ("Browse…" and drop/choose files, §3.17).
 3. **M11 desktop window** (pywebview, WebView2) around the same build.
 
 These others can follow in any order:
@@ -1036,3 +1038,10 @@ These others can follow in any order:
   - both suites (default and without the `ml` extra);
   - the stored-secret scan over every ref;
   - the forbidden-path check.
+- **Push of 2026-10-30** (M11 preview, §3.19): `dev` and `main` `76019bd..f15f2db` (7 commits:
+  the two STATUS notes from 2026-10-28, the M11 preview and its fixes from the school machine).
+  Checked before the push the same way; CI green on both (runs #19 and #20).
+- **Release [`v0.1.0-preview`](https://github.com/opoeci6/MCRAR/releases/tag/v0.1.0-preview)**
+  (2026-10-30, pre-release, tag at `f15f2db`): `MCRAR-0.1.0-preview-win64.zip`, 285 MB,
+  SHA-256 `33fa1d43a6a9dbc242124760c06b4760100dd053aa5d8c6eccf2b9c7b5700c1a`, built by
+  `scripts/build-preview.ps1` from `ccece61` (the code at `f15f2db`); uploaded by the owner.
