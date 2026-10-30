@@ -173,10 +173,10 @@ Invoke-Checked 'uv export (locked dependencies, hashes kept, torch left out)' {
 }
 # The export lists every transitive dependency, so --no-deps; with hashes uv then checks each wheel.
 Invoke-Checked 'install the locked dependencies' {
-    & uv pip install --python $StagePython --link-mode copy --compile-bytecode --no-deps -r $requirements
+    & uv pip install --python $StagePython --link-mode copy --no-deps -r $requirements
 }
 Invoke-Checked 'install CPU-only PyTorch' {
-    & uv pip install --python $StagePython --link-mode copy --compile-bytecode --no-deps `
+    & uv pip install --python $StagePython --link-mode copy --no-deps `
         --index-url https://download.pytorch.org/whl/cpu @cpu
 }
 Invoke-Checked 'build the mcrar wheel' {
@@ -185,7 +185,7 @@ Invoke-Checked 'build the mcrar wheel' {
 $wheel = @(Get-ChildItem -LiteralPath (Join-Path $Tmp 'wheel') -Filter 'mcrar-*.whl')
 if ($wheel.Count -ne 1) { throw "expected one mcrar wheel in $Tmp\wheel, found $($wheel.Count)" }
 Invoke-Checked 'install the mcrar wheel' {
-    & uv pip install --python $StagePython --link-mode copy --compile-bytecode --no-deps $wheel[0].FullName
+    & uv pip install --python $StagePython --link-mode copy --no-deps $wheel[0].FullName
 }
 Invoke-Checked 'uv pip check' {
     & uv pip check --python $StagePython
@@ -215,6 +215,16 @@ if (Test-Path -LiteralPath $scripts) {
 # The wheel's install record names the local build folder.
 Get-ChildItem -Path (Join-Path $pythonDir 'Lib\site-packages\mcrar-*.dist-info\direct_url.json') -ErrorAction SilentlyContinue |
     Remove-Item -Force
+
+# No precompiled bytecode: it is about a third of the files (slow to unzip with an antivirus
+# scanning each one) and carries the build path. Python compiles what it imports on the first
+# start, inside the app folder.
+function Remove-Bytecode {
+    $caches = @([IO.Directory]::EnumerateDirectories($Stage, '__pycache__', [IO.SearchOption]::AllDirectories))
+    foreach ($cache in $caches) { [IO.Directory]::Delete($cache, $true) }
+    Write-Host "    removed $($caches.Count) __pycache__ folders"
+}
+Remove-Bytecode
 
 # ---- 8. guards ----
 function Test-Stage {
@@ -294,8 +304,9 @@ foreach ($check in @(
     foreach ($l in $shown) { Write-Host "    $l" }
     if ($result.Code -ne 0) { throw "self-test '$($check.What)' failed with exit code $($result.Code)" }
 }
-# The runs may have created runtime folders; the zip must not carry them.
+# The runs may have created runtime folders and bytecode; the zip must not carry them.
 foreach ($runtime in 'data', 'config', '.cache', '.secrets') { Remove-Tree (Join-Path $Stage $runtime) }
+Remove-Bytecode
 Test-Stage
 
 # ---- 10. zip ----

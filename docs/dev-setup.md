@@ -144,9 +144,11 @@ PyTorch (same versions as `uv.lock`, from the PyTorch CPU index) and the `mcrar`
 `pyproject.toml` and `uv.lock` stay CUDA for development. It adds the VC++ runtime DLLs from
 System32, refuses to ship `.secrets`, `data`, `config/settings.toml`, `*.db` or caches, runs a
 self-test with a stripped environment and writes `dist/MCRAR-<version>-preview-win64.zip`
-(about 400 MB, 1.3 GB unpacked, 4 to 7 minutes). The launcher is
-`packaging/windows/MCRAR.cmd`: it sets `MCRAR_HOME` and every cache variable to the app folder and
-runs `python -I -m mcrar serve --open --warm`. Its first-steps text is
+(about 290 MB; 1 GB in 30,000 files unpacked; 4 to 7 minutes). It ships no precompiled
+bytecode, and its last entry is `python/.complete`. The launcher is
+`packaging/windows/MCRAR.cmd`: it refuses to start without that marker (an unzip that was cut
+off), sets `MCRAR_HOME` and every cache variable to the app folder, and runs
+`python -I -m mcrar serve --open --warm`. Its first-steps text is
 `packaging/windows/README.txt`.
 
 ## Never install globally

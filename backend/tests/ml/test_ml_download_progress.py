@@ -30,6 +30,7 @@ class FakeHub:
         self.on_download: Any = lambda repo, blobs: None
         self.asked: list[tuple[str, list[str]]] = []
         self.downloads: list[str] = []
+        self.workers: list[int] = []
 
     def blobs(self, repo: str) -> Path:
         name = file_download.repo_folder_name(repo_id=repo, repo_type="model")
@@ -53,8 +54,11 @@ class FakeHub:
             raise self.size_error
         return [SimpleNamespace(path=p, size=self.sizes[repo][p]) for p in paths]
 
-    def snapshot_download(self, repo: str, *, revision: str, allow_patterns: list[str]) -> str:
+    def snapshot_download(
+        self, repo: str, *, revision: str, allow_patterns: list[str], max_workers: int = 8
+    ) -> str:
         self.downloads.append(repo)
+        self.workers.append(max_workers)
         self.on_download(repo, self.blobs(repo))
         return str(self.cache / repo / "snapshots" / revision)
 
@@ -169,6 +173,12 @@ def test_a_model_that_is_cached_registers_nothing(hub: FakeHub) -> None:
     reg.ensure_downloaded(spec, get_settings())
     assert hub.asked == [] and hub.downloads == []
     assert reg.download_progress("clap") is None
+
+
+def test_files_are_fetched_one_at_a_time(hub: FakeHub) -> None:
+    # Parallel workers race the hub's symlink check: WinError 1314 without symlink rights.
+    reg.ensure_downloaded(get_spec("muq-mulan"), get_settings())
+    assert len(hub.workers) == 3 and set(hub.workers) == {1}
 
 
 def test_every_repository_of_a_model_counts(hub: FakeHub) -> None:

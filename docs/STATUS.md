@@ -29,8 +29,8 @@ Last updated: 2026-10-30.
 | M11 Packaging | Preview built (2026-10-30) | `dev` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`, smoke-tested on the owner's PC; a clean-Windows test and the GitHub pre-release are next. Then the local-music picker; then a desktop window (pywebview). See §3.19 and §5.3 |
 
 Test suite, counted on `m11-preview` (2026-10-30):
-- Backend, default env: 2,394 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,382 passed, 32 skipped.
+- Backend, default env: 2,397 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,384 passed, 32 skipped.
 - 29 real-model tests run with `-m models`.
 - Frontend: 509 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
@@ -762,7 +762,7 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
   tracks match" note is hidden then. A search with no candidates no longer embeds the text, so
   it never loads the model.
 - **Offline banner:** "double-click MCRAR.cmd …, or run `mcrar serve` from source".
-- **Smoke test (owner's PC, 2026-10-30).** The zip (398 MB, 46k files, 1.24 GB unpacked) was
+- **Smoke test (owner's PC, 2026-10-30).** The first zip (398 MB, 46k files, 1.24 GB unpacked) was
   extracted to `build\smoke 测试\` and started with a stripped environment:
   - the CLAP download was reported 0 → 779,810,868 bytes, then it loaded on the CPU (fp32);
   - 3 synthetic WAVs were imported from a local folder, and "calm piano" ranked the piano-like
@@ -771,9 +771,25 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
   - nothing new appeared in `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%` or `~\.cache`;
   - after moving the folder to `moved (2)!\MCRAR` it started again without downloading, with
     its 3 tracks.
+- **First run on another PC (the owner, a school machine without admin rights, 2026-10-30).**
+  - **Incomplete unzip.** The first try stopped with `No module named 'urllib'`: the unzip had
+    not finished (`urllib` is entry 44,661 of 46,225). The zip now ends with
+    `python/.complete`, and `MCRAR.cmd` refuses to start without it ("the folder is incomplete:
+    unzip again"). The precompiled `__pycache__` files are no longer shipped: 30,323 files
+    instead of 46,223, 285 MB instead of 398 MB, and no build path in tracebacks. Python
+    compiles on the first start, inside the folder; a warm restart answers in about 2 s and has
+    the model ready in about 8 s.
+  - **WinError 1314 during the model download.** huggingface_hub marks a folder as
+    symlink-capable before it tests it, and `snapshot_download` fetches with 8 threads, so
+    without symlink rights (no admin, no Developer Mode) another thread can try a real symlink
+    and fail. Reproduced here by blocking `os.symlink`: 1 failure in 3 runs with 8 workers,
+    none with 1. `ensure_downloaded` now passes `max_workers=1`; the time is in one 776 MB file
+    anyway.
 - **Known gaps of the preview:**
-  - not yet run on a clean Windows (Windows Sandbox or another PC; no VC++ redistributable);
-  - `.pyc` files carry the build path in tracebacks (uv's `--compile-bytecode`);
+  - not yet run on a clean Windows without the VC++ redistributable (the school machine has it);
+  - the "no embedding" search notice says to run `mcrar embed`, which a zip user can't; the
+    Library page's "Re-embed missing tracks" is the way there;
+  - when the hub's size lookup fails, the download shows "N MB so far" without a total;
   - the console shows Hugging Face's "hf_xet is not installed" hint during the download;
   - the CPU model load takes about 50 s on this PC;
   - SmartScreen may warn about the unsigned `MCRAR.cmd` (`README.txt` explains "Run anyway").

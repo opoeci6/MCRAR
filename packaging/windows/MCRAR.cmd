@@ -17,6 +17,16 @@ if not exist "%APP%\python\python.exe" (
     exit /b 1
 )
 
+rem The zip's last entry: without it the unzip stopped early or ran out of disk space.
+if not exist "%APP%\python\.complete" (
+    echo The MCRAR folder is incomplete: unzipping did not finish, or ran out of disk space.
+    echo Delete this folder, make sure about 2.5 GB is free, and unzip again. Wait until the
+    echo unzip window closes before you start MCRAR.cmd.
+    echo.
+    pause
+    exit /b 1
+)
+
 set "MCRAR_HOME=%APP%"
 
 rem Model weights and library caches go inside this folder, not the user profile.
