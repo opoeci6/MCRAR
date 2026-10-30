@@ -4,6 +4,8 @@ Usage: python -I make_preview_zip.py <stage parent> <folder name> <out.zip>
 
 Writes ``<out.zip>`` (ZIP64, deflate) holding ``<folder name>/...`` from ``<stage parent>``, with
 forward-slash names and entries for empty folders, then prints ``files=N unpacked=B zip=B``.
+The last entry is ``python/.complete``: unzip tools extract in archive order, so MCRAR.cmd can
+tell a finished unzip from one that was cut off (stopped early, or out of disk space).
 """
 
 from __future__ import annotations
@@ -12,6 +14,8 @@ import os
 import sys
 import zipfile
 from pathlib import Path
+
+COMPLETE_MARKER = "python/.complete"  # MCRAR.cmd checks for it before anything else
 
 
 def main(argv: list[str]) -> int:
@@ -42,6 +46,10 @@ def main(argv: list[str]) -> int:
                 archive.write(path, f"{name}/{path.relative_to(top).as_posix()}")
                 files += 1
                 unpacked += path.stat().st_size
+        archive.writestr(
+            f"{name}/{COMPLETE_MARKER}",
+            "Written last in the zip: MCRAR.cmd checks it to tell a finished unzip.\r\n",
+        )
     print(f"files={files} unpacked={unpacked} zip={out.stat().st_size}")
     return 0
 

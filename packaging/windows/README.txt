@@ -8,7 +8,9 @@ no admin rights.
 First steps
 -----------
 1. Unzip the whole folder to a short path, for example C:\MCRAR. Avoid very
-   deep folders: some of the bundled files have long names.
+   deep folders: some of the bundled files have long names. It needs about
+   2.5 GB free (1.1 GB unzipped, 0.8 GB for the model). Unzipping 30,000
+   files can take several minutes: wait until it has finished.
 2. Double-click MCRAR.cmd. A window opens and, after a few seconds, your
    browser shows MCRAR. If Windows blocks the file (SmartScreen, "Windows
    protected your PC"), click "More info" and then "Run anyway". If the zip

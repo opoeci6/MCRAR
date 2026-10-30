@@ -5,13 +5,16 @@ path derived from the launcher's own folder, no delayed expansion, nothing writt
 folder, and the exact Python command line.
 """
 
+import importlib.util
 import re
+import zipfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 LAUNCHER = REPO / "packaging" / "windows" / "MCRAR.cmd"
 README = REPO / "packaging" / "windows" / "README.txt"
 DEV_ENV = REPO / "scripts" / "dev-env.ps1"
+ZIP_SCRIPT = REPO / "scripts" / "make_preview_zip.py"
 
 # The variables from scripts/dev-env.ps1 that matter at run time (model and library caches),
 # plus the two Hugging Face hub settings the app folder needs. The uv, npm and node variables of
@@ -90,6 +93,34 @@ def test_launcher_runs_the_bundled_python_isolated() -> None:
     assert '"%APP%\\python\\python.exe" -I -m mcrar serve --open --warm %*' in launcher_text(), (
         "the launcher must run the bundled python with -I and pass the user's options on"
     )
+
+
+def load_zip_script():  # noqa: ANN201 - a module object
+    spec = importlib.util.spec_from_file_location("make_preview_zip", ZIP_SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_launcher_refuses_a_cut_off_unzip_before_starting_python() -> None:
+    marker = load_zip_script().COMPLETE_MARKER.replace("/", "\\")
+    text = launcher_text()
+    check = text.index(f'if not exist "%APP%\\{marker}"')
+    assert check < text.index("-m mcrar serve"), "check the marker before starting MCRAR"
+
+
+def test_the_complete_marker_is_the_last_entry_of_the_zip(tmp_path: Path) -> None:
+    script = load_zip_script()
+    app = tmp_path / "stage" / "MCRAR-x"
+    (app / "python" / "Lib").mkdir(parents=True)
+    (app / "python" / "Lib" / "zz_last.py").write_text("x = 1\n")
+    (app / "MCRAR.cmd").write_text("@echo off\r\n")
+    out = tmp_path / "out.zip"
+    assert script.main([str(tmp_path / "stage"), "MCRAR-x", str(out)]) == 0
+    with zipfile.ZipFile(out) as archive:
+        names = archive.namelist()
+    assert names[-1] == f"MCRAR-x/{script.COMPLETE_MARKER}"
+    assert "MCRAR-x/python/Lib/zz_last.py" in names
 
 
 def test_launcher_keeps_the_error_visible_and_never_touches_system_state() -> None:

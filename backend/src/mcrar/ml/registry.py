@@ -327,9 +327,15 @@ def ensure_downloaded(spec: ModelSpec, settings: Settings) -> dict[str, Path]:
             progress.extend(records)
         for pin in missing:
             try:
+                # One file at a time: the hub marks a folder as symlink-capable before it tests
+                # it, so on Windows without symlink rights a parallel worker can try a real
+                # symlink meanwhile and fail with WinError 1314. The time is in one big file.
                 folders[pin.repo] = Path(
                     hub.snapshot_download(
-                        pin.repo, revision=pin.revision, allow_patterns=list(pin.files)
+                        pin.repo,
+                        revision=pin.revision,
+                        allow_patterns=list(pin.files),
+                        max_workers=1,
                     )
                 )
             except Exception as exc:  # network, auth, disk: all become a readable message

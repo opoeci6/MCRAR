@@ -61,9 +61,10 @@ track metadata, never audio or keys.
 
 ## Download the preview (Windows 10/11, 64-bit)
 
-1. Download `MCRAR-0.1.0-preview-win64.zip` (about 400 MB) from
+1. Download `MCRAR-0.1.0-preview-win64.zip` (about 290 MB) from
    [Releases](https://github.com/opoeci6/MCRAR/releases).
-2. Unzip it to a short path such as `C:\MCRAR` (it unpacks to about 1.3 GB).
+2. Unzip it to a short path such as `C:\MCRAR` (about 1 GB in 30,000 files). Wait until
+   unzipping has finished.
 3. Double-click `MCRAR.cmd`. Your browser opens MCRAR; close the window to stop it.
 
 The first start downloads the CLAP model (about 0.8 GB), once. The preview runs on the CPU and
