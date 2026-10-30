@@ -785,6 +785,8 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
     and fail. Reproduced here by blocking `os.symlink`: 1 failure in 3 runs with 8 workers,
     none with 1. `ensure_downloaded` now passes `max_workers=1`; the time is in one 776 MB file
     anyway.
+  - **The rebuilt zip runs on the school machine** (owner, 2026-10-30): no admin rights, no
+    symlink rights, VC++ redistributable installed.
 - **Known gaps of the preview:**
   - not yet run on a clean Windows without the VC++ redistributable (the school machine has it);
   - the "no embedding" search notice says to run `mcrar embed`, which a zip user can't; the
@@ -972,12 +974,10 @@ M3b is merged and the real catalog is tagged. Still open:
 
 ### 5.3 Next milestone (waiting for the owner's go)
 The owner's order after the presentation (2026-10-28, §3.18):
-1. **M11 preview:** built and smoke-tested on the owner's PC (§3.19). Left:
-   - a test on a clean Windows (Windows Sandbox, which the owner enables, or another PC):
-     unzip, double-click `MCRAR.cmd`, watch the download progress, add a key or a folder,
-     search;
-   - a clean build from the merged commit, then the GitHub pre-release `v0.1.0-preview` (the
-     owner uploads the zip).
+1. **M11 preview:** built, smoke-tested on the owner's PC and run on a school machine without
+   admin rights (§3.19). Left: the GitHub pre-release `v0.1.0-preview` (the owner uploads the
+   zip built from the pushed commit), and some day a run on a Windows without the VC++
+   redistributable.
 2. **The local-music picker** ("Browse…" and drop/choose files, §3.17).
 3. **M11 desktop window** (pywebview, WebView2) around the same build.
 
