@@ -1,7 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useEffect, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Health, HealthModel } from '../../api/types'
+import { BackendStatusContext } from '../../app/backendStatus'
 import { clearPersistentState, usePersistentState } from '../../app/usePersistentState'
 import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
@@ -2087,5 +2089,276 @@ describe('Search page: ?similar= from the Projects page', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("Couldn't find similar tracks")
     expect(bodies(mock, 'POST /api/search')).toEqual([])
     expect(mock.mock.calls.some(([input]) => String(input).startsWith('/api/tracks/'))).toBe(false)
+  })
+})
+
+const CLAP_NAME = 'clap (laion/clap)'
+const SETTINGS = {
+  editable: { default_embedder: 'clap' },
+  embedders: [{ key: 'clap', model_id: 'laion/clap', commercial_ok: true }],
+}
+
+function health(models: HealthModel[] = [], tracks = 42): Health {
+  return {
+    status: 'ok',
+    version: '1.2.3',
+    catalog: { tracks },
+    models_loaded: models.filter((model) => model.state === 'ready').map((model) => model.key),
+    models,
+    gpu: null,
+  }
+}
+
+const clap = (overrides: Partial<HealthModel> = {}): HealthModel => ({
+  key: 'clap',
+  state: 'loading',
+  device: null,
+  dtype: null,
+  phase: 'loading',
+  ...overrides,
+})
+
+const readyClap = () => clap({ state: 'ready', phase: undefined, device: 'cuda', dtype: 'float16' })
+
+const downloading = (done: number, total: number | null) =>
+  clap({ phase: 'downloading', download: { done_bytes: done, total_bytes: total } })
+
+/** Renders the page with the shell's last health answer, as the backend status provider gives it. */
+function renderWithHealth(shared: Health | null) {
+  return renderWithProviders(
+    <BackendStatusContext.Provider value={{ state: shared ? 'online' : 'checking', health: shared }}>
+      <SearchPage />
+    </BackendStatusContext.Provider>,
+  )
+}
+
+const healthCalls = (mock: ReturnType<typeof stubApi>) =>
+  mock.mock.calls.filter(([input]) => new URL(String(input), 'http://x').pathname === '/api/health').length
+
+describe('Search page: model notice', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('shows the download with the bytes done and the total, and a progress bar', async () => {
+    setup({ 'GET /api/settings': SETTINGS, 'GET /api/health': health([downloading(312e6, 776e6)]) })
+    renderWithHealth(health([downloading(312e6, 776e6)]))
+    expect(
+      await screen.findByText(
+        `Downloading ${CLAP_NAME}: 312 MB of 776 MB. This happens once; searches start when it's done.`,
+      ),
+    ).toBeInTheDocument()
+    const bar = screen.getByRole('progressbar', { name: 'Download progress' })
+    expect(bar).toHaveAttribute('max', '776000000')
+    expect(bar).toHaveAttribute('value', '312000000')
+  })
+
+  it('shows the bytes so far, without a bar, while the total is unknown', async () => {
+    setup({ 'GET /api/settings': SETTINGS })
+    renderWithHealth(health([downloading(312e6, null)]))
+    expect(
+      await screen.findByText(
+        `Downloading ${CLAP_NAME}: 312 MB so far. This happens once; searches start when it's done.`,
+      ),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument()
+  })
+
+  it('counts in GB with one decimal from 1 GB up, for both numbers', async () => {
+    setup({ 'GET /api/settings': SETTINGS })
+    renderWithHealth(health([downloading(300e6, 1.2e9)]))
+    expect(await screen.findByText(/Downloading clap .*: 0\.3 GB of 1\.2 GB\./)).toBeInTheDocument()
+  })
+
+  it('says the model is loading once the weights are there', async () => {
+    setup({ 'GET /api/settings': SETTINGS })
+    renderWithHealth(health([clap()]))
+    expect(await screen.findByText(`Loading ${CLAP_NAME}…`)).toBeInTheDocument()
+    expect(screen.queryByText(/Downloading/)).not.toBeInTheDocument()
+  })
+
+  it('shows the error with what to do, as a warning', async () => {
+    setup({ 'GET /api/settings': SETTINGS })
+    renderWithHealth(health([clap({ state: 'error', phase: undefined, error: 'Connection reset' })]))
+    const notice = (await screen.findByText('Connection reset')).closest('[role="status"]')
+    expect(notice).toHaveTextContent("The model didn't load")
+    expect(notice).toHaveTextContent('Check your internet connection, then search again.')
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('says nothing when the model is ready or has not been used yet', async () => {
+    const mock = setup({ 'GET /api/settings': SETTINGS })
+    const ready = renderWithHealth(health([readyClap()]))
+    await waitFor(() => expect(mock.mock.calls.some(([input]) => String(input) === '/api/settings')).toBe(true))
+    await screen.findByRole('search')
+    expect(screen.queryByText(/Downloading|Loading clap|didn't load/)).not.toBeInTheDocument()
+    ready.unmount()
+
+    renderWithHealth(health([]))
+    await screen.findByRole('search')
+    expect(screen.queryByText(/Downloading|Loading clap|didn't load/)).not.toBeInTheDocument()
+  })
+
+  it('follows the download every second and stops polling once the model is ready', async () => {
+    vi.useFakeTimers()
+    const answers = [
+      health([downloading(100e6, 776e6)]),
+      health([downloading(500e6, 776e6)]),
+      health([clap()]),
+      health([readyClap()]),
+    ]
+    // The answer follows the clock, so the order of the page's own health reads does not matter.
+    const start = Date.now()
+    const mock = setup({
+      'GET /api/settings': SETTINGS,
+      'GET /api/health': () => answers[Math.min(Math.floor((Date.now() - start) / 1000), answers.length - 1)],
+    })
+    renderWithHealth(answers[0]!)
+    const tick = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms)
+      })
+    await tick(0)
+    expect(screen.getByText(/100 MB of 776 MB/)).toBeInTheDocument()
+    await tick(1000)
+    expect(screen.getByText(/500 MB of 776 MB/)).toBeInTheDocument()
+    await tick(1000)
+    expect(screen.getByText(`Loading ${CLAP_NAME}…`)).toBeInTheDocument()
+    await tick(1000)
+    expect(screen.queryByText(/Loading clap|Downloading/)).not.toBeInTheDocument()
+    const settled = healthCalls(mock)
+    await tick(10_000)
+    expect(healthCalls(mock)).toBe(settled)
+  })
+
+  it('stays visible while a search is pending, and a pending search retries a failed model', async () => {
+    const failed = health([clap({ state: 'error', phase: undefined, error: 'Connection reset' })])
+    let answer = failed
+    let release: (value: Response) => void = () => {}
+    setup({
+      'GET /api/settings': SETTINGS,
+      'GET /api/health': () => answer,
+      'POST /api/search': () => new Promise<Response>((resolve) => (release = resolve)),
+    })
+    renderWithHealth(failed)
+    expect(await screen.findByText('Connection reset')).toBeInTheDocument()
+
+    await searchFor('rain')
+    expect(screen.getByRole('button', { name: 'Searching' })).toBeDisabled()
+    // The backend retries the load for this search: the page notices without a reload.
+    answer = health([downloading(1e6, 776e6)])
+    expect(await screen.findByText(/Downloading clap .*: 1 MB of 776 MB/)).toBeInTheDocument()
+    expect(screen.queryByText('Connection reset')).not.toBeInTheDocument()
+    release(jsonResponse(response([item(1)])))
+    expect(await screen.findByText('Track 1')).toBeInTheDocument()
+  })
+})
+
+describe('Search page: empty library', () => {
+  const EMPTY_TITLE = 'Your library is empty'
+
+  afterEach(() => {
+    window.location.hash = ''
+  })
+
+  it('shows how to add music before any search, from the shell health', async () => {
+    setup({})
+    renderWithHealth(health([], 0))
+    expect(await screen.findByRole('heading', { name: EMPTY_TITLE })).toBeInTheDocument()
+    expect(screen.getByText(/search Jamendo or Freesound/)).toBeInTheDocument()
+    expect(screen.getByText(/free API key, in Settings → API keys/)).toBeInTheDocument()
+    expect(screen.getByText(/add a link, or add a folder on this PC/)).toBeInTheDocument()
+    expect(screen.queryByText('No tracks match')).not.toBeInTheDocument()
+  })
+
+  it('reads the count itself when the page opens', async () => {
+    setup({ 'GET /api/health': health([], 0) })
+    renderWithProviders(<SearchPage />)
+    expect(await screen.findByRole('heading', { name: EMPTY_TITLE })).toBeInTheDocument()
+  })
+
+  it('says nothing about the library while the count is unknown', async () => {
+    setup({ 'GET /api/health': jsonResponse({ detail: 'down' }, 500) })
+    renderWithProviders(<SearchPage />)
+    await screen.findByRole('search')
+    expect(screen.queryByRole('heading', { name: EMPTY_TITLE })).not.toBeInTheDocument()
+  })
+
+  it('shows nothing before a search when the library has tracks', async () => {
+    setup({ 'GET /api/health': health([], 42) })
+    renderWithHealth(health([], 42))
+    await screen.findByRole('search')
+    expect(screen.queryByRole('heading', { name: EMPTY_TITLE })).not.toBeInTheDocument()
+  })
+
+  it('replaces "No tracks match" after an empty search, and drops the note that repeats it', async () => {
+    setup({
+      'GET /api/health': health([], 0),
+      'POST /api/search': response([], {
+        notes: ['No tracks match', 'No green-licence tracks match; try allowing amber'],
+      }),
+    })
+    renderWithHealth(health([], 0))
+    await searchFor('rain')
+    expect(await screen.findByText('0 results of 0 candidates · clap-test · 42 ms')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: EMPTY_TITLE })).toBeInTheDocument()
+    expect(screen.queryByText('No tracks match')).not.toBeInTheDocument()
+    expect(screen.queryByText(/Try fewer or looser filters/)).not.toBeInTheDocument()
+    expect(screen.getByText('No green-licence tracks match; try allowing amber')).toBeInTheDocument()
+  })
+
+  it('keeps "No tracks match" and its note when the library has tracks', async () => {
+    setup({
+      'GET /api/health': health([], 42),
+      'POST /api/search': response([], { notes: ['No tracks match'] }),
+    })
+    renderWithHealth(health([], 42))
+    await searchFor('rain')
+    // The state's title and the backend note both say it.
+    expect(await screen.findAllByText('No tracks match')).toHaveLength(2)
+    expect(screen.getByText(/Try fewer or looser filters/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: EMPTY_TITLE })).not.toBeInTheDocument()
+  })
+
+  it('reads the count again after an empty search', async () => {
+    const answers = [health([], 5), health([], 0)]
+    setup({
+      'GET /api/health': () => (answers.length > 1 ? answers.shift() : answers[0]),
+      'POST /api/search': response([]),
+    })
+    renderWithProviders(<SearchPage />)
+    await screen.findByRole('search')
+    await waitFor(() => expect(answers).toHaveLength(1))
+    expect(screen.queryByRole('heading', { name: EMPTY_TITLE })).not.toBeInTheDocument()
+    await searchFor('rain')
+    expect(await screen.findByRole('heading', { name: EMPTY_TITLE })).toBeInTheDocument()
+  })
+
+  it('accepts a newer count from the shell', async () => {
+    let setShared: (value: Health) => void = () => {}
+    function Shell() {
+      const [shared, set] = useState(health([], 42))
+      useEffect(() => {
+        setShared = set
+      }, [set])
+      return (
+        <BackendStatusContext.Provider value={{ state: 'online', health: shared }}>
+          <SearchPage />
+        </BackendStatusContext.Provider>
+      )
+    }
+    setup({ 'GET /api/health': health([], 42) })
+    renderWithProviders(<Shell />)
+    await screen.findByRole('search')
+    expect(screen.queryByRole('heading', { name: EMPTY_TITLE })).not.toBeInTheDocument()
+    act(() => setShared(health([], 0)))
+    expect(await screen.findByRole('heading', { name: EMPTY_TITLE })).toBeInTheDocument()
+  })
+
+  it('opens the Library from the Add music button', async () => {
+    setup({})
+    renderWithHealth(health([], 0))
+    await userEvent.click(await screen.findByRole('button', { name: 'Add music' }))
+    expect(window.location.hash).toBe('#/library')
   })
 })

@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-28.
+Last updated: 2026-10-30.
 
 ## 1. Milestones
 
@@ -26,13 +26,13 @@ Last updated: 2026-10-28.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker and drop follow after the demo |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Planned (2026-10-28) | — | Portable Windows zip (own Python, CPU PyTorch, UI in the browser) right after the presentation; then the local-music picker; then a desktop window (pywebview). See §3.18 and §5.3 |
+| M11 Packaging | Preview built (2026-10-30) | `dev` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`, smoke-tested on the owner's PC; a clean-Windows test and the GitHub pre-release are next. Then the local-music picker; then a desktop window (pywebview). See §3.19 and §5.3 |
 
-Test suite on `dev`, counted after the docs pass for going public (2026-10-28):
-- Backend, default env: 2,341 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,338 passed, 31 skipped.
+Test suite, counted on `m11-preview` (2026-10-30):
+- Backend, default env: 2,394 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,382 passed, 32 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 487 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 509 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -726,6 +726,58 @@ The owner will make the GitHub repository public. Before that, on branch `docs-p
 - **Public on 2026-10-28.** The owner switched the visibility. The README and both screenshots
   render on GitHub, and CI is green on `dev` and `main` (runs #17 and #18 at `76019bd`).
 
+### 3.19 M11 preview zip (2026-10-30)
+The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-preview`).
+- **Layout: no venv.** The zip carries the project's python-build-standalone 3.11 (relocatable)
+  with the packages installed into its own site-packages, so nothing holds an absolute path
+  and the folder can be moved. Top level: `MCRAR.cmd`, `README.txt`, `LICENSE`, `NOTICE.md`,
+  `python/`, `frontend/dist/`, `models/registry.json`, `models/heads/`. `data/`, `config/`,
+  `.cache/` and `.secrets/` appear on first use, inside the folder.
+- **CPU PyTorch without touching the dev lock.** `uv export` of the locked `ml` extra without
+  torch, torchaudio and torchvision (hashes kept), then those three as `+cpu` wheels of the
+  `uv.lock` versions from the PyTorch CPU index, then the `mcrar` wheel. `pyproject.toml` and
+  `uv.lock` stay CUDA for development.
+- **VC++ runtime.** `msvcp140*`, `concrt140` and `vcomp140` are copied next to `python.exe`
+  (python-build-standalone already has `vcruntime140*`), so a PC without the redistributable
+  should work. Not yet tested on such a PC.
+- **Launcher.** `packaging/windows/MCRAR.cmd` sets `MCRAR_HOME` and every cache variable
+  (`HF_HOME`, `HF_HUB_CACHE`, torch, numba, matplotlib, XDG) to the app folder, and runs
+  `python -I -m mcrar serve --open --warm %*` (`-I` ignores `PYTHON*` variables and user
+  site-packages). `configure_hf_cache` only `setdefault`s `HF_HOME`, so without the launcher a
+  machine-wide `HF_HOME` would win.
+- **`mcrar serve --open/--no-open`** and a port check: a port that can be bound is free; if
+  MCRAR already answers there, it says so (and opens the browser with `--open`) and exits 0, so a
+  second double-click is harmless; anything else on the port is an error. Binding comes first
+  because on Windows a refused loopback connection takes about 2 s, which looked like a timeout.
+  `python -m mcrar` works (new `__main__.py`).
+- **First-run download progress.** The hub has no progress hook without a progress bar, so
+  `ensure_downloaded` registers the model while it fetches, asks the hub for the missing files'
+  sizes, and `download_progress` measures the repo's `blobs/` folder (complete files plus
+  `*.incomplete`) when health is polled. `/api/health` `models[]` entries that are loading carry
+  `phase` (`downloading` with `download: {done_bytes, total_bytes}`, or `loading`). The search
+  page and Settings → Model show it ("Downloading clap (laion/clap): 312 MB of 776 MB", with a
+  bar), and the search page polls every second while its model is not ready.
+- **Empty library.** With 0 tracks the search page says "Your library is empty" with the three
+  ways in and an "Add music" button (Library), before and after a search; the duplicate "No
+  tracks match" note is hidden then. A search with no candidates no longer embeds the text, so
+  it never loads the model.
+- **Offline banner:** "double-click MCRAR.cmd …, or run `mcrar serve` from source".
+- **Smoke test (owner's PC, 2026-10-30).** The zip (398 MB, 46k files, 1.24 GB unpacked) was
+  extracted to `build\smoke 测试\` and started with a stripped environment:
+  - the CLAP download was reported 0 → 779,810,868 bytes, then it loaded on the CPU (fp32);
+  - 3 synthetic WAVs were imported from a local folder, and "calm piano" ranked the piano-like
+    one first;
+  - a second `MCRAR.cmd` said "already running" and exited;
+  - nothing new appeared in `%APPDATA%`, `%LOCALAPPDATA%`, `%TEMP%` or `~\.cache`;
+  - after moving the folder to `moved (2)!\MCRAR` it started again without downloading, with
+    its 3 tracks.
+- **Known gaps of the preview:**
+  - not yet run on a clean Windows (Windows Sandbox or another PC; no VC++ redistributable);
+  - `.pyc` files carry the build path in tracebacks (uv's `--compile-bytecode`);
+  - the console shows Hugging Face's "hf_xet is not installed" hint during the download;
+  - the CPU model load takes about 50 s on this PC;
+  - SmartScreen may warn about the unsigned `MCRAR.cmd` (`README.txt` explains "Run anyway").
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -904,12 +956,12 @@ M3b is merged and the real catalog is tagged. Still open:
 
 ### 5.3 Next milestone (waiting for the owner's go)
 The owner's order after the presentation (2026-10-28, §3.18):
-1. **M11 preview:** a portable Windows zip with its own Python and CPU PyTorch; `MCRAR.cmd`
-   starts the server and opens the browser; data, weights and keys stay in the app folder.
-   - It needs two first-run fixes: a visible status while CLAP downloads, and an empty-library
-     hint (add a key or a folder).
-   - Smoke test on a clean Windows.
-   - Released as a GitHub pre-release.
+1. **M11 preview:** built and smoke-tested on the owner's PC (§3.19). Left:
+   - a test on a clean Windows (Windows Sandbox, which the owner enables, or another PC):
+     unzip, double-click `MCRAR.cmd`, watch the download progress, add a key or a folder,
+     search;
+   - a clean build from the merged commit, then the GitHub pre-release `v0.1.0-preview` (the
+     owner uploads the zip).
 2. **The local-music picker** ("Browse…" and drop/choose files, §3.17).
 3. **M11 desktop window** (pywebview, WebView2) around the same build.
 

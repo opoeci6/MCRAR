@@ -134,7 +134,7 @@ describe('Settings: model', () => {
 
 describe('Settings: model status', () => {
   const CLAP_NAME = 'clap (laion/clap)'
-  const ABSENT = 'Not loaded yet. It loads with the first search.'
+  const ABSENT = 'Not loaded yet. It loads with the first search (the first time, it downloads first).'
 
   const loadedModel = (overrides: Partial<HealthModel> = {}): HealthModel => ({
     key: 'clap',
@@ -209,6 +209,23 @@ describe('Settings: model status', () => {
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent("The model didn't load")
     expect(alert).toHaveTextContent('out of memory')
+  })
+
+  it('shows the bytes of a model that is downloading, and the bytes so far when the total is unknown', async () => {
+    const download = (done_bytes: number, total_bytes: number | null) =>
+      loadedModel({
+        state: 'loading',
+        device: null,
+        dtype: null,
+        phase: 'downloading',
+        download: { done_bytes, total_bytes },
+      })
+    const first = renderWith(health([download(312e6, 776e6)]))
+    expect(await screen.findByRole('status')).toHaveTextContent(`Downloading ${CLAP_NAME}… 312 MB of 776 MB`)
+    first.unmount()
+
+    renderWith(health([download(312e6, null)]))
+    expect(await screen.findByRole('status')).toHaveTextContent(`Downloading ${CLAP_NAME}… 312 MB so far`)
   })
 
   it('shows a model that is loading, polls every second and stops once it is ready', async () => {

@@ -231,7 +231,7 @@ def test_health_shows_loading_ready_and_error_models(tmp_path: Path) -> None:
         assert body["models_loaded"] == ["clap"]  # kept for older clients: only the ready ones
         assert body["models"] == [
             {"key": "clap", "state": "ready", "device": None, "dtype": None},
-            {"key": "glap", "state": "loading", "device": None, "dtype": None},
+            {"key": "glap", "state": "loading", "device": None, "dtype": None, "phase": "loading"},
             {
                 "key": "muq-mulan",
                 "state": "error",

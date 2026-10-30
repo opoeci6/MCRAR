@@ -402,6 +402,16 @@ class SearchService:
             duration_max_s=f.duration_max_s,
             sources=f.sources,
         )
+        if not ids:  # nothing can match: no index, no query embedding, so no model load either
+            return _Outcome(
+                ranked=[],
+                pool_index={},
+                tracks={},
+                features={},
+                tag_arrays={},
+                top_sets=(),
+                unembedded=0,
+            )
         index = self._index()
         unembedded = int(len(ids) - np.isin(np.asarray(ids, dtype=np.int64), index.ids).sum())
 

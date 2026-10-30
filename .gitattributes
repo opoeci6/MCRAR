@@ -1,3 +1,6 @@
 # Shell scripts and the toolchain lock must keep LF endings (bash breaks on CRLF).
 *.sh text eol=lf
 scripts/toolchain.lock text eol=lf
+
+# The Windows launcher and its readme are read by cmd.exe and Notepad: keep CRLF endings.
+packaging/windows/* text eol=crlf

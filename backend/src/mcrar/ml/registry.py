@@ -10,6 +10,7 @@ come from a revision we looked at.
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -213,19 +214,120 @@ def is_downloaded(spec: ModelSpec, settings: Settings) -> bool | None:
         return None
 
 
+# -- download progress -------------------------------------------------------------------
+#
+# The hub reports no progress without a progress bar, so the size of the repository's ``blobs``
+# folder is the measure: the hub writes ``<etag>.incomplete`` and renames it when it is done.
+
+
+@dataclass
+class _PinProgress:
+    """What is needed to tell how far the download of one repository has got."""
+
+    blobs: Path
+    baseline: int  # bytes of the complete blobs there before this download began
+    total: int | None  # bytes still to fetch when it began; None when the hub did not say
+
+
+_downloads: dict[str, list[_PinProgress]] = {}  # model key -> its repositories being fetched
+_downloads_lock = threading.Lock()
+
+
+def _blobs_size(blobs: Path) -> tuple[int, int]:
+    """Bytes of the complete and of the ``.incomplete`` files in ``blobs``; (0, 0) when the
+    folder is missing, and it never raises. ``os.stat`` per file, because on Windows a directory
+    listing can lag behind a file that is being written."""
+    complete = incomplete = 0
+    try:
+        with os.scandir(blobs) as entries:
+            for entry in entries:
+                try:
+                    size = os.stat(entry.path).st_size
+                except OSError:  # renamed or removed between the listing and the stat
+                    continue
+                if entry.name.endswith(".incomplete"):
+                    incomplete += size
+                else:
+                    complete += size
+    except OSError:
+        return 0, 0
+    return complete, incomplete
+
+
+def download_progress(key: str) -> dict[str, int | None] | None:
+    """``{"done_bytes", "total_bytes"}`` of the model ``key`` while :func:`ensure_downloaded` is
+    fetching it, else None. ``total_bytes`` is None while it is not known (the sizes are still
+    being asked for, or the hub did not say). Walks the blobs folders when called, so call it
+    only when the numbers are shown."""
+    with _downloads_lock:
+        pins = _downloads.get(key)
+        if pins is None:
+            return None
+        pins = list(pins)
+    done = 0
+    total: int | None = 0 if pins else None
+    for pin in pins:
+        complete, incomplete = _blobs_size(pin.blobs)
+        # a partial file the hub resumes counts as done, so the bar does not stall short of full
+        fetched = max(complete - pin.baseline, 0) + incomplete
+        if pin.total is None or total is None:
+            total = None
+            done += fetched
+        else:
+            total += pin.total
+            done += min(fetched, pin.total)
+    return {"done_bytes": done, "total_bytes": total}
+
+
+def _start_progress(hub, pin: RepoPin) -> _PinProgress:  # noqa: ANN001
+    """The progress record of ``pin``: the files missing locally are asked of the hub (any
+    failure leaves the total unknown; the download itself reports its own errors)."""
+    folder = hub.file_download.repo_folder_name(repo_id=pin.repo, repo_type="model")
+    blobs = Path(hub.constants.HF_HUB_CACHE) / folder / "blobs"
+    try:
+        missing = [
+            name
+            for name in pin.files
+            if not isinstance(
+                hub.try_to_load_from_cache(pin.repo, name, revision=pin.revision), str
+            )
+        ]
+        infos = hub.HfApi().get_paths_info(pin.repo, missing, revision=pin.revision)
+        sizes = {info.path: info.size for info in infos}
+        total: int | None = sum(int(sizes[name]) for name in missing)
+    except Exception:  # offline, auth, an unexpected answer: show no total, download anyway
+        total = None
+    return _PinProgress(blobs, _blobs_size(blobs)[0], total)
+
+
 def ensure_downloaded(spec: ModelSpec, settings: Settings) -> dict[str, Path]:
     """Download (if needed) every pinned repository of ``spec``; returns ``{repo: folder}``.
 
-    Only the files listed in the registry are fetched, always at the pinned commit.
+    Only the files listed in the registry are fetched, always at the pinned commit. While files
+    are being fetched, :func:`download_progress` answers for ``spec.key``.
     """
     configure_hf_cache(settings)
     hub = _hub()
     folders: dict[str, Path] = {}
+    missing: list[RepoPin] = []
     for pin in spec.pins:
         folder = cached_snapshot(pin, settings)
         if folder is None:
+            missing.append(pin)
+        else:
+            folders[pin.repo] = folder
+    if not missing:
+        return folders
+    progress: list[_PinProgress] = []
+    with _downloads_lock:
+        _downloads[spec.key] = progress
+    try:
+        records = [_start_progress(hub, pin) for pin in missing]
+        with _downloads_lock:
+            progress.extend(records)
+        for pin in missing:
             try:
-                folder = Path(
+                folders[pin.repo] = Path(
                     hub.snapshot_download(
                         pin.repo, revision=pin.revision, allow_patterns=list(pin.files)
                     )
@@ -235,5 +337,8 @@ def ensure_downloaded(spec: ModelSpec, settings: Settings) -> dict[str, Path]:
                     f"could not download {pin.repo}@{pin.revision[:7]} ({type(exc).__name__}): "
                     f"{str(exc)[:200]}"
                 ) from None
-        folders[pin.repo] = folder
-    return folders
+    finally:
+        with _downloads_lock:
+            if _downloads.get(spec.key) is progress:
+                del _downloads[spec.key]
+    return {pin.repo: folders[pin.repo] for pin in spec.pins}

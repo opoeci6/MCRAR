@@ -4,6 +4,7 @@ import { ApiError } from '../../api/client'
 import {
   deleteRating,
   getLlmStatus,
+  getSettings,
   getTrack,
   getVocab,
   putRating,
@@ -23,12 +24,14 @@ import type {
 } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { usePersistentState } from '../../app/usePersistentState'
-import { hrefFor, parseHash } from '../../app/route'
+import { useModelStatus } from '../../app/useModelStatus'
+import { hrefFor, navigate, parseHash } from '../../app/route'
 import type { PageProps } from '../../app/route'
 import { useToast } from '../../app/toastContext'
 import { InlineJobProgress } from '../../features/jobs/InlineJobProgress'
 import { StartError } from '../../features/jobs/StartError'
 import { TrackDrawer } from '../../features/track/TrackDrawer'
+import { embedderName } from '../../lib/format'
 import { strings } from '../../strings'
 import { Button } from '../../ui/Button'
 import { Chip } from '../../ui/Chip'
@@ -43,6 +46,7 @@ import { FiltersPanel } from './FiltersPanel'
 import { QueryReading } from './QueryReading'
 import { DEFAULT_REFERENCE_WEIGHT, isAudioFile, toApiReference, trackLabel } from './reference'
 import type { Reference } from './reference'
+import { ModelNotice } from './ModelNotice'
 import { ReferenceBar } from './ReferenceBar'
 import { ResultRow } from './ResultRow'
 import { searchStrings as s } from './strings'
@@ -50,6 +54,7 @@ import type { ImportWording } from './strings'
 import { useFileDrop } from './useFileDrop'
 import { useSearchImport } from './useSearchImport'
 import type { ImportOutcome } from './useSearchImport'
+import { useTrackCount } from './useTrackCount'
 import styles from './SearchPage.module.css'
 
 const PAGE_SIZE = 20
@@ -528,6 +533,16 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
   const loading = busy === 'search'
   const filterCount = activeFilterCount(filters)
 
+  // The text model the search uses is the default one. While a search waits on it, it is
+  // watched even when it has not started loading yet or failed before.
+  const settings = useAsync((signal) => getSettings({ signal }), [])
+  const modelKey = settings.data?.editable.default_embedder ?? null
+  const embedder = settings.data?.embedders.find((entry) => entry.key === modelKey)
+  const modelStatus = useModelStatus(modelKey ?? '', loading)
+  // An empty result is the moment the library may be the reason, so the count is read again.
+  const trackCount = useTrackCount(results && results.items.length === 0 ? results.runId : 0)
+  const libraryEmpty = trackCount === 0
+
   return (
     <>
       <PageHeader title={s.title} description={s.description} />
@@ -601,7 +616,11 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
         </aside>
 
         <section className={styles.results} aria-label={s.results.heading} aria-busy={loading}>
+          {modelKey ? (
+            <ModelNotice model={modelStatus.model} name={embedder ? embedderName(embedder) : modelKey} />
+          ) : null}
           {loading && results === null ? <Spinner label={s.query.searching} /> : null}
+          {results === null && !loading && libraryEmpty ? <LibraryEmpty /> : null}
           {problem && problem.kind !== 'invalid' ? (
             <Notice
               kind="error"
@@ -635,6 +654,7 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
             <ResultsView
               results={results}
               loading={loading}
+              libraryEmpty={libraryEmpty}
               wording={searchImport.wording}
               canImport={!searchImport.active && searchImport.available}
               importPending={searchImport.pending}
@@ -665,9 +685,26 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
   )
 }
 
+/** The catalog has no tracks: say how to add some. */
+function LibraryEmpty() {
+  return (
+    <EmptyState
+      title={s.results.libraryEmpty}
+      description={s.results.libraryEmptyHint}
+      action={
+        <Button variant="primary" onClick={() => navigate('library')}>
+          {s.results.addMusic}
+        </Button>
+      }
+    />
+  )
+}
+
 interface ResultsViewProps {
   results: ResultSet
   loading: boolean
+  /** The catalog has no tracks, so an empty result is not about the query. */
+  libraryEmpty: boolean
   loadingMore: boolean
   /** The wording of the import, which names the sources it uses. */
   wording: ImportWording
@@ -692,6 +729,7 @@ interface ResultsViewProps {
 function ResultsView({
   results,
   loading,
+  libraryEmpty,
   loadingMore,
   wording,
   canImport,
@@ -788,14 +826,21 @@ function ResultsView({
         {relaxed.length > 0 ? (
           <Notice kind="warning">{s.results.relaxed(relaxed.join('; '))}</Notice>
         ) : null}
-        {notes.map((note) => (
-          <Notice key={note}>{note}</Notice>
-        ))}
+        {notes
+          // The empty-library state says it already.
+          .filter((note) => !(libraryEmpty && note === s.results.empty))
+          .map((note) => (
+            <Notice key={note}>{note}</Notice>
+          ))}
         {unembedded > 0 ? <Notice>{s.results.unembedded(unembedded)}</Notice> : null}
       </div>
       {parsed ? <QueryReading parsed={parsed} llm={llm} wording={wording} /> : null}
       {items.length === 0 ? (
-        <EmptyState title={s.results.empty} description={s.results.emptyHint} />
+        libraryEmpty ? (
+          <LibraryEmpty />
+        ) : (
+          <EmptyState title={s.results.empty} description={s.results.emptyHint} />
+        )
       ) : (
         <ul className={styles.list}>
           {items.map((item) => (

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getHealth } from '../../api/endpoints'
-import type { Health, HealthModel } from '../../api/types'
-import { useBackendStatus } from '../../app/backendStatus'
+import { getHealth } from '../api/endpoints'
+import type { Health, HealthModel } from '../api/types'
+import { useBackendStatus } from './backendStatus'
 
 const FAST_POLL_MS = 1_000
 /** How long after a save the new model is waited for before the fast poll gives up. */
@@ -23,9 +23,10 @@ export interface ModelStatus {
  * What `/api/health` says about one model. It follows the shell's slow backend poll, and polls
  * every second itself only while the model is loading or a just-saved model has not appeared,
  * so the status line settles without a permanent fast poll. A failed fetch is ignored: the
- * backend indicator already says when the backend is offline.
+ * backend indicator already says when the backend is offline. With `watch` it also polls while
+ * the model is not ready (a search is waiting on it, and a failed model is retried by it).
  */
-export function useModelStatus(key: string): ModelStatus {
+export function useModelStatus(key: string, watch = false): ModelStatus {
   const shared = useBackendStatus().health
   const [health, setHealth] = useState<Health | null>(shared)
   const [seenShared, setSeenShared] = useState<Health | null>(shared)
@@ -40,7 +41,7 @@ export function useModelStatus(key: string): ModelStatus {
   // Once the entry appears the expectation is met, whatever happens to it later.
   if (expecting && model) setExpecting(false)
   const waiting = expecting && !model
-  const polling = waiting || model?.state === 'loading'
+  const polling = waiting || model?.state === 'loading' || (watch && model?.state !== 'ready')
 
   useEffect(() => {
     if (!polling) return

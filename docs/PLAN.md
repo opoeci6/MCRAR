@@ -19,7 +19,8 @@
 > your browser); there is no `desktop/` shell yet. M11 changed: first a portable Windows zip with
 > its own Python and CPU PyTorch that opens the UI in the browser, then a desktop window
 > (pywebview) after the local-music picker. PyInstaller is no longer the plan. The current state
-> is in STATUS §1 and §5.3.
+> is in STATUS §1 and §5.3. Update 2026-10-30: the preview zip is built by
+> `scripts/build-preview.ps1` (STATUS §3.19).
 
 ## Context
 

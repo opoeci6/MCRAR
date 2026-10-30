@@ -110,7 +110,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\with-env.ps1 uv --ve
 | API keys (dev) | `.secrets/secrets.toml` | `SecretStore` `file` backend |
 | Optional settings file | `config/settings.toml` | copy `config/settings.example.toml` |
 | Built UI | `frontend/dist/` | `npm run build`; `mcrar serve` serves it at `/` |
-| Packaging output | `build/`, `dist/` | the packaged app (M11, planned) |
+| Packaging output | `build/preview/` (stage), `dist/*.zip` | `scripts/build-preview.ps1` (below) |
 
 Settings precedence: constructor args > `MCRAR_*` environment variables > `config/settings.toml` > defaults.
 Secrets: `MCRAR_SECRET_<NAME>` environment variables always win over the configured backend.
@@ -130,6 +130,24 @@ Manage them with `mcrar secrets set|list|delete`. The `keyring` backend is opt-i
      `.secrets/secrets.toml`, never in a URL, a log or the job params.
   4. Try it: `mcrar ingest freesound --query "calm ambient pad" --limit 5`. Freesound allows about
      60 requests a minute and 2,000 a day; the command prints today's request count.
+
+## Build the Windows preview zip
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-preview.ps1
+```
+
+It needs a clean working tree (it stages from `git archive HEAD`; `-Dev` uses the working tree
+and names the zip `…-preview-dev-win64.zip`, and `-FrontendDist <path>` reuses a frontend build).
+It copies the project's Python 3.11 into the stage and installs the locked dependencies, CPU-only
+PyTorch (same versions as `uv.lock`, from the PyTorch CPU index) and the `mcrar` wheel into it;
+`pyproject.toml` and `uv.lock` stay CUDA for development. It adds the VC++ runtime DLLs from
+System32, refuses to ship `.secrets`, `data`, `config/settings.toml`, `*.db` or caches, runs a
+self-test with a stripped environment and writes `dist/MCRAR-<version>-preview-win64.zip`
+(about 400 MB, 1.3 GB unpacked, 4 to 7 minutes). The launcher is
+`packaging/windows/MCRAR.cmd`: it sets `MCRAR_HOME` and every cache variable to the app folder and
+runs `python -I -m mcrar serve --open --warm`. Its first-steps text is
+`packaging/windows/README.txt`.
 
 ## Never install globally
 

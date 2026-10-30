@@ -14,8 +14,11 @@ export const settingsStrings = {
     save: 'Save model',
     saved: 'Model saved',
     status: {
-      absent: 'Not loaded yet. It loads with the first search.',
+      absent: 'Not loaded yet. It loads with the first search (the first time, it downloads first).',
       loading: (name: string) => `Loading ${name}…`,
+      /** `total` is null while the download size is unknown. */
+      downloading: (name: string, done: string, total: string | null) =>
+        `Downloading ${name}… ${total ? `${done} of ${total}` : `${done} so far`}`,
       ready: (device: string | null, dtype: string | null) =>
         device ? `Ready on ${device}${dtype ? ` (${dtype})` : ''}` : 'Ready',
       vram: (megabytes: number) => `${megabytes} MB VRAM in use`,

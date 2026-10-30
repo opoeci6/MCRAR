@@ -50,8 +50,9 @@ export const strings = {
     onlineTitle: (version: string, tracks: number) =>
       `MCRAR ${version}, ${tracks} ${tracks === 1 ? 'track' : 'tracks'} in the catalog`,
     offlineTitle: "Can't reach the backend",
-    offlineBody: 'Start it in a terminal with the command below. This page reconnects by itself.',
+    offlineBody: 'Start MCRAR again: double-click MCRAR.cmd in the MCRAR folder, or run',
     offlineCommand: 'mcrar serve',
+    offlineBodyEnd: 'from source. This page reconnects by itself.',
   },
   toast: {
     region: 'Notifications',

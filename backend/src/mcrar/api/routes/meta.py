@@ -35,7 +35,9 @@ def _gpu() -> dict[str, int] | None:
 @router.get("/api/health")
 def health(state: StateDep) -> dict[str, Any]:
     """Status, catalog size, ``models_loaded`` (ready keys), ``models`` (``key``, ``state``
-    loading/ready/error, ``device``, ``dtype``, ``error``) and ``gpu`` (VRAM or ``None``)."""
+    loading/ready/error, ``device``, ``dtype``, ``error``; a loading model also has ``phase``
+    downloading/loading and, while downloading, ``download`` with ``done_bytes`` and
+    ``total_bytes``, which is ``null`` when unknown) and ``gpu`` (VRAM or ``None``)."""
     return {
         "status": "ok",
         "version": __version__,
