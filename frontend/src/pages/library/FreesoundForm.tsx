@@ -156,14 +156,9 @@ export function FreesoundForm({ busy, onStarted, onShowRunning }: StartProps) {
         <Select
           label={t.freesound.sort}
           value={sort}
-          onChange={(event) => setSort(event.target.value as FreesoundSort)}
-        >
-          {t.freesound.sortOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
+          options={t.freesound.sortOptions}
+          onValueChange={(next) => setSort(next as FreesoundSort)}
+        />
         <TextInput
           label={t.freesound.limit}
           hint={t.freesound.limitHint}

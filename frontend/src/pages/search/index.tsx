@@ -21,6 +21,7 @@ import type {
   SearchItem,
   SearchReference,
   SearchResponse,
+  TrackDetail,
 } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
 import { usePersistentState } from '../../app/usePersistentState'
@@ -44,7 +45,8 @@ import { activeFilterCount, DEFAULT_FILTERS, filterProblem, toApiFilters } from 
 import type { FilterState } from './filters'
 import { FiltersPanel } from './FiltersPanel'
 import { QueryReading } from './QueryReading'
-import { DEFAULT_REFERENCE_WEIGHT, isAudioFile, toApiReference, trackLabel } from './reference'
+import { isAudioFile } from '../../lib/audio'
+import { DEFAULT_REFERENCE_WEIGHT, toApiReference, trackLabel } from './reference'
 import type { Reference } from './reference'
 import { ModelNotice } from './ModelNotice'
 import { ReferenceBar } from './ReferenceBar'
@@ -325,6 +327,42 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
     } finally {
       if (rerankController.current === own) setReranking(false)
     }
+  }
+
+  /** A track was removed from the library: it leaves the results on screen too. */
+  const removeFromResults = (trackId: number) => {
+    setDrawerId(null)
+    setResults((current) => {
+      if (!current) return current
+      const listed = current.items.some((item) => item.track_id === trackId)
+      return {
+        ...current,
+        items: current.items.filter((item) => item.track_id !== trackId),
+        preRerank: current.preRerank?.filter((item) => item.track_id !== trackId),
+        total: listed ? Math.max(0, current.total - 1) : current.total,
+      }
+    })
+  }
+
+  /** A local track's licence was changed in the drawer: the rows that show it follow. */
+  const updateLicense = (track: TrackDetail) => {
+    const { license } = track
+    const patch = (item: SearchItem): SearchItem =>
+      item.track_id === track.id
+        ? {
+            ...item,
+            risk: license.risk,
+            license_code: license.code,
+            license_url: license.url,
+            attribution_text: license.attribution_text,
+            commercial_license_url: license.commercial_license_url,
+          }
+        : item
+    setResults((current) =>
+      current
+        ? { ...current, items: current.items.map(patch), preRerank: current.preRerank?.map(patch) }
+        : current,
+    )
   }
 
   const undoRerank = () =>
@@ -680,6 +718,8 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
         trackId={drawerId}
         onClose={() => setDrawerId(null)}
         onFindSimilar={(track) => findSimilar(track.id, track.title || s.row.untitled, track.artist)}
+        onRemoved={removeFromResults}
+        onChanged={updateLicense}
       />
     </>
   )

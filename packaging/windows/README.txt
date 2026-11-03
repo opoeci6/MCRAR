@@ -29,8 +29,10 @@ Adding music
   tracks by tags or search.
 - Single tracks: in Library, Add music, By link, paste Jamendo or Freesound
   track links.
-- Your own music: in Library, Add music, Local folder, add a folder of audio
-  files on this PC. Set the folder's licence there.
+- Your own music: in Library, Add music, Your files. Either drop or choose
+  files, which MCRAR copies into its own folder (data\library), or use
+  Browse... to pick a folder whose files stay where they are. Set the
+  licence there.
 - MCRAR does not upload your files anywhere.
 
 Options

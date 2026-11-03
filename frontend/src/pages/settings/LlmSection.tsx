@@ -155,14 +155,9 @@ export function LlmSection({ view, onUpdated }: SectionProps) {
         hint={isPinned('preset') ? pinnedNote('preset') : undefined}
         value={preset.id}
         disabled={isPinned('preset') || pending}
-        onChange={(event) => changePreset(event.target.value)}
-      >
-        {presets.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.label}
-          </option>
-        ))}
-      </Select>
+        options={presets.map((p) => ({ value: p.id, label: p.label }))}
+        onValueChange={changePreset}
+      />
       <Combobox
         label={t.llm.model}
         hint={

@@ -99,8 +99,12 @@ Then add music:
    - a Freesound API key from <https://freesound.org/apiv2/apply> (Freesound grants it for
      non-commercial use).
 2. **Library → Add music:** import from Jamendo or Freesound by tags or search, paste track
-   links, or scan a local folder. For a folder, set its licence there, or put a
-   `mcrar-license.toml` file in the folder. Each track is analysed and tagged as it comes in.
+   links, or add your own files under "Your files": drop or choose files, which MCRAR copies
+   into its own folder, or pick a folder with Browse…, whose files stay where they are. Set the
+   licence there, or put a `mcrar-license.toml` file in the folder. Each track is analysed and
+   tagged as it comes in. A track's details panel can change the licence of your own files
+   (kept when you add them again) and remove a track; Maintenance finds tracks whose file has
+   moved or been deleted.
 3. **Search.** When results are thin, "Search Jamendo and Freesound for more" fetches about 50
    more matching tracks (from whichever sources have a key).
 

@@ -9,6 +9,9 @@ import { request } from './client'
 import type {
   AnalyzeResponse,
   CreditsFormat,
+  FileRoots,
+  FilesIngestRequest,
+  FolderListing,
   FreesoundIngestRequest,
   Health,
   JamendoIngestRequest,
@@ -18,11 +21,13 @@ import type {
   LabelPart,
   LabelPool,
   LabelProgress,
+  LibraryFileUpload,
   LlmModelList,
   LlmStatus,
   LlmTestRequest,
   LlmTestResult,
   LocalIngestRequest,
+  MissingTracks,
   NextLabel,
   Project,
   ProjectDetail,
@@ -45,6 +50,7 @@ import type {
   TrackDetail,
   TrackList,
   TrackListParams,
+  TrackRemovalImpact,
   Vocab,
   StoredRating,
 } from './types'
@@ -114,6 +120,30 @@ export const listTracks = (params: TrackListParams = {}, o?: CallOptions) =>
 
 export const getTrack = (trackId: number, o?: CallOptions) =>
   request<TrackDetail>('GET', `/api/tracks/${id(trackId)}`, o)
+
+/**
+ * Sets the licence of a local track by hand: a code ("CC BY 4.0"), a licence URL, or "unknown"
+ * (which hands it back to the folder). Answers with the track as `getTrack` does. 422 for a track
+ * from Jamendo or Freesound or an unrecognised value; 409 while a job runs.
+ */
+export const setTrackLicense = (trackId: number, license: string, o?: CallOptions) =>
+  request<TrackDetail>('PUT', `/api/tracks/${id(trackId)}/license`, { ...o, body: { license } })
+
+/** What removing the track would take with it, to say so before asking. */
+export const trackRemoval = (trackId: number, o?: CallOptions) =>
+  request<TrackRemovalImpact>('GET', `/api/tracks/${id(trackId)}/removal`, o)
+
+/** Removes the track with its ratings, scene labels and project entries. 409 while a job runs. */
+export const removeTrack = (trackId: number, o?: CallOptions) =>
+  request<void>('DELETE', `/api/tracks/${id(trackId)}`, o)
+
+/** Local tracks whose file is gone (the list holds at most 200; `count` is all of them). */
+export const missingTracks = (o?: CallOptions) =>
+  request<MissingTracks>('GET', '/api/tracks/missing', o)
+
+/** Removes every local track whose file is gone. 409 while a job runs. */
+export const removeMissingTracks = (o?: CallOptions) =>
+  request<{ removed: number }>('POST', '/api/tracks/remove-missing', o)
 
 /** The `src` of an <audio> element. The backend redirects Jamendo to its CDN and Freesound to its preview, or serves the file. */
 export const trackStreamUrl = (trackId: number) => `/api/tracks/${id(trackId)}/stream`
@@ -241,6 +271,10 @@ export const ingestLinks = (body: LinksIngestRequest, o?: CallOptions) =>
 export const ingestLocal = (body: LocalIngestRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/local', { ...o, body })
 
+/** Starts a job that adds files copied into the library folder with `uploadLibraryFile`. */
+export const ingestFiles = (body: FilesIngestRequest, o?: CallOptions) =>
+  request<{ job: Job }>('POST', '/api/ingest/files', { ...o, body })
+
 export const reprocess = (body: ReprocessRequest, o?: CallOptions) =>
   request<{ job: Job }>('POST', '/api/ingest/reprocess', { ...o, body })
 
@@ -260,3 +294,24 @@ export const analyzeFile = (file: File, o?: CallOptions) => {
   form.append('file', file)
   return request<AnalyzeResponse>('POST', '/api/analyze', { ...o, form })
 }
+
+// -- files on this computer ----------------------------------------------------------------
+
+/** The drives and starting places for the folder browser. 403 unless the backend is local. */
+export const fileRoots = (o?: CallOptions) => request<FileRoots>('GET', '/api/files/roots', o)
+
+/** The sub-folders of an absolute folder path, and how many audio files it holds. 422 for a bad path. */
+export const listFolder = (path: string, o?: CallOptions) =>
+  request<FolderListing>('GET', '/api/files/list', { ...o, query: { path } })
+
+/**
+ * Copies one file into MCRAR's own library folder (the raw bytes are the body; at most 2 GB).
+ * Sending the same file again is quick and answers `already: true`. Add the copies to the
+ * catalog with `ingestFiles`.
+ */
+export const uploadLibraryFile = (file: File, o?: CallOptions) =>
+  request<LibraryFileUpload>('POST', '/api/library/files', {
+    ...o,
+    blob: file,
+    query: { name: file.name },
+  })

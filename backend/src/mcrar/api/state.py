@@ -27,11 +27,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Annotated, Any
 
-from fastapi import Depends, Request
+from fastapi import Depends, HTTPException, Request
 
 from mcrar.api.jobs import JobManager
 from mcrar.api.models import ModelPool, ModelUnavailableError, torch_installed
 from mcrar.api.references import ReferenceStore
+from mcrar.api.security import is_loopback_host
 from mcrar.catalog import CatalogRepository, open_catalog
 from mcrar.llm.client import LLMClient, ProviderFactory
 from mcrar.recommend import SearchService, StoredTagScorer
@@ -100,6 +101,10 @@ class StreamUrlCache:
                     del self._items[min(self._items, key=lambda k: self._items[k][0])]
             self._items[track_id] = (self._clock() + self._ttl_s, url)
 
+    def discard(self, track_id: int) -> None:
+        with self._lock:
+            self._items.pop(track_id, None)
+
     def clear(self) -> None:
         with self._lock:
             self._items.clear()
@@ -167,6 +172,11 @@ class AppState:
             parser=parser,
         )
         return stored, service
+
+    @property
+    def local_files(self) -> bool:
+        """Whether this computer's folders may be browsed: the server listens on loopback only."""
+        return is_loopback_host(self.settings.api_host)
 
     @property
     def tag_versions(self) -> dict[str, str | None]:
@@ -255,3 +265,12 @@ def get_state(request: Request) -> AppState:
 
 
 StateDep = Annotated[AppState, Depends(get_state)]
+
+LOCAL_FILES_MESSAGE = "Browsing folders only works when MCRAR runs on this computer (loopback)."
+
+
+def require_local_files(state: StateDep) -> AppState:
+    """FastAPI dependency: 403 unless the server listens on loopback only."""
+    if not state.local_files:
+        raise HTTPException(status_code=403, detail=LOCAL_FILES_MESSAGE)
+    return state

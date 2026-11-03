@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { listJobs } from '../../api/endpoints'
 import type { Job } from '../../api/types'
 import { errorMessage, useAsync } from '../../api/useAsync'
@@ -62,13 +62,35 @@ export default function LibraryPage() {
     reloadJobs()
   }, [reloadJobs])
 
+  // Only the drop zone takes files. A file dropped anywhere else on the page would make the
+  // browser open it and leave MCRAR, so such a drop is refused.
+  useEffect(() => {
+    const refuse = (event: DragEvent) => {
+      // The drop zone has handled (and prevented) its own events by the time they reach here.
+      if (event.defaultPrevented || !event.dataTransfer?.types.includes('Files')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'none'
+    }
+    window.addEventListener('dragover', refuse)
+    window.addEventListener('drop', refuse)
+    return () => {
+      window.removeEventListener('dragover', refuse)
+      window.removeEventListener('drop', refuse)
+    }
+  }, [])
+
   const busy = active !== null && !active.settled && active.job.status === 'running'
 
   return (
     <div className={styles.page}>
       <PageHeader title={t.title} description={t.description} />
       <LibraryStats refreshKey={refreshKey} />
-      <AddMusic busy={busy} onStarted={onStarted} onShowRunning={showRunning} />
+      <AddMusic
+        busy={busy}
+        onStarted={onStarted}
+        onShowRunning={showRunning}
+        onCatalogChanged={() => setRefreshKey((n) => n + 1)}
+      />
       {active ? (
         <section className={styles.job} aria-labelledby="library-job-heading">
           <h2 id="library-job-heading">{t.jobs.heading}</h2>
@@ -84,7 +106,11 @@ export default function LibraryPage() {
           />
         </section>
       ) : null}
-      <TracksTable refreshKey={refreshKey} focusSignal={focusSignal} />
+      <TracksTable
+        refreshKey={refreshKey}
+        focusSignal={focusSignal}
+        onCatalogChanged={() => setRefreshKey((n) => n + 1)}
+      />
       {jobs.error && !jobs.data ? (
         <Notice kind="error">
           {t.jobs.loadFailed}: {errorMessage(jobs.error)}

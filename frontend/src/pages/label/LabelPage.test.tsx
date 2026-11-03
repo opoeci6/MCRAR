@@ -6,6 +6,7 @@ import { clearPersistentState } from '../../app/usePersistentState'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
+import { chooseOption } from '../../test/select'
 import LabelPage from './index'
 
 const SCENE_IDS = [
@@ -188,7 +189,7 @@ describe('Labelling page: name and part', () => {
     expect([bar.value, bar.max]).toEqual([25, 250])
 
     mock.mockClear()
-    await userEvent.selectOptions(screen.getByLabelText('Part'), 'Part B')
+    await chooseOption(userEvent.setup(), 'Part', 'Part B')
     await trackTitle('Song 1')
     expect(calls(mock, 'GET /api/labels/next')[0]!.params).toEqual({ labeller: 'owner', part: 'B' })
     expect(calls(mock, 'GET /api/labels/pool')[0]!.params).toEqual({ labeller: 'owner', part: 'B' })

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { embedderName, formatDownload } from './format'
+import { embedderName, formatDownload, formatFileSize } from './format'
 
 describe('formatDownload', () => {
   it('counts in whole MB below 1 GB', () => {
@@ -22,5 +22,14 @@ describe('formatDownload', () => {
 describe('embedderName', () => {
   it('joins the key and the model id', () => {
     expect(embedderName({ key: 'clap', model_id: 'laion/clap' })).toBe('clap (laion/clap)')
+  })
+})
+
+describe('formatFileSize', () => {
+  it('uses KB, MB and GB, with at least 1 KB', () => {
+    expect(formatFileSize(512_000)).toBe('512 KB')
+    expect(formatFileSize(3_400_000)).toBe('3.4 MB')
+    expect(formatFileSize(1_200_000_000)).toBe('1.2 GB')
+    expect(formatFileSize(0)).toBe('1 KB')
   })
 })

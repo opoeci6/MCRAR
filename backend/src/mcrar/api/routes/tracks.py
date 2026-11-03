@@ -6,28 +6,44 @@ track answers with a 307 redirect to its stored preview URL (stable, no API call
 only when that is an https URL on freesound.org, else 404. A local track
 is served from the file path stored in the catalog, with HTTP Range support (Starlette's
 ``FileResponse`` answers ``Range`` with 206), and no request ever supplies a path.
+
+A track can be removed from the catalog (``DELETE /api/tracks/{id}``, 409 while a job runs). Its
+ratings, labels and shortlist entries go with it. Its audio file is deleted too, but only when it
+is a copy inside the library folder (``<data_dir>/library``); a file anywhere else is never
+touched. ``GET /api/tracks/{id}/removal`` says what a removal would take along, and
+``/api/tracks/missing`` and ``/api/tracks/remove-missing`` list and remove the local tracks whose
+file is gone.
 """
 
 from __future__ import annotations
 
+import logging
 import mimetypes
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, RedirectResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
 
 from mcrar.api.routes._files import credits_download, safe_stem
+from mcrar.api.routes.library_files import library_dir
 from mcrar.api.state import AppState, StateDep
 from mcrar.catalog import StoredTrack
-from mcrar.licensing import track_credits
+from mcrar.licensing import attribution_text, stored_attribution_extra, track_credits
 from mcrar.recommend.request import SOURCES
 from mcrar.secrets import SecretError
 from mcrar.sources import JamendoError
 from mcrar.sources.freesound import is_freesound_https
+from mcrar.sources.local_folder import parse_override
 
 router = APIRouter()
+log = logging.getLogger(__name__)
+
+MISSING_LIST_LIMIT = 200
+JOB_RUNNING_MESSAGE = "A job is running; try again when it has finished."
 
 
 def _track(state: AppState, track_id: int) -> StoredTrack:
@@ -86,6 +102,136 @@ def list_tracks(
     }
 
 
+# -- removing tracks ---------------------------------------------------------------------------
+
+
+def _is_missing(track: StoredTrack) -> bool:
+    """A local track whose audio file is gone (no path stored, or not a file). A file that cannot
+    be checked is not counted as missing."""
+    if track.source != "local":
+        return False
+    if not track.local_path:
+        return True
+    try:
+        return not Path(track.local_path).is_file()
+    except OSError:
+        return False
+
+
+def _library_file(state: AppState, track: StoredTrack) -> Path | None:
+    """The track's file when it is a copy inside the library folder, else None."""
+    if track.source != "local" or not track.local_path:
+        return None
+    root = library_dir(state.settings).resolve()
+    try:
+        path = Path(track.local_path).resolve()
+    except (OSError, RuntimeError):
+        return None
+    return path if root in path.parents else None
+
+
+def _remove_track(state: AppState, track: StoredTrack) -> None:
+    """Delete the track row (and what hangs on it) and, if it is a library copy, its file."""
+    file = _library_file(state, track)
+    state.repo.delete_track(track.id)
+    state.stream_urls.discard(track.id)
+    if file is not None:
+        try:
+            file.unlink()
+        except FileNotFoundError:
+            pass
+        except OSError as exc:  # the track is gone from the catalog: do not fail the request
+            log.warning("could not delete library file of track %d: %s", track.id, exc)
+
+
+def _while_idle(state: AppState, action: Callable[[], None]) -> None:
+    """Run ``action`` unless a job runs (409); no job can start while it runs."""
+    if not state.jobs.run_if_idle(action):
+        raise HTTPException(status_code=409, detail=JOB_RUNNING_MESSAGE)
+
+
+@router.get("/api/tracks/missing")
+def missing_tracks(state: StateDep) -> dict[str, Any]:
+    """Local tracks whose audio file is gone: the exact ``count`` and up to 200 of them."""
+    missing = [t for t in state.repo.iter_tracks("local") if _is_missing(t)]
+    return {
+        "count": len(missing),
+        "tracks": [
+            {"id": t.id, "title": t.title, "local_path": t.local_path}
+            for t in missing[:MISSING_LIST_LIMIT]
+        ],
+    }
+
+
+@router.post("/api/tracks/remove-missing")
+def remove_missing_tracks(state: StateDep) -> dict[str, int]:
+    """Remove the local tracks whose audio file is still gone (checked again here)."""
+    removed = 0
+
+    def action() -> None:
+        nonlocal removed
+        for track in state.repo.iter_tracks("local"):
+            if _is_missing(track):
+                _remove_track(state, track)
+                removed += 1
+
+    _while_idle(state, action)
+    return {"removed": removed}
+
+
+@router.get("/api/tracks/{track_id}/removal")
+def removal_preview(track_id: int, state: StateDep) -> dict[str, Any]:
+    """What removing the track would also delete: its ratings, scene labels, the projects whose
+    shortlist has it and whether its audio file is a copy that would be deleted."""
+    track = _track(state, track_id)
+    return {
+        **state.repo.track_user_data(track_id),
+        "copied_file": _library_file(state, track) is not None,
+    }
+
+
+@router.delete("/api/tracks/{track_id}", status_code=204, response_model=None)
+def remove_track(track_id: int, state: StateDep) -> Response:
+    track = _track(state, track_id)
+    _while_idle(state, lambda: _remove_track(state, track))
+    return Response(status_code=204)
+
+
+class LicenseBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    license: Annotated[str, Field(min_length=1, max_length=200)]
+
+
+@router.put("/api/tracks/{track_id}/license")
+def set_license(track_id: int, body: LicenseBody, state: StateDep) -> dict[str, Any]:
+    """Declare the licence of a local track (a code or URL, or ``unknown``).
+
+    The credit line is built again with the track's own title, artist and source URL; the text a
+    sidecar added after it is kept. A licence set here survives adding the same file again, except
+    ``unknown``, which hands the licence back to the folder (its sidecar) on the next add.
+    """
+    track = _track(state, track_id)
+    if track.source != "local":
+        raise ValueError("The licence of a Jamendo or Freesound track comes from the source.")
+    info = parse_override(body.license)
+    assert info is not None
+
+    def action() -> None:
+        current = _track(state, track_id)  # read again: no job can change it from here on
+        text = attribution_text(
+            title=current.title or "Untitled",
+            artist=current.artist,
+            license=info,
+            source_url=current.source_url,
+            extra=stored_attribution_extra(current) or None,
+        )
+        state.repo.set_track_license(track_id, info, text, set_by_user=info.family != "unknown")
+
+    _while_idle(state, action)
+    return track_detail(track_id, state)
+
+
 @router.get("/api/tracks/{track_id}")
 def track_detail(track_id: int, state: StateDep) -> dict[str, Any]:
     track = _track(state, track_id)
@@ -122,6 +268,7 @@ def track_detail(track_id: int, state: StateDep) -> dict[str, Any]:
             "attribution_required": track.attribution_required,
             "attribution_text": track.attribution_text,
             "commercial_license_url": track.commercial_license_url,
+            "set_by_user": track.license_set_by_user,
         },
     }
 

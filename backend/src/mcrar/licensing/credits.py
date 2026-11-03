@@ -148,15 +148,10 @@ def render_credits(
     raise ValueError(f"unsupported credits format: {fmt!r}")
 
 
-def track_credit_item(track: StoredTrack) -> CreditItem:
-    """One credit entry from a catalog row.
-
-    The licence is rebuilt from the stored columns (not by parsing the URL: a user-declared custom
-    licence has none), so its risk and flags are exactly what the catalog holds. The stored
-    ``attribution_text`` already carries any user-declared suffix and is the credit line verbatim;
-    a row without one gets the generated TASL line.
-    """
-    license_info = LicenseInfo(
+def stored_license(track: StoredTrack) -> LicenseInfo:
+    """The licence of a catalog row, rebuilt from the stored columns (not by parsing the URL: a
+    user-declared custom licence has none), so its risk and flags are what the catalog holds."""
+    return LicenseInfo(
         family=track.license_family or "unknown",  # type: ignore[arg-type]
         version=None,
         jurisdiction=None,
@@ -168,12 +163,34 @@ def track_credit_item(track: StoredTrack) -> CreditItem:
         attribution_required=track.attribution_required,
         risk=track.risk,  # type: ignore[arg-type]
     )
-    title = track.title or "Untitled"
+
+
+def stored_attribution_extra(track: StoredTrack, license_info: LicenseInfo | None = None) -> str:
+    """The user-declared text (a sidecar's ``attribution``) the row's credit line carries after
+    the generated TASL line; empty when there is none, or when the stored line is not the
+    generated one followed by a suffix (for example Jamendo's, built from the source's data)."""
+    license_info = license_info or stored_license(track)
     generated = attribution_text(
-        title=title, artist=track.artist, license=license_info, source_url=track.source_url
+        title=track.title or "Untitled",
+        artist=track.artist,
+        license=license_info,
+        source_url=track.source_url,
     )
     stored = (track.attribution_text or "").strip()
-    extra = stored[len(generated) :].strip() if stored.startswith(generated) else ""
+    return stored[len(generated) :].strip() if stored.startswith(generated) else ""
+
+
+def track_credit_item(track: StoredTrack) -> CreditItem:
+    """One credit entry from a catalog row.
+
+    The licence is rebuilt from the stored columns (see :func:`stored_license`). The stored
+    ``attribution_text`` already carries any user-declared suffix and is the credit line verbatim;
+    a row without one gets the generated TASL line.
+    """
+    license_info = stored_license(track)
+    title = track.title or "Untitled"
+    stored = (track.attribution_text or "").strip()
+    extra = stored_attribution_extra(track, license_info)
     return CreditItem(
         title=title,
         artist=track.artist,

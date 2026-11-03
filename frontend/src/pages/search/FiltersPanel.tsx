@@ -4,6 +4,7 @@ import { Button } from '../../ui/Button'
 import { Chip } from '../../ui/Chip'
 import { Notice } from '../../ui/Notice'
 import { Select } from '../../ui/Select'
+import type { SelectOption } from '../../ui/Select'
 import { TextInput } from '../../ui/TextInput'
 import { Toggle } from '../../ui/Toggle'
 import { DEFAULT_FILTERS, filterProblem } from './filters'
@@ -24,12 +25,8 @@ export interface FiltersPanelProps {
   vocabFailed: boolean
 }
 
-function optionList(options: Record<string, string>) {
-  return Object.entries(options).map(([value, label]) => (
-    <option key={value} value={value}>
-      {label}
-    </option>
-  ))
+function optionList(options: Record<string, string>): SelectOption[] {
+  return Object.entries(options).map(([value, label]) => ({ value, label }))
 }
 
 function toggled(list: string[], id: string): string[] {
@@ -59,10 +56,9 @@ export function FiltersPanel({ value, onChange, vocab, vocabFailed }: FiltersPan
         <Select
           label={f.maxRisk}
           value={value.maxRisk}
-          onChange={(event) => set({ maxRisk: event.target.value as FilterState['maxRisk'] })}
-        >
-          {optionList(f.risk)}
-        </Select>
+          options={optionList(f.risk)}
+          onValueChange={(next) => set({ maxRisk: next as FilterState['maxRisk'] })}
+        />
       )}
 
       {vocabFailed ? <Notice kind="warning">{f.vocabFailed}</Notice> : null}
@@ -89,10 +85,9 @@ export function FiltersPanel({ value, onChange, vocab, vocabFailed }: FiltersPan
         label={f.intensity}
         hint={f.intensityHint}
         value={value.intensity}
-        onChange={(event) => set({ intensity: event.target.value as FilterState['intensity'] })}
-      >
-        {optionList(f.intensityOptions)}
-      </Select>
+        options={optionList(f.intensityOptions)}
+        onValueChange={(next) => set({ intensity: next as FilterState['intensity'] })}
+      />
 
       <fieldset className={styles.group}>
         <legend className={styles.legend}>{f.bpm}</legend>
@@ -119,18 +114,16 @@ export function FiltersPanel({ value, onChange, vocab, vocabFailed }: FiltersPan
       <Select
         label={f.vocals}
         value={value.vocal}
-        onChange={(event) => set({ vocal: event.target.value as FilterState['vocal'] })}
-      >
-        {optionList(f.vocalOptions)}
-      </Select>
+        options={optionList(f.vocalOptions)}
+        onValueChange={(next) => set({ vocal: next as FilterState['vocal'] })}
+      />
 
       <Select
         label={f.duration}
         value={value.duration}
-        onChange={(event) => set({ duration: event.target.value as DurationPreset })}
-      >
-        {optionList(f.durationOptions)}
-      </Select>
+        options={optionList(f.durationOptions)}
+        onValueChange={(next) => set({ duration: next as DurationPreset })}
+      />
       {value.duration === 'custom' ? (
         <div className={styles.pair}>
           <TextInput
@@ -155,10 +148,9 @@ export function FiltersPanel({ value, onChange, vocab, vocabFailed }: FiltersPan
       <Select
         label={f.source}
         value={value.source}
-        onChange={(event) => set({ source: event.target.value as FilterState['source'] })}
-      >
-        {optionList(f.sourceOptions)}
-      </Select>
+        options={optionList(f.sourceOptions)}
+        onValueChange={(next) => set({ source: next as FilterState['source'] })}
+      />
 
       {problem ? <Notice kind="error">{problem}</Notice> : null}
     </div>

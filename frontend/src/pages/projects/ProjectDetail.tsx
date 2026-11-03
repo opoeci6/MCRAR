@@ -193,6 +193,30 @@ function ProjectView({
         trackId={drawerId}
         onClose={() => setDrawerId(null)}
         onFindSimilar={(track) => findSimilar(track.id)}
+        onRemoved={(trackId) => {
+          setDrawerId(null)
+          setItems((current) => current.filter((item) => item.track.id !== trackId))
+          onChanged()
+        }}
+        onChanged={(track) =>
+          setItems((current) =>
+            current.map((item) =>
+              item.track.id === track.id
+                ? {
+                    ...item,
+                    track: {
+                      ...item.track,
+                      risk: track.license.risk,
+                      license_code: track.license.code,
+                      license_url: track.license.url,
+                      attribution_text: track.license.attribution_text,
+                      commercial_license_url: track.license.commercial_license_url,
+                    },
+                  }
+                : item,
+            ),
+          )
+        }
       />
     </div>
   )

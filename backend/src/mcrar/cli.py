@@ -2272,18 +2272,6 @@ def ratings_eval(
 # -- serve -----------------------------------------------------------------------------------------
 
 
-def _is_loopback(host: str) -> bool:
-    import ipaddress
-
-    name = host.strip().strip("[]").lower()
-    if name == "localhost":
-        return True
-    try:
-        return ipaddress.ip_address(name).is_loopback
-    except ValueError:
-        return False
-
-
 def _browser_url(host: str, port: int) -> str:
     """The address a browser on this machine uses for a server listening on ``host``."""
     name = host.strip().strip("[]")
@@ -2406,10 +2394,12 @@ def serve(
     When an MCRAR server already answers on the address, nothing new is started (the browser
     opens there with --open); another program on the port is an error.
     """
+    from mcrar.api.security import is_loopback_host  # lazy: keeps the CLI start light
+
     settings = _settings()
     host = host or settings.api_host
     port = port or settings.api_port
-    if not _is_loopback(host):
+    if not is_loopback_host(host):
         if not allow_remote:
             raise _fail(
                 f"refusing to listen on {host}: the API has no login, so it only listens on "

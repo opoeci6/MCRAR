@@ -86,6 +86,7 @@
 }
 
 .status {
+  position: relative; /* anchors the hidden status text in a narrow window */
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -139,5 +140,19 @@
 
   .main {
     padding: var(--space-6) var(--space-4) var(--space-10);
+  }
+}
+
+/* A phone-width window: the status keeps its dot (and its tooltip); the words would push the
+   header past the edge. Screen readers still hear them. */
+@media (max-width: 700px) {
+  .statusText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }

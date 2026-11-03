@@ -102,3 +102,9 @@ export const RepeatIcon = (p: SVGProps<SVGSVGElement>) => (
     <path d="M3 7.5V7a2 2 0 0 1 2-2h8M11 2.8L13.2 5 11 7.2M13 8.5V9a2 2 0 0 1-2 2H3M5 13.2L2.8 11 5 8.8" />
   </Icon>
 )
+
+export const FolderIcon = (p: SVGProps<SVGSVGElement>) => (
+  <Icon {...p}>
+    <path d="M2 4.6V12a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V6.4a1 1 0 0 0-1-1H8.1L6.9 3.6a1 1 0 0 0-.8-.4H3a1 1 0 0 0-1 1v.4Z" />
+  </Icon>
+)

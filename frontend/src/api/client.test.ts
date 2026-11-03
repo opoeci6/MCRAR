@@ -11,6 +11,7 @@ import {
   setSecret,
   trackCreditsUrl,
   trackStreamUrl,
+  uploadLibraryFile,
 } from './endpoints'
 
 describe('errorDetail', () => {
@@ -46,6 +47,26 @@ describe('request', () => {
     expect(init?.method).toBe('POST')
     expect(init?.body).toBe('{"text":"rain"}')
     expect(init?.headers).toMatchObject({ 'Content-Type': 'application/json' })
+  })
+
+  it('sends a blob as the raw body with a binary content type', async () => {
+    const mock = stubApi({ 'POST /api/library/files': { file: 'x.wav' } })
+    const blob = new Blob(['riff'])
+    await request('POST', '/api/library/files', { blob })
+    const [, init] = mock.mock.calls[0] ?? []
+    expect(init?.body).toBe(blob)
+    expect(init?.headers).toMatchObject({ 'Content-Type': 'application/octet-stream' })
+  })
+
+  it('lets a form win over a blob, and a blob win over a JSON body', async () => {
+    const mock = stubApi({ 'POST /api/x': {} })
+    const form = new FormData()
+    const blob = new Blob(['a'])
+    await request('POST', '/api/x', { form, blob, body: { a: 1 } })
+    await request('POST', '/api/x', { blob, body: { a: 1 } })
+    expect(mock.mock.calls[0]?.[1]?.body).toBe(form)
+    expect(mock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Content-Type')
+    expect(mock.mock.calls[1]?.[1]?.body).toBe(blob)
   })
 
   it('returns undefined for 204', async () => {
@@ -128,6 +149,18 @@ describe('endpoints', () => {
     const putBody = mock.mock.calls[3]?.[1]?.body
     expect(putBody).toBe('{"note":"for the intro"}')
     expect(mock.mock.calls[4]?.[1]?.body).toBe('{"text":"calm piano","track_id":5}')
+  })
+
+  it('uploads a library file as the raw body, with its name in the query', async () => {
+    const mock = stubApi({
+      'POST /api/library/files': { file: 'abc.wav', name: 'my song.wav', size: 4, already: false },
+    })
+    const file = new File(['riff'], 'my song & more.wav')
+    await uploadLibraryFile(file)
+    const [url, init] = mock.mock.calls[0] ?? []
+    expect(url).toBe('/api/library/files?name=my+song+%26+more.wav')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBe(file)
   })
 
   it('never puts a secret value in an error', async () => {

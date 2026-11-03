@@ -35,7 +35,12 @@ from typing import Any, Literal, NamedTuple, Protocol
 from mcrar.audio import ANALYSIS_VERSION, analyze_audio
 from mcrar.catalog import CatalogRepository, StoredTrack
 from mcrar.ingest.mapping import to_track_record
-from mcrar.licensing import LicenseInfo, parse_license
+from mcrar.licensing import (
+    LicenseInfo,
+    parse_license,
+    stored_attribution_extra,
+    stored_license,
+)
 from mcrar.ml.embedders.base import Embedder
 from mcrar.ml.embedders.source import EMBED_MAX_SECONDS, embed_audio_source
 from mcrar.ml.errors import EmbedderMemoryError
@@ -44,9 +49,15 @@ from mcrar.sources import (
     FreesoundRateLimitError,
     JamendoAuthError,
     JamendoRateLimitError,
+    LocalItem,
     SourceTrack,
 )
-from mcrar.sources.local_folder import iter_audio_files, scan_local
+from mcrar.sources.local_folder import (
+    iter_audio_files,
+    local_file_item,
+    parse_override,
+    scan_local,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -300,10 +311,28 @@ class _Run:
         lic: LicenseInfo,
         *,
         attribution_extra: str | None = None,
+        local: bool = False,
+        from_override: bool = False,
     ) -> _Prepared:
-        """Upsert the metadata and work out which stages still have to run."""
-        record = to_track_record(src, lic, attribution_extra=attribution_extra)
+        """Upsert the metadata and work out which stages still have to run.
+
+        ``local`` marks a local file. ``from_override`` says its licence ``lic`` was declared by
+        the caller: it then replaces any licence on the row and counts as set by hand (unless it
+        is the unknown licence, which sets nothing). A local file without an override that
+        already has a hand-set licence on its row keeps that licence (and the flag): the credit
+        line is built again from the new title, artist and source URL; its user-declared suffix
+        is the item's own (a sidecar's ``attribution``) if it has one, else the one the stored
+        line carries.
+        """
         existing = self.repo.get_track_by_source(src.source, src.source_id)
+        set_by_user = from_override and lic.family != "unknown"
+        if local and not from_override and existing is not None and existing.license_set_by_user:
+            lic = stored_license(existing)
+            attribution_extra = attribution_extra or stored_attribution_extra(existing, lic) or None
+            set_by_user = True
+        record = to_track_record(
+            src, lic, attribution_extra=attribution_extra, license_set_by_user=set_by_user
+        )
         track_id = self.repo.upsert_track(record)
         self.seen += 1
         if existing is None:
@@ -914,13 +943,49 @@ def ingest_local(
     items = scan_local(root, license_override=license_override)  # validates eagerly
     total = sum(1 for _ in iter_audio_files(Path(root).resolve()))
     run = _Run("local", repo, _default_stages(stages), force, total, on_progress)
+    return _ingest_items(run, items)
+
+
+def ingest_files(
+    entries: Sequence[tuple[Path, str]],
+    repo: CatalogRepository,
+    *,
+    license_override: str | None = None,
+    force: bool = False,
+    stages: Sequence[Stage] | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> IngestReport:
+    """Ingest single files, each as ``(path, title)``: copied-in files of the library folder.
+
+    Records are those of :func:`ingest_local` (``local`` source, the content hash as id) with the
+    given title, no album and the licence ``license_override`` or unknown (no sidecar lookup).
+    """
+    override = parse_override(license_override)  # validates eagerly (ValueError)
+    run = _Run("local", repo, _default_stages(stages), force, len(entries), on_progress)
+
+    def items() -> Iterator[LocalItem]:
+        for path, title in entries:
+            try:
+                yield local_file_item(path, title=title, license_info=override)
+            except OSError as exc:  # like a scan: one unreadable file does not stop the run
+                logger.warning("Skipping unreadable file %s: %s", path, type(exc).__name__)
+
+    return _ingest_items(run, items())
+
+
+def _ingest_items(run: _Run, items: Iterable[LocalItem]) -> IngestReport:
+    """Store and process each local item, one after the other (the body of both local runs)."""
     aborted: str | None = None
     error: Exception | None = None
     try:
         run.emit("started")
         for local in items:
             item = run.prepare(
-                local.source_track, local.license, attribution_extra=local.attribution_extra
+                local.source_track,
+                local.license,
+                attribution_extra=local.attribution_extra,
+                local=True,
+                from_override=local.license_from_override,
             )
             item.get_audio = lambda p=local.path: p
             run.process(item)

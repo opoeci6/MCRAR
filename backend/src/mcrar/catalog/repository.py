@@ -19,7 +19,7 @@ from typing import Any, Self
 
 import numpy as np
 
-from mcrar.licensing.model import RISK_ORDER, risk_at_most
+from mcrar.licensing.model import RISK_ORDER, LicenseInfo, risk_at_most
 
 RISKS = ("green", "amber", "red", "unknown")
 VOCAL_INSTRUMENTAL = ("vocal", "instrumental")
@@ -81,6 +81,8 @@ class TrackRecord:
     commercial_license_url: str | None = None
     vocal_instrumental: str | None = None
     source_tags: dict[str, Any] | None = None
+    # True when the licence was set by hand; re-adding the file then keeps it (see ingest)
+    license_set_by_user: bool = False
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -260,6 +262,7 @@ _BOOL_FIELDS = frozenset(
         "derivatives_ok",
         "share_alike",
         "attribution_required",
+        "license_set_by_user",
     }
 )
 _TRACK_COLUMNS_SQL = ", ".join(("id", *_TRACK_FIELDS, "created_at", "updated_at"))
@@ -433,6 +436,45 @@ class CatalogRepository:
             ).fetchone()
         return int(row["id"])
 
+    def set_track_license(
+        self,
+        track_id: int,
+        license: LicenseInfo,  # noqa: A002
+        attribution_text: str,
+        set_by_user: bool,
+    ) -> None:
+        """Replace the licence columns of one track and its credit line (``LookupError`` if no
+        such track). ``set_by_user`` marks the licence as set by hand, so that adding the same
+        file again keeps it."""
+        if license.risk not in RISKS:
+            raise ValueError(f"risk must be one of {RISKS}, got {license.risk!r}")
+
+        def flag(value: bool | None) -> int | None:
+            return None if value is None else int(value)
+
+        with self._write() as conn:
+            self._require_track(conn, track_id)
+            conn.execute(
+                "UPDATE tracks SET license_url = ?, license_code = ?, license_family = ?, "
+                "risk = ?, commercial_ok = ?, derivatives_ok = ?, share_alike = ?, "
+                "attribution_required = ?, attribution_text = ?, license_set_by_user = ?, "
+                "updated_at = ? WHERE id = ?",
+                (
+                    license.url,
+                    license.code,
+                    license.family,
+                    license.risk,
+                    flag(license.commercial_ok),
+                    flag(license.derivatives_ok),
+                    flag(license.share_alike),
+                    flag(license.attribution_required),
+                    attribution_text,
+                    int(set_by_user),
+                    self._now(),
+                    track_id,
+                ),
+            )
+
     def get_track(self, track_id: int) -> StoredTrack | None:
         rows = self._query(f"SELECT {_TRACK_COLUMNS_SQL} FROM tracks WHERE id = ?", (track_id,))
         return _stored_track(rows[0]) if rows else None
@@ -572,6 +614,21 @@ class CatalogRepository:
         with self._write() as conn:
             cur = conn.execute("DELETE FROM tracks WHERE id = ?", (track_id,))
             return cur.rowcount > 0
+
+    def track_user_data(self, track_id: int) -> dict[str, int]:
+        """What deleting the track would also delete: its ``ratings`` and ``scene_labels`` rows
+        and the number of distinct ``projects`` whose shortlist has it."""
+
+        def count(sql: str) -> int:
+            return int(self._query(sql, (track_id,))[0][0])
+
+        return {
+            "ratings": count("SELECT COUNT(*) FROM ratings WHERE track_id = ?"),
+            "scene_labels": count("SELECT COUNT(*) FROM scene_labels WHERE track_id = ?"),
+            "projects": count(
+                "SELECT COUNT(DISTINCT project_id) FROM shortlist_items WHERE track_id = ?"
+            ),
+        }
 
     # -- features --------------------------------------------------------------------------
 

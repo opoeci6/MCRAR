@@ -6,6 +6,7 @@ import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
+import { chooseOption, optionsOf } from '../../test/select'
 import LibraryPage from './index'
 
 const STATS = {
@@ -121,14 +122,23 @@ describe('Library catalog overview and tracks', () => {
     await user.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(urls().some((u) => u.includes('offset=50'))).toBe(true))
 
-    await user.selectOptions(screen.getByLabelText('Source'), 'local')
-    await user.selectOptions(screen.getByLabelText('Licence risk'), 'amber')
+    await chooseOption(user, 'Source', 'Local folder')
+    await chooseOption(user, 'Licence risk', 'Check terms')
     await waitFor(() => {
       const last = urls()[urls().length - 1]!
       expect(last).toContain('source=local')
       expect(last).toContain('risk=amber')
       expect(last).toContain('offset=0')
     })
+  })
+
+  it('shows the source and length under the title for a narrow window, and keeps the add button named', async () => {
+    stubApi(baseRoutes({ 'GET /api/tracks': () => page(0, 1, [track(1, 'Song')]) }))
+    renderWithProviders(<LibraryPage />)
+    const table = await screen.findByRole('table', { name: 'Tracks in the catalog' })
+    // The columns are hidden by a media query in a narrow window; this line takes their place.
+    expect(within(table).getByText('Jamendo · 3:07')).toBeInTheDocument()
+    expect(within(table).getByRole('button', { name: 'Add to project' })).toBeInTheDocument()
   })
 
   describe('the search box', () => {
@@ -199,7 +209,7 @@ describe('Library catalog overview and tracks', () => {
       await screen.findByRole('table', { name: 'Tracks in the catalog' })
       await user.type(searchBox(), 'rain')
       await waitFor(() => expect(tracksUrls(api).some((u) => u.includes('q=rain'))).toBe(true))
-      await user.selectOptions(screen.getByLabelText('Source'), 'local')
+      await chooseOption(user, 'Source', 'Local folder')
       await waitFor(() => {
         const last = tracksUrls(api)[tracksUrls(api).length - 1]!
         expect(last).toContain('q=rain')
@@ -214,6 +224,73 @@ describe('Library catalog overview and tracks', () => {
     renderWithProviders(<LibraryPage />)
     await user.click(await screen.findByRole('button', { name: 'Play Rainy Window' }))
     expect(document.querySelector('audio')?.getAttribute('src')).toBe('/api/tracks/1/stream')
+  })
+
+  it('loads the list and the catalog numbers again after the licence of a track is changed in the drawer', async () => {
+    const user = userEvent.setup()
+    let licence = { risk: 'amber', code: 'CC BY-NC 4.0' }
+    const local = () => ({ ...track(1, 'Rainy Window'), source: 'local', risk: licence.risk, license_code: licence.code })
+    const detail = () => ({
+      ...local(),
+      source_id: 'a.mp3',
+      album: null,
+      release_date: null,
+      source_url: null,
+      image_url: null,
+      vocal_instrumental: null,
+      local_path: 'C:/music/a.mp3',
+      stream_url: '/api/tracks/1/stream',
+      download_url: null,
+      features: null,
+      tags: [],
+      license: {
+        code: licence.code,
+        url: null,
+        family: 'cc',
+        risk: licence.risk,
+        commercial_ok: null,
+        derivatives_ok: null,
+        share_alike: null,
+        attribution_required: null,
+        attribution_text: null,
+        commercial_license_url: null,
+        set_by_user: licence.code === 'CC BY 4.0',
+      },
+    })
+    const api = stubApi(
+      baseRoutes({
+        'GET /api/tracks': () => page(0, 1, [local()]),
+        'GET /api/tracks/1': detail,
+        'PUT /api/tracks/1/license': () => {
+          licence = { risk: 'green', code: 'CC BY 4.0' }
+          return detail()
+        },
+      }),
+    )
+    renderWithProviders(<LibraryPage />)
+    const table = await screen.findByRole('table', { name: 'Tracks in the catalog' })
+    expect(within(table).getByText('Check terms')).toBeInTheDocument()
+    const listCalls = () => api.mock.calls.filter(([input]) => String(input).startsWith('/api/tracks?')).length
+    const statsCalls = () => api.mock.calls.filter(([input]) => String(input) === '/api/stats').length
+    expect(listCalls()).toBe(1)
+    expect(statsCalls()).toBe(1)
+
+    await user.click(within(table).getByRole('button', { name: 'Show details of Rainy Window' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.click(await within(dialog).findByRole('button', { name: 'Edit licence' }))
+    const input = within(dialog).getByRole('combobox', { name: 'Licence' })
+    await user.clear(input)
+    await user.type(input, 'CC BY 4.0')
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+    await waitFor(() => expect(listCalls()).toBe(2))
+    await waitFor(() => expect(statsCalls()).toBe(2))
+    // The table is built again from the new answer.
+    const reloaded = await screen.findByRole('table', { name: 'Tracks in the catalog' })
+    expect(await within(reloaded).findByText('Safe')).toBeInTheDocument()
+    expect(within(reloaded).queryByText('Check terms')).not.toBeInTheDocument()
+    // The drawer stays open on the track.
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
   })
 
   it('says so when the catalog is empty', async () => {
@@ -234,7 +311,7 @@ describe('Library jobs', () => {
 
     await user.type(screen.getByLabelText('Tags'), 'ambient, calm')
     await user.type(screen.getByLabelText('Search text (optional)'), 'rain')
-    await user.selectOptions(screen.getByLabelText('Vocals'), 'instrumental')
+    await chooseOption(user, 'Vocals', 'Instrumental only')
     await user.click(screen.getByLabelText(/Only commercially usable licences/))
     await user.clear(screen.getByLabelText('Number of tracks'))
     await user.type(screen.getByLabelText('Number of tracks'), '25')
@@ -425,20 +502,21 @@ describe('Library jobs', () => {
       }),
     )
     renderWithProviders(<LibraryPage />)
-    await user.click(await screen.findByRole('tab', { name: 'Local folder' }))
-    expect(screen.getByText(/e\.g\. D:\\Music\\MyAssetPack/)).toBeInTheDocument()
-    expect(screen.getByText(/mcrar-license\.toml/)).toBeInTheDocument()
-    const submit = screen.getByRole('button', { name: 'Add from folder' })
+    await user.click(await screen.findByRole('tab', { name: 'Your files' }))
+    const card = within(screen.getByRole('region', { name: 'Use a folder where it is' }))
+    expect(card.getByText(/e\.g\. D:\\Music\\MyAssetPack/)).toBeInTheDocument()
+    expect(card.getByText(/mcrar-license\.toml/)).toBeInTheDocument()
+    const submit = card.getByRole('button', { name: 'Add from folder' })
     expect(submit).toBeDisabled()
 
-    await user.type(screen.getByLabelText('Folder path'), 'D:\\Nope')
+    await user.type(card.getByLabelText('Folder path'), 'D:\\Nope')
     await user.click(submit)
     expect(await screen.findByRole('alert')).toHaveTextContent('folder not found: D:\\Nope')
 
-    await user.clear(screen.getByLabelText('Folder path'))
-    await user.type(screen.getByLabelText('Folder path'), 'D:\\Music\\Pack')
-    await user.type(screen.getByLabelText('Licence (optional)'), 'CC0')
-    await user.click(within(screen.getByRole('tabpanel', { name: 'Local folder' })).getByLabelText(/Also embed/))
+    await user.clear(card.getByLabelText('Folder path'))
+    await user.type(card.getByLabelText('Folder path'), 'D:\\Music\\Pack')
+    await user.type(card.getByLabelText('Licence (optional)'), 'CC0')
+    await user.click(card.getByLabelText(/Also embed/))
     await user.click(submit)
     const posts = () =>
       api.mock.calls
@@ -492,11 +570,11 @@ describe('Library: Freesound', () => {
     renderWithProviders(<LibraryPage />)
     await screen.findByTestId('stat-tracks')
     const tabs = within(screen.getByRole('tablist', { name: 'Ways to add music' })).getAllByRole('tab')
-    expect(tabs.map((tab) => tab.textContent)).toEqual(['Jamendo', 'Freesound', 'By link', 'Local folder', 'Maintenance'])
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['Jamendo', 'Freesound', 'By link', 'Your files', 'Maintenance'])
   })
 
   it('starts with the defaults and an explanatory note', async () => {
-    const { form } = await openFreesound()
+    const { user, form } = await openFreesound()
     expect(form.getByText(/Music, loops and ambience from Freesound\. Short sound effects aren't supported yet\./)).toBeInTheDocument()
     expect(form.getByLabelText('Search words')).toHaveValue('')
     expect(form.getByLabelText('Freesound tags')).toHaveValue('')
@@ -506,12 +584,10 @@ describe('Library: Freesound', () => {
     expect(form.getByLabelText('Sampling+ (only transformed use)')).not.toBeChecked()
     expect(form.getByLabelText('Shortest sound (seconds)')).toHaveValue(10)
     expect(form.getByLabelText('Longest sound (seconds)')).toHaveValue(600)
-    expect(form.getByLabelText('Order by')).toHaveValue('score')
+    expect(form.getByLabelText('Order by')).toHaveTextContent('Best match')
     expect(form.getByLabelText('Number of sounds')).toHaveValue(50)
     expect(form.getByLabelText(/Also embed/)).toBeChecked()
-    expect(
-      within(form.getByLabelText('Order by')).getAllByRole('option').map((option) => option.textContent),
-    ).toEqual(['Best match', 'Most downloaded', 'Highest rated', 'Newest', 'Longest', 'Shortest'])
+    expect(await optionsOf(user, 'Order by', form)).toEqual(['Best match', 'Most downloaded', 'Highest rated', 'Newest', 'Longest', 'Shortest'])
   })
 
   it('sends the defaults for a tags-only search and follows the job', async () => {
@@ -546,7 +622,7 @@ describe('Library: Freesound', () => {
     await user.type(form.getByLabelText('Shortest sound (seconds)'), '20.5')
     await user.clear(form.getByLabelText('Longest sound (seconds)'))
     await user.type(form.getByLabelText('Longest sound (seconds)'), '3600')
-    await user.selectOptions(form.getByLabelText('Order by'), 'downloads_desc')
+    await chooseOption(user, 'Order by', 'Most downloaded', form)
     await user.clear(form.getByLabelText('Number of sounds'))
     await user.type(form.getByLabelText('Number of sounds'), '500')
     await user.click(form.getByLabelText(/Also embed/))
@@ -690,9 +766,7 @@ describe('Library: Freesound', () => {
     expect(within(overview).getByText('Freesound').parentElement).toHaveTextContent('7')
     const table = await screen.findByRole('table', { name: 'Tracks in the catalog' })
     expect(within(table).getByRole('cell', { name: 'Freesound' })).toBeInTheDocument()
-    expect(within(screen.getByLabelText('Source')).getByRole('option', { name: 'Freesound' })).toHaveValue(
-      'freesound',
-    )
+    expect(await optionsOf(userEvent.setup(), 'Source')).toContain('Freesound')
   })
 })
 
@@ -726,7 +800,7 @@ describe('Library: By link', () => {
       'Jamendo',
       'Freesound',
       'By link',
-      'Local folder',
+      'Your files',
       'Maintenance',
     ])
   })

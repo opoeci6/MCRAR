@@ -18,6 +18,7 @@ into 503, with a short message and never a traceback or a secret.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 from urllib.parse import urlsplit
 
@@ -46,6 +47,17 @@ def allowed_hosts(settings: Settings, extra: tuple[str, ...] = ()) -> list[str]:
     hosts = [*LOOPBACK_HOSTS, *extra]
     hosts.append(f"[{api_host}]" if ":" in api_host and not api_host.startswith("[") else api_host)
     return list(dict.fromkeys(hosts))
+
+
+def is_loopback_host(host: str) -> bool:
+    """Whether a bind address is a loopback one: ``localhost`` or a loopback IP (any form)."""
+    name = host.strip().strip("[]").lower()
+    if name == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False
 
 
 def is_loopback_origin(origin: str) -> bool:

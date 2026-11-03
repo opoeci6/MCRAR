@@ -83,6 +83,7 @@ def test_a_track_without_an_embedding_for_the_model_cannot_be_a_reference(
     service, _ = service_for(repo)
     with pytest.raises(SearchError, match="Re-embed missing tracks") as info:
         service.reference_for_track(ids["Unembedded Tune"])
+    assert "Library > Maintenance" in str(info.value) and "Settings" not in str(info.value)
     assert "mcrar embed" in str(info.value) and MODEL_ID in str(info.value)
 
 

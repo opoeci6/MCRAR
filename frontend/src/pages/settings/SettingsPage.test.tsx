@@ -6,6 +6,7 @@ import { BackendStatusContext } from '../../app/backendStatus'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
+import { chooseOption, optionsOf } from '../../test/select'
 import SettingsPage from './index'
 
 const SECRET = 'jam-client-id-98765'
@@ -107,11 +108,9 @@ describe('Settings: model', () => {
   it('offers a non-commercial embedder like any other, by name only', async () => {
     stubApi(routes())
     renderWithProviders(<SettingsPage />)
-    const select = await screen.findByLabelText('Default embedder')
-    const muq = within(select).getByRole('option', { name: /muq-mulan/ })
-    expect(muq).toBeEnabled()
-    expect(muq).toHaveTextContent(/^muq-mulan \(OpenMuQ\/MuQ-MuLan\)$/)
-    expect(within(select).getByRole('option', { name: /^clap/ })).toHaveTextContent(/^clap \(laion\/clap\)$/)
+    const names = await optionsOf(userEvent.setup(), 'Default embedder')
+    expect(names).toContain('muq-mulan (OpenMuQ/MuQ-MuLan)')
+    expect(names.filter((name) => name.startsWith('clap'))).toEqual(['clap (laion/clap)'])
     expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled()
   })
 
@@ -125,7 +124,7 @@ describe('Settings: model', () => {
       }),
     )
     renderWithProviders(<SettingsPage />)
-    await user.selectOptions(await screen.findByLabelText('Default embedder'), 'muq-mulan')
+    await chooseOption(user, 'Default embedder', 'muq-mulan (OpenMuQ/MuQ-MuLan)')
     await user.click(screen.getByRole('button', { name: 'Save model' }))
     await waitFor(() => expect(putBodies(api, '/api/settings')).toEqual([{ default_embedder: 'muq-mulan' }]))
     await waitFor(() => expect(screen.getByRole('button', { name: 'Save model' })).toBeDisabled())
@@ -311,7 +310,8 @@ describe('Settings: model status', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Ready on cuda (float16)')
     expect(healthCalls(api)).toBe(0)
 
-    fireEvent.change(screen.getByLabelText('Default embedder'), { target: { value: 'muq-mulan' } })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Default embedder' }))
+    fireEvent.click(screen.getByRole('option', { name: 'muq-mulan (OpenMuQ/MuQ-MuLan)' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }))
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0)
@@ -576,8 +576,7 @@ describe('Settings: LLM', () => {
     stubApi(routes())
     renderWithProviders(<SettingsPage />)
     const llm = await llmRegion()
-    const options = within(llm.getByLabelText('Provider')).getAllByRole('option')
-    expect(options.map((option) => option.textContent)).toEqual([
+    expect(await optionsOf(userEvent.setup(), 'Provider', llm)).toEqual([
       'DeepSeek',
       'OpenAI',
       'Custom (OpenAI-compatible)',
@@ -595,7 +594,7 @@ describe('Settings: LLM', () => {
     renderWithProviders(<SettingsPage />)
     const llm = await llmRegion()
     await user.click(llm.getByRole('switch', { name: 'Use an LLM' }))
-    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await chooseOption(user, 'Provider', 'OpenAI', llm)
     await user.type(llm.getByLabelText('Model'), 'gpt-4o')
     await user.click(llm.getByText('Advanced'))
     const topN = llm.getByLabelText('Rerank top N')
@@ -641,7 +640,7 @@ describe('Settings: LLM', () => {
     expect(llm.getByText(/environment variable MCRAR_LLM__ENABLED/)).toBeInTheDocument()
     expect(llm.getByLabelText('Provider')).toBeEnabled()
 
-    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await chooseOption(user, 'Provider', 'OpenAI', llm)
     await user.click(llm.getByRole('button', { name: 'Save LLM settings' }))
     await waitFor(() => expect(putBodies(api, '/api/settings')).toHaveLength(1))
     expect(putBodies(api, '/api/settings')[0]).toEqual({
@@ -656,12 +655,12 @@ describe('Settings: LLM', () => {
     const llm = await llmRegion()
     const model = llm.getByLabelText('Model')
     await user.type(model, 'deepseek-chat')
-    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await chooseOption(user, 'Provider', 'OpenAI', llm)
     expect(model).toHaveValue('')
     expect(model).toHaveAttribute('placeholder', 'gpt-4o-mini')
 
     await user.type(model, 'my-finetune')
-    await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+    await chooseOption(user, 'Provider', 'DeepSeek', llm)
     expect(model).toHaveValue('my-finetune')
   })
 
@@ -670,7 +669,7 @@ describe('Settings: LLM', () => {
     stubApi(routes())
     renderWithProviders(<SettingsPage />)
     const llm = await llmRegion()
-    await user.selectOptions(llm.getByLabelText('Provider'), 'custom')
+    await chooseOption(user, 'Provider', 'Custom (OpenAI-compatible)', llm)
     expect(llm.getByText(/a model name is required/)).toBeInTheDocument()
     expect(llm.getByText(/Optional for local servers/)).toBeInTheDocument()
   })
@@ -733,7 +732,7 @@ describe('Settings: LLM', () => {
     const llm = await llmRegion()
     expect(llm.getByRole('heading', { name: 'DeepSeek API key' })).toBeInTheDocument()
     await user.type(llm.getByLabelText('API key'), 'half-typed')
-    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await chooseOption(user, 'Provider', 'OpenAI', llm)
     expect(llm.getByRole('heading', { name: 'OpenAI API key' })).toBeInTheDocument()
     expect(llm.queryByRole('heading', { name: 'DeepSeek API key' })).not.toBeInTheDocument()
     // The half-typed key stayed with the other provider's field.
@@ -750,7 +749,7 @@ describe('Settings: LLM', () => {
     const api = stubApi(routes({ 'POST /api/llm/test': () => reply }))
     renderWithProviders(<SettingsPage />)
     const llm = await llmRegion()
-    await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+    await chooseOption(user, 'Provider', 'OpenAI', llm)
     await user.type(llm.getByLabelText('Model'), 'gpt-4o')
     await user.click(llm.getByRole('button', { name: 'Test connection' }))
     expect(await llm.findByText('Works: gpt-4o replied in 0.8 s')).toBeInTheDocument()
@@ -803,7 +802,7 @@ describe('Settings: LLM', () => {
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       expect(showModels(llm)).not.toBeInTheDocument()
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       expect(
@@ -821,7 +820,7 @@ describe('Settings: LLM', () => {
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST, 'PUT /api/settings': view() }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       await llm.findByText(/2 models from OpenAI/)
       await user.click(showModels(llm)!)
@@ -838,7 +837,7 @@ describe('Settings: LLM', () => {
       stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       await llm.findByText(/2 models from OpenAI/)
       await user.type(llm.getByLabelText('Model'), 'HAIKU')
@@ -850,7 +849,7 @@ describe('Settings: LLM', () => {
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST, 'PUT /api/settings': view() }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       await llm.findByText(/2 models from OpenAI/)
       await user.type(llm.getByLabelText('Model'), 'my-finetune')
@@ -876,8 +875,8 @@ describe('Settings: LLM', () => {
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
-      await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
+      await chooseOption(user, 'Provider', 'DeepSeek', llm)
       expect(modelRequests(api)).toHaveLength(0)
       expect(showModels(llm)).not.toBeInTheDocument()
     })
@@ -891,7 +890,7 @@ describe('Settings: LLM', () => {
       )
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       expect(await llm.findByText('OpenAI returned no chat models. Type the model name.')).toBeInTheDocument()
       expect(showModels(llm)).not.toBeInTheDocument()
@@ -923,15 +922,15 @@ describe('Settings: LLM', () => {
       const api = stubApi(routes({ 'POST /api/llm/models': OPENAI_LIST }))
       renderWithProviders(<SettingsPage />)
       const llm = await llmRegion()
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       await user.click(llm.getByRole('button', { name: 'Load models' }))
       await llm.findByText(/2 models from OpenAI/)
 
-      await user.selectOptions(llm.getByLabelText('Provider'), 'deepseek')
+      await chooseOption(user, 'Provider', 'DeepSeek', llm)
       expect(showModels(llm)).not.toBeInTheDocument()
       expect(llm.queryByText(/models from OpenAI/)).not.toBeInTheDocument()
 
-      await user.selectOptions(llm.getByLabelText('Provider'), 'openai')
+      await chooseOption(user, 'Provider', 'OpenAI', llm)
       expect(llm.getByText(/2 models from OpenAI/)).toBeInTheDocument()
       await user.click(showModels(llm)!)
       expect(options()).toHaveLength(2)

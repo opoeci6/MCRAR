@@ -1,0 +1,38 @@
+.zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-5) var(--space-4);
+  text-align: center;
+  background: var(--color-surface-2);
+  border: 2px dashed var(--color-border-strong);
+  border-radius: var(--radius-md);
+  transition:
+    background-color 0.12s,
+    border-color 0.12s;
+}
+
+.dragging {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.disabled {
+  opacity: 0.6;
+}
+
+.icon {
+  color: var(--color-text-muted);
+}
+
+.title {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.or {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}

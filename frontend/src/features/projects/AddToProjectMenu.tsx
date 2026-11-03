@@ -25,19 +25,30 @@ import styles from './AddToProjectMenu.module.css'
 export interface AddToProjectMenuProps {
   trackId: number
   trackTitle: string
+  /**
+   * For a crowded row: the button drops its label in a narrow window (900 px and less) and keeps
+   * only the icon; the accessible name stays the same. The menu opens towards the row's start edge.
+   */
+  compact?: boolean
 }
 
 /**
  * A button that opens the list of projects; picking one adds the track to its shortlist, and
  * picking one that already has the track (marked with a check) takes it off again.
  */
-export function AddToProjectMenu({ trackId, trackTitle }: AddToProjectMenuProps) {
+export function AddToProjectMenu({ trackId, trackTitle, compact = false }: AddToProjectMenuProps) {
   return (
     <Popover
       label={t.menuLabel}
+      placement={compact ? 'bottom-end' : undefined}
       trigger={(props) => (
-        <Button size="sm" icon={<PlusIcon />} {...props}>
-          {t.addToProject}
+        <Button
+          size="sm"
+          icon={<PlusIcon />}
+          title={compact ? t.addToProject : undefined}
+          {...props}
+        >
+          {compact ? <span className={styles.compactLabel}>{t.addToProject}</span> : t.addToProject}
         </Button>
       )}
     >
