@@ -26,8 +26,8 @@ Last updated: 2026-11-03.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker followed on 2026-11-03 (§3.20) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: a desktop window (pywebview). See §3.19 and §5.3 |
-| Local-music picker | Done (2026-11-03) | `local-picker` | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. See §3.20 |
+| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: a first-run tutorial, then a desktop window (pywebview). See §3.19 and §5.3 |
+| Local-music picker | Done (2026-11-03) | `dev` (merged locally, not pushed) | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. Next: a first-run tutorial (§5.3). See §3.20 |
 
 Test suite, counted on `local-picker` (2026-11-03):
 - Backend, default env: 2,499 passed, 30 skipped.
@@ -1093,9 +1093,13 @@ The owner's order after the presentation (2026-10-28, §3.18):
    owner uploads the zip); a GitHub Actions release workflow on a `v*` tag was deferred.
 2. **The local-music picker: done** (2026-11-03, §3.20), with removing tracks and the
    missing-files check. No preview zip for it (owner).
-3. **M11 desktop window, next** (pywebview, WebView2) around the same build. It can replace
+3. **A first-run tutorial, next** (owner, 2026-11-03; before the desktop window). New users
+   get a step-by-step walkthrough of the app, as an overlay or a better form (to be designed).
+   It must be possible to see it again from Settings. Not started; no design decided yet.
+4. **M11 desktop window** (pywebview, WebView2) around the same build. It can replace
    the folder browser with the native folder dialog (`useFolderPicker`, §3.20), and its build
-   becomes the next release.
+   becomes the next release. To check under pywebview: downloads that use `window.open`
+   (licence and track files).
 
 These others can follow in any order:
 - **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with
