@@ -21,8 +21,10 @@ from fastapi.responses import FileResponse, Response
 from mcrar import __version__
 from mcrar.api.routes import (
     analyze,
+    files,
     ingest,
     labels,
+    library_files,
     meta,
     projects,
     ratings,
@@ -95,6 +97,8 @@ def create_app(
         projects,
         settings_routes,
         ingest,
+        files,
+        library_files,
         analyze,
         reference,
     ):

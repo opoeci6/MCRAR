@@ -49,6 +49,8 @@ export const libraryStrings = {
       license: 'Licence',
       actions: 'Actions',
     },
+    /** The line under a title that stands in for the Source and Length columns in a narrow window. */
+    meta: (source: string, length: string) => `${source} · ${length}`,
     untitled: 'Untitled',
     unknownArtist: 'Unknown artist',
     openDetails: (title: string) => `Show details of ${title}`,
@@ -67,7 +69,7 @@ export const libraryStrings = {
     jamendo: 'Jamendo',
     freesound: 'Freesound',
     links: 'By link',
-    local: 'Local folder',
+    local: 'Your files',
     maintenance: 'Maintenance',
   },
 
@@ -147,17 +149,62 @@ export const libraryStrings = {
 
   local: {
     intro:
-      'Scan a folder of audio files on the computer that runs MCRAR, and add them to your catalog.',
-    path: 'Folder path',
-    pathHint: 'An absolute path, e.g. D:\\Music\\MyAssetPack',
-    pathPlaceholder: 'D:\\Music\\MyAssetPack',
+      'Add music that is on your computer in one of two ways. Copying files gives MCRAR its own copies, so you can move or delete the originals. Using a folder where it is adds the files without copying them.',
     license: 'Licence (optional)',
-    licenseHint:
-      'Applies to every file in the folder. Instead, you can put a mcrar-license.toml file in the folder to set licences per folder or file.',
-    licenseSuggestions: ['CC0', 'CC BY 4.0', 'CC BY-SA 4.0', 'CC BY-NC 4.0', 'CC BY-ND 4.0'],
     embed: 'Also embed the tracks for text search',
     embedHint: 'Takes longer. You can do it later with "Re-embed missing tracks".',
-    submit: 'Add from folder',
+    copy: {
+      title: 'Copy files into MCRAR',
+      body: "MCRAR keeps a copy of each file in its own folder, so the copies use disk space. You can then move or delete the originals.",
+      licenseHint: 'Applies to every file you add here.',
+      dropTitle: 'Drop audio files or folders here',
+      dropActive: 'Drop to add them',
+      dropOr: 'or',
+      choose: 'Choose files…',
+      inputLabel: 'Audio files to copy',
+      skipped: (count: number) =>
+        count === 1 ? "Skipped 1 file that isn't audio." : `Skipped ${count} files that aren't audio.`,
+      selected: (count: number, size: string) =>
+        `${count === 1 ? '1 file' : `${count} files`} selected (${size})`,
+      more: (count: number) => `and ${count} more`,
+      clear: 'Clear the list',
+      submit: (count: number) => (count === 0 ? 'Add files' : count === 1 ? 'Add 1 file' : `Add ${count} files`),
+      progress: 'Copying files',
+      copying: (index: number, total: number, name: string) => `Copying ${index} of ${total}: ${name}`,
+      cancel: 'Cancel',
+      cancelled: 'Cancelled. The files copied so far stay in MCRAR; adding them again is quick.',
+      failedTitle: "A file couldn't be copied",
+      failed: (name: string, message: string) => `${name}: ${message}`,
+    },
+    folder: {
+      title: 'Use a folder where it is',
+      body: 'The files stay where they are and nothing is copied. If you move or rename them later, playback stops working until you add the new folder again; MCRAR finds the files again by their content.',
+      path: 'Folder path',
+      pathHint: 'An absolute path, e.g. D:\\Music\\MyAssetPack',
+      pathPlaceholder: 'D:\\Music\\MyAssetPack',
+      browse: 'Browse…',
+      licenseHint:
+        'Applies to every file in the folder. Instead, you can put a mcrar-license.toml file in the folder to set licences per folder or file.',
+      submit: 'Add from folder',
+    },
+  },
+
+  folderBrowser: {
+    title: 'Choose a folder',
+    places: 'Places',
+    drives: 'Drives',
+    current: 'Current folder',
+    up: 'Up',
+    folders: 'Folders',
+    noFolders: 'No folders in here.',
+    audioFiles: (count: number) =>
+      count === 1 ? '1 audio file directly in this folder' : `${count} audio files directly in this folder`,
+    truncated: 'This folder has too many entries; only some of the folders are listed.',
+    loading: 'Loading the folder',
+    loadFailed: "Couldn't open that folder",
+    rootsFailed: "Couldn't list the drives",
+    use: 'Use this folder',
+    cancel: 'Cancel',
   },
 
   maintenance: {
@@ -170,6 +217,25 @@ export const libraryStrings = {
     tagBody:
       'Recomputes genre and mood tags for every track with the selected tagging models.',
     tagAction: 'Re-tag catalog',
+    missingTitle: 'Moved or deleted files',
+    missingBody:
+      'Finds tracks from your own files whose file is gone. If you only moved the files, add the new folder again instead: MCRAR finds them again by their content and the tracks work again.',
+    missingCheck: 'Check',
+    missingNone: 'Nothing missing.',
+    missingFound: (count: number) =>
+      count === 1 ? '1 track has no file:' : `${count} tracks have no file:`,
+    missingItem: (title: string | null, path: string) => `${title || 'Untitled'} (${path})`,
+    missingMore: (count: number) => `and ${count} more`,
+    missingRemove: (count: number) => (count === 1 ? 'Remove 1 track' : `Remove ${count} tracks`),
+    missingConfirmGroup: 'Remove the tracks without a file',
+    missingConfirm: (count: number) =>
+      count === 1
+        ? 'Remove 1 track and its ratings, labels and project entries?'
+        : `Remove ${count} tracks and their ratings, labels and project entries?`,
+    confirm: 'Remove',
+    cancel: 'Cancel',
+    missingRemoved: (count: number) => (count === 1 ? 'Removed 1 track.' : `Removed ${count} tracks.`),
+    missingFailed: "Couldn't check or remove the tracks",
   },
 
   start: {
@@ -185,6 +251,7 @@ export const libraryStrings = {
       'ingest-freesound': 'Freesound import',
       'ingest-links': 'Add by link',
       'ingest-local': 'Add from folder',
+      'ingest-files': 'Add files',
       'reprocess-embed': 'Re-embed missing tracks',
       'reprocess-tag': 'Re-tag catalog',
       'ingest-query': 'Add for a search',
@@ -255,6 +322,9 @@ export const libraryStrings = {
       const parts: string[] = []
       const list = (value: unknown) => (Array.isArray(value) ? value.join(', ') : String(value))
       if (params.path) parts.push(String(params.path))
+      if (Array.isArray(params.files)) {
+        parts.push(params.files.length === 1 ? '1 file' : `${params.files.length} files`)
+      }
       if (params.tags) parts.push(`tags: ${list(params.tags)}`)
       if (params.search) parts.push(`search: ${String(params.search)}`)
       if (params.query) parts.push(`search: ${String(params.query)}`)

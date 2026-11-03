@@ -13,7 +13,9 @@ import { LicenseBadge } from '../../ui/LicenseBadge'
 import { Notice } from '../../ui/Notice'
 import { Spinner } from '../../ui/Spinner'
 import { AddToProjectMenu } from '../projects/AddToProjectMenu'
+import { EditLicense } from './EditLicense'
 import { trackFeatureStrings as t } from './strings'
+import { RemoveTrack } from './RemoveTrack'
 import { TempoValue } from './TempoValue'
 import styles from './TrackDrawer.module.css'
 
@@ -23,6 +25,16 @@ export interface TrackDrawerProps {
   onClose: () => void
   /** Offers "Find similar" (search by this track as the reference song) when given. */
   onFindSimilar?: (track: TrackDetail) => void
+  /**
+   * Offers "Remove from library" when given; called once the track is gone, so the caller can
+   * close the drawer and refresh what it shows.
+   */
+  onRemoved?: (trackId: number) => void
+  /**
+   * Called with the track once its licence was changed here (a local track's "Edit licence"), so
+   * the caller can update what it shows.
+   */
+  onChanged?: (track: TrackDetail) => void
 }
 
 /** How many tags of a label set are shown before "Show all". */
@@ -35,20 +47,39 @@ const REGRESSION_LABEL = 'value'
  * The side panel with everything about one track: licence and credit line, audio features, and
  * its tags grouped by label set. Loads `GET /api/tracks/{id}` when opened.
  */
-export function TrackDrawer({ trackId, onClose, onFindSimilar }: TrackDrawerProps) {
+export function TrackDrawer({
+  trackId,
+  onClose,
+  onFindSimilar,
+  onRemoved,
+  onChanged,
+}: TrackDrawerProps) {
   const track = useAsync(
     (signal) => (trackId === null ? Promise.resolve(null) : getTrack(trackId, { signal })),
     [trackId],
   )
-  const title = track.data ? track.data.title || t.untitled : t.drawerFallbackTitle
+  // The track as the backend answered a change; it applies only to the data it replaced.
+  const [changed, setChanged] = useState<{ base: TrackDetail; track: TrackDetail } | null>(null)
+  const shown = track.data && changed?.base === track.data ? changed.track : track.data
+  const title = shown ? shown.title || t.untitled : t.drawerFallbackTitle
   return (
     <Drawer open={trackId !== null} onClose={onClose} title={title} width="520px">
       {track.error ? (
         <Notice kind="error">
           {t.loadFailed}: {errorMessage(track.error)}
         </Notice>
-      ) : track.data ? (
-        <TrackDetails key={track.data.id} track={track.data} onFindSimilar={onFindSimilar} />
+      ) : track.data && shown ? (
+        <TrackDetails
+          key={track.data.id}
+          track={shown}
+          onFindSimilar={onFindSimilar}
+          onRemoved={onRemoved}
+          onLicenseSaved={(updated) => {
+            if (!track.data) return
+            setChanged({ base: track.data, track: updated })
+            onChanged?.(updated)
+          }}
+        />
       ) : (
         <Spinner />
       )}
@@ -59,14 +90,18 @@ export function TrackDrawer({ trackId, onClose, onFindSimilar }: TrackDrawerProp
 function TrackDetails({
   track,
   onFindSimilar,
+  onRemoved,
+  onLicenseSaved,
 }: {
   track: TrackDetail
   onFindSimilar?: (track: TrackDetail) => void
+  onRemoved?: (trackId: number) => void
+  onLicenseSaved: (track: TrackDetail) => void
 }) {
   return (
     <div className={styles.body}>
-      <Intro track={track} onFindSimilar={onFindSimilar} />
-      <LicenseSection track={track} />
+      <Intro track={track} onFindSimilar={onFindSimilar} onRemoved={onRemoved} />
+      <LicenseSection track={track} onLicenseSaved={onLicenseSaved} />
       <FeaturesSection features={track.features} track={track} />
       <TagsSection tags={track.tags} />
     </div>
@@ -76,9 +111,11 @@ function TrackDetails({
 function Intro({
   track,
   onFindSimilar,
+  onRemoved,
 }: {
   track: TrackDetail
   onFindSimilar?: (track: TrackDetail) => void
+  onRemoved?: (trackId: number) => void
 }) {
   const player = usePlayer()
   const title = track.title || t.untitled
@@ -132,13 +169,20 @@ function Intro({
               {t.findSimilar}
             </Button>
           ) : null}
+          {onRemoved ? <RemoveTrack track={track} onRemoved={onRemoved} /> : null}
         </div>
       </div>
     </div>
   )
 }
 
-function LicenseSection({ track }: { track: TrackDetail }) {
+function LicenseSection({
+  track,
+  onLicenseSaved,
+}: {
+  track: TrackDetail
+  onLicenseSaved: (track: TrackDetail) => void
+}) {
   const { license } = track
   return (
     <section className={styles.section} aria-labelledby="track-licence-heading">
@@ -150,6 +194,7 @@ function LicenseSection({ track }: { track: TrackDetail }) {
         licenseUrl={license.url}
         commercialLicenseUrl={license.commercial_license_url}
       />
+      {license.set_by_user ? <p className={styles.muted}>{t.licence.setByYou}</p> : null}
       {license.attribution_text ? (
         <div>
           <div className={styles.hint}>{t.licence.credit}</div>
@@ -184,6 +229,7 @@ function LicenseSection({ track }: { track: TrackDetail }) {
           </a>
         </li>
       </ul>
+      {track.source === 'local' ? <EditLicense track={track} onSaved={onLicenseSaved} /> : null}
       <p className={styles.hint}>{t.licence.disclaimer}</p>
     </section>
   )

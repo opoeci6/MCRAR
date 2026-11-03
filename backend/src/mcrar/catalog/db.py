@@ -244,8 +244,16 @@ CREATE TABLE label_pool (
 );
 """
 
+# Whether the licence of a track was set by hand (the track page, or the licence given when the
+# music was added) and so must survive re-adding the same file; 0 for every existing row.
+_V6 = """
+ALTER TABLE tracks
+    ADD COLUMN license_set_by_user INTEGER NOT NULL DEFAULT 0
+    CHECK (license_set_by_user IN (0, 1));
+"""
+
 # Append only; never edit a released script. Schema version == len(applied scripts).
-MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3, _V4, _V5)
+MIGRATIONS: tuple[str, ...] = (_V1, _V2, _V3, _V4, _V5, _V6)
 
 
 def connect(path: str | Path) -> sqlite3.Connection:

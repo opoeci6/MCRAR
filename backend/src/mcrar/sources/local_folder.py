@@ -40,6 +40,9 @@ class LocalItem:
     source_track: SourceTrack
     license: LicenseInfo
     attribution_extra: str | None = None
+    # True when ``license`` is a licence the caller declared (the override given to the scan, the
+    # Add form or ``--license``), not the sidecar's or unknown.
+    license_from_override: bool = False
 
 
 @dataclass(frozen=True)
@@ -145,12 +148,59 @@ def scan_local(
     root_path = Path(root).resolve()
     if not root_path.is_dir():
         raise NotADirectoryError(f"not a folder: {root}")
-    override: LicenseInfo | None = None
-    if license_override is not None:
-        override = parse_license(license_override)
-        if override.family == "unknown" and license_override.strip().lower() != "unknown":
-            raise ValueError(f"unrecognised license: {license_override!r}")
-    return _scan(root_path, override)
+    return _scan(root_path, parse_override(license_override))
+
+
+def parse_override(license_override: str | None) -> LicenseInfo | None:
+    """The licence a caller declares for every file (a code or URL); ``None`` for no override.
+
+    An unrecognised value is a ``ValueError``.
+    """
+    if license_override is None:
+        return None
+    override = parse_license(license_override)
+    if override.family == "unknown" and license_override.strip().lower() != "unknown":
+        raise ValueError(f"unrecognised license: {license_override!r}")
+    return override
+
+
+def local_file_item(
+    path: Path,
+    *,
+    title: str,
+    license_info: LicenseInfo | None = None,
+    album: str | None = None,
+) -> LocalItem:
+    """One :class:`LocalItem` for a single file, with the title and album given (no sidecar
+    lookup: the licence is ``license_info`` or unknown). Raises ``OSError`` if it cannot be read."""
+    return _item(path, file_sha256(path), title, album, _Sidecar(), license_info)
+
+
+def _item(
+    path: Path,
+    source_id: str,
+    title: str,
+    album: str | None,
+    meta: _Sidecar,
+    license_info: LicenseInfo | None,
+) -> LocalItem:
+    absolute = path.absolute()
+    return LocalItem(
+        path=absolute,
+        source_track=SourceTrack(
+            source=SOURCE_NAME,
+            source_id=source_id,
+            title=title,
+            artist=meta.artist,
+            album=album,
+            duration_s=_probe_duration(path),
+            source_url=meta.source_url,
+            local_path=str(absolute),
+        ),
+        license=license_info or meta.license or unknown_license(),
+        attribution_extra=meta.attribution,
+        license_from_override=license_info is not None,
+    )
 
 
 def _scan(root: Path, override: LicenseInfo | None) -> Iterator[LocalItem]:
@@ -175,20 +225,5 @@ def _scan(root: Path, override: LicenseInfo | None) -> Iterator[LocalItem]:
             continue
         sidecar = nearest(path.parent)
         meta = sidecar if sidecar is not None and sidecar.valid else _Sidecar()
-        license_info = override or meta.license or unknown_license()
-        absolute = path.absolute()
-        yield LocalItem(
-            path=absolute,
-            source_track=SourceTrack(
-                source=SOURCE_NAME,
-                source_id=source_id,
-                title=path.stem,
-                artist=meta.artist,
-                album=meta.pack or path.parent.name or None,
-                duration_s=_probe_duration(path),
-                source_url=meta.source_url,
-                local_path=str(absolute),
-            ),
-            license=license_info,
-            attribution_extra=meta.attribution,
-        )
+        album = meta.pack or path.parent.name or None
+        yield _item(path, source_id, path.stem, album, meta, override)

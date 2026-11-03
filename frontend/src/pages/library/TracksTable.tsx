@@ -6,6 +6,7 @@ import { usePersistentState } from '../../app/usePersistentState'
 import { AddToProjectMenu } from '../../features/projects/AddToProjectMenu'
 import { sourceLabel } from '../../features/track/sourceLabel'
 import { TrackDrawer } from '../../features/track/TrackDrawer'
+import { cx } from '../../lib/cx'
 import { formatTime } from '../../lib/format'
 import { usePlayer } from '../../player/playerContext'
 import { strings } from '../../strings'
@@ -33,9 +34,11 @@ export interface TracksTableProps {
   refreshKey: number
   /** Changes when the user asks to see the new tracks: goes back to the first page. */
   focusSignal: number
+  /** A track was removed or its licence changed in the drawer: the page loads the catalog numbers and the list again. */
+  onCatalogChanged: () => void
 }
 
-export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
+export function TracksTable({ refreshKey, focusSignal, onCatalogChanged }: TracksTableProps) {
   const [source, setSource] = usePersistentState<Source | ''>('library.source', '')
   const [risk, setRisk] = usePersistentState<Risk | ''>('library.risk', '')
   const [query, setQuery] = usePersistentState('library.q', '')
@@ -96,33 +99,21 @@ export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
         <Select
           label={t.tracks.filterSource}
           value={source}
-          onChange={(event) => {
-            setSource(event.target.value as Source | '')
+          options={[{ value: '', label: t.tracks.any }, ...t.tracks.sourceOptions]}
+          onValueChange={(next) => {
+            setSource(next as Source | '')
             setOffset(0)
           }}
-        >
-          <option value="">{t.tracks.any}</option>
-          {t.tracks.sourceOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
+        />
         <Select
           label={t.tracks.filterRisk}
           value={risk}
-          onChange={(event) => {
-            setRisk(event.target.value as Risk | '')
+          options={[{ value: '', label: t.tracks.any }, ...t.tracks.riskOptions]}
+          onValueChange={(next) => {
+            setRisk(next as Risk | '')
             setOffset(0)
           }}
-        >
-          <option value="">{t.tracks.any}</option>
-          {t.tracks.riskOptions.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </Select>
+        />
       </div>
 
       {tracks.error && !tracks.data ? (
@@ -154,8 +145,12 @@ export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
                   </th>
                   <th scope="col">{t.tracks.columns.title}</th>
                   <th scope="col">{t.tracks.columns.artist}</th>
-                  <th scope="col">{t.tracks.columns.source}</th>
-                  <th scope="col">{t.tracks.columns.duration}</th>
+                  <th scope="col" className={styles.wideOnly}>
+                    {t.tracks.columns.source}
+                  </th>
+                  <th scope="col" className={styles.wideOnly}>
+                    {t.tracks.columns.duration}
+                  </th>
                   <th scope="col">{t.tracks.columns.license}</th>
                   <th scope="col">
                     <span className="sr-only">{t.tracks.columns.actions}</span>
@@ -177,7 +172,17 @@ export function TracksTable({ refreshKey, focusSignal }: TracksTableProps) {
           />
         </>
       )}
-      <TrackDrawer trackId={openId} onClose={() => setOpenId(null)} />
+      <TrackDrawer
+        trackId={openId}
+        onClose={() => setOpenId(null)}
+        onRemoved={() => {
+          setOpenId(null)
+          // The last track of a page is gone: do not stay on an empty page.
+          if (tracks.data?.items.length === 1 && offset > 0) setOffset(Math.max(0, offset - PAGE_SIZE))
+          onCatalogChanged()
+        }}
+        onChanged={onCatalogChanged}
+      />
     </section>
   )
 }
@@ -186,6 +191,8 @@ function TrackRow({ track, onOpen }: { track: TrackSummary; onOpen: (id: number)
   const player = usePlayer()
   const title = track.title || t.tracks.untitled
   const active = player.current?.id === track.id && player.isPlaying
+  const source = sourceLabel(track.source)
+  const length = formatTime(track.duration_s)
   return (
     <tr>
       <td>
@@ -216,15 +223,16 @@ function TrackRow({ track, onOpen }: { track: TrackSummary; onOpen: (id: number)
         >
           {title}
         </button>
+        <div className={styles.meta}>{t.tracks.meta(source, length)}</div>
       </td>
-      <td>{track.artist || t.tracks.unknownArtist}</td>
-      <td>{sourceLabel(track.source)}</td>
-      <td className={styles.number}>{formatTime(track.duration_s)}</td>
+      <td className={styles.wrap}>{track.artist || t.tracks.unknownArtist}</td>
+      <td className={styles.wideOnly}>{source}</td>
+      <td className={cx(styles.number, styles.wideOnly)}>{length}</td>
       <td>
         <LicenseBadge risk={track.risk} code={track.license_code} />
       </td>
       <td>
-        <AddToProjectMenu trackId={track.id} trackTitle={title} />
+        <AddToProjectMenu trackId={track.id} trackTitle={title} compact />
       </td>
     </tr>
   )

@@ -61,7 +61,10 @@ def test_unembedded_tracks_are_counted_skipped_and_reported(
     result = search(service, "tense stealth level", limit=50)
     assert result.unembedded_count == 1
     assert "Unembedded Tune" not in titles(result)
-    assert any("mcrar embed" in n and "1 matching" in n for n in result.notes)
+    assert any(
+        "1 matching" in n and "Library > Maintenance" in n and n.endswith("run: mcrar embed")
+        for n in result.notes
+    )
     # Only tracks passing the filters are counted.
     narrowed = search(service, "tense stealth level", filters=SearchFilters(vocal="vocal"))
     assert narrowed.unembedded_count == 0 and narrowed.notes == []

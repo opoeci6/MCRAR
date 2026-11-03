@@ -20,4 +20,5 @@ def test_health_with_default_dependencies(monkeypatch: pytest.MonkeyPatch) -> No
         "models_loaded": [],
         "models": [],
         "gpu": None,
+        "local_files": True,
     }

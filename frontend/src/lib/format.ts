@@ -28,3 +28,10 @@ export function embedderName(embedder: { key: string; model_id: string }): strin
 export function formatNumber(value: number | null | undefined, digits = 2): string {
   return value == null || !Number.isFinite(value) ? '–' : value.toFixed(digits)
 }
+
+/** A file size as text: "512 KB", "3.4 MB", "1.2 GB" (decimal units, like the download progress). */
+export function formatFileSize(bytes: number): string {
+  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`
+  if (bytes >= 1e6) return `${(bytes / 1e6).toFixed(1)} MB`
+  return `${Math.max(1, Math.round(bytes / 1e3))} KB`
+}

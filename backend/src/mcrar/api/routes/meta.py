@@ -37,7 +37,8 @@ def health(state: StateDep) -> dict[str, Any]:
     """Status, catalog size, ``models_loaded`` (ready keys), ``models`` (``key``, ``state``
     loading/ready/error, ``device``, ``dtype``, ``error``; a loading model also has ``phase``
     downloading/loading and, while downloading, ``download`` with ``done_bytes`` and
-    ``total_bytes``, which is ``null`` when unknown) and ``gpu`` (VRAM or ``None``)."""
+    ``total_bytes``, which is ``null`` when unknown), ``gpu`` (VRAM or ``None``) and
+    ``local_files`` (whether this computer's folders may be browsed: loopback only)."""
     return {
         "status": "ok",
         "version": __version__,
@@ -45,6 +46,7 @@ def health(state: StateDep) -> dict[str, Any]:
         "models_loaded": state.pool.loaded_keys(),
         "models": state.pool.status(),
         "gpu": _gpu(),
+        "local_files": state.local_files,
     }
 
 

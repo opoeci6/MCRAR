@@ -36,4 +36,5 @@ export const HEALTH = {
   models_loaded: [],
   models: [],
   gpu: null,
+  local_files: true,
 }

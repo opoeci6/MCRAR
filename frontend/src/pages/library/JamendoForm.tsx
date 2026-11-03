@@ -70,12 +70,13 @@ export function JamendoForm({ busy, onStarted, onShowRunning }: StartProps) {
         <Select
           label={t.jamendo.vocals}
           value={vocals}
-          onChange={(event) => setVocals(event.target.value as Vocal | '')}
-        >
-          <option value="">{t.jamendo.vocalsAny}</option>
-          <option value="instrumental">{t.jamendo.vocalsInstrumental}</option>
-          <option value="vocal">{t.jamendo.vocalsVocal}</option>
-        </Select>
+          options={[
+            { value: '', label: t.jamendo.vocalsAny },
+            { value: 'instrumental', label: t.jamendo.vocalsInstrumental },
+            { value: 'vocal', label: t.jamendo.vocalsVocal },
+          ]}
+          onValueChange={(next) => setVocals(next as Vocal | '')}
+        />
         <TextInput
           label={t.jamendo.limit}
           hint={t.jamendo.limitHint}

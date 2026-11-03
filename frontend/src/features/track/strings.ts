@@ -18,8 +18,33 @@ export const trackFeatureStrings = {
   /** The one place a source's display name lives (search filter, rows, library). */
   sourceNames: { jamendo: 'Jamendo', freesound: 'Freesound', local: 'Local' } as Record<string, string>,
   localFile: 'Local file',
+  /** Codes offered while typing a licence (the box still takes a licence URL or "Unknown"). */
+  licenceSuggestions: [
+    { value: 'CC0', label: 'public domain' },
+    { value: 'CC BY 4.0', label: 'credit the author' },
+    { value: 'CC BY-SA 4.0', label: 'credit, share alike' },
+    { value: 'CC BY-NC 4.0', label: 'non-commercial' },
+    { value: 'CC BY-ND 4.0', label: 'no changes' },
+    { value: 'Unknown', label: 'not known' },
+  ],
+  licenceList: {
+    list: 'Common licences',
+    toggle: 'Show common licences',
+    empty: 'No suggestion matches. Any licence code or URL works.',
+  },
   licence: {
     heading: 'Licence',
+    setByYou: 'Set by you. Kept when you add the folder again.',
+    edit: {
+      action: 'Edit licence',
+      group: 'Edit licence',
+      label: 'Licence',
+      hint: 'A code such as CC BY 4.0, a licence URL, or Unknown. Kept when you add the folder again.',
+      save: 'Save',
+      cancel: 'Cancel',
+      failed: "Couldn't set the licence",
+      saved: (code: string) => `Licence set to ${code}.`,
+    },
     credit: 'Credit line',
     licenceLink: 'Read the licence',
     commercialLink: 'Buy a commercial licence',
@@ -64,5 +89,26 @@ export const trackFeatureStrings = {
     showAll: (count: number) => `Show all ${count}`,
     showFewer: 'Show fewer',
     chipLabel: (label: string, percent: number) => `${label} ${percent}%`,
+  },
+  remove: {
+    action: 'Remove from library',
+    group: 'Remove this track',
+    question: (title: string) => `Remove "${title}" from the library?`,
+    alsoDeletes: (what: string) => `This also deletes ${what}.`,
+    ratings: (count: number) => (count === 1 ? '1 rating' : `${count} ratings`),
+    sceneLabels: (count: number) => (count === 1 ? '1 scene label' : `${count} scene labels`),
+    projects: (count: number) =>
+      count === 1 ? 'its place in 1 project' : `its place in ${count} projects`,
+    /** "a, b and c" */
+    list: (parts: string[]) =>
+      parts.length <= 1
+        ? (parts[0] ?? '')
+        : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`,
+    copiedFile: "The copied file in MCRAR's folder is deleted too.",
+    fileKept: 'The file on disk is kept.',
+    confirm: 'Remove',
+    cancel: 'Cancel',
+    removed: (title: string) => `Removed "${title}".`,
+    failed: "Couldn't remove this track",
   },
 }

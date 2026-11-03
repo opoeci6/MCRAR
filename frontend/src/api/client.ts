@@ -27,6 +27,8 @@ export interface RequestOptions {
   body?: unknown
   /** Sent as multipart form data (for uploads). Wins over `body`. */
   form?: FormData
+  /** Sent as is, as the raw body (a file), with a binary content type. Wins over `body`, loses to `form`. */
+  blob?: Blob
   /** Appended to the path; `null` and `undefined` are skipped, arrays are repeated. */
   query?: Record<string, QueryValue>
   signal?: AbortSignal
@@ -102,6 +104,9 @@ export async function request<T>(
   let body: BodyInit | undefined
   if (options.form) {
     body = options.form
+  } else if (options.blob) {
+    headers['Content-Type'] = 'application/octet-stream'
+    body = options.blob
   } else if (options.body !== undefined) {
     headers['Content-Type'] = 'application/json'
     body = JSON.stringify(options.body)

@@ -5,14 +5,16 @@ from __future__ import annotations
 import hashlib
 import logging
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 from ingest_support import FakeAnalyzer, RecordingStage, write_audio
 
 from mcrar.audio import ANALYSIS_VERSION
-from mcrar.catalog import CatalogRepository
-from mcrar.ingest import AnalysisStage, IngestEvent, IngestReport, ingest_local
+from mcrar.catalog import CatalogRepository, StoredTrack
+from mcrar.ingest import AnalysisStage, IngestEvent, IngestReport, ingest_files, ingest_local
+from mcrar.licensing import attribution_text, parse_license
 from mcrar.sources import scan_local
 
 SIDECAR = "mcrar-license.toml"
@@ -360,3 +362,235 @@ def test_second_stage_gets_the_path(tmp_path: Path, repo: CatalogRepository) -> 
 def test_empty_folder(tmp_path: Path, repo: CatalogRepository) -> None:
     report = _ingest(tmp_path, repo, FakeAnalyzer())
     assert (report.seen, report.processed, report.failed, report.aborted) == (0, 0, 0, None)
+
+
+# -- ingest_files ----------------------------------------------------------------------------
+
+
+def test_ingest_files_uses_the_given_title_and_no_album_or_sidecar(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    _sidecar(tmp_path / "lib", 'license = "CC0"\nartist = "X"\npack = "P"\n')  # never read
+    path = write_audio(tmp_path / "lib" / "0123.wav", 100, seconds=6)
+    analyzer = FakeAnalyzer()
+    report = ingest_files([(path, "My Song")], repo, stages=[AnalysisStage(analyzer)])
+    assert (report.seen, report.new, report.processed, report.failed) == (1, 1, 1, 0)
+    (track,) = list(repo.iter_tracks("local"))
+    assert (track.title, track.album, track.artist) == ("My Song", None, None)
+    assert track.source_id == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert track.local_path == str(path.absolute())
+    assert (track.license_family, track.risk) == ("unknown", "unknown")
+    assert track.duration_s == pytest.approx(6.0, abs=0.01)
+    assert analyzer.sources == [path.absolute()]
+
+
+def test_ingest_files_applies_the_license_override_and_validates_it(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    path = write_audio(tmp_path / "a.wav", 100)
+    with pytest.raises(ValueError, match="unrecognised license"):
+        ingest_files([(path, "A")], repo, license_override="not-a-license")
+    assert repo.stats()["tracks"] == 0
+    ingest_files(
+        [(path, "A")], repo, license_override="CC0", stages=[AnalysisStage(FakeAnalyzer())]
+    )
+    (track,) = list(repo.iter_tracks("local"))
+    assert (track.license_family, track.risk) == ("cc0", "green")
+
+
+def test_ingest_files_rerun_skips_force_reanalyses_and_progress_matches_ingest_local(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    a = write_audio(tmp_path / "a.wav", 100)
+    b = write_audio(tmp_path / "b.wav", 110)
+    entries = [(a, "First"), (b, "Second")]
+    events: list[IngestEvent] = []
+    ingest_files(entries, repo, stages=[AnalysisStage(FakeAnalyzer())], on_progress=events.append)
+    assert [e.kind for e in events] == ["started", "track_done", "track_done", "finished"]
+    assert [e.title for e in events[1:3]] == ["First", "Second"]
+    assert all(e.total == 2 for e in events)
+    again = FakeAnalyzer()
+    report = ingest_files(entries, repo, stages=[AnalysisStage(again)])
+    assert (report.new, report.skipped, again.calls) == (0, 2, 0)
+    forced = FakeAnalyzer()
+    report = ingest_files(entries, repo, force=True, stages=[AnalysisStage(forced)])
+    assert (report.processed, forced.calls) == (2, 2)
+
+
+def test_ingest_files_skips_an_unreadable_file_and_carries_on(
+    tmp_path: Path,
+    repo: CatalogRepository,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    good = write_audio(tmp_path / "good.wav", 100)
+    report = ingest_files(
+        [(tmp_path / "gone.wav", "Gone"), (good, "Good")],
+        repo,
+        stages=[AnalysisStage(FakeAnalyzer())],
+    )
+    assert (report.seen, report.new, report.failed, report.aborted) == (1, 1, 0, None)
+    assert [t.title for t in repo.iter_tracks("local")] == ["Good"]
+    assert "gone.wav" in caplog.text
+
+
+# -- a licence set by hand ---------------------------------------------------------------------
+
+
+def _set_by_hand(
+    repo: CatalogRepository, code: str, extra: str | None = None, *, flag: bool = True
+) -> None:
+    """Declare the licence of the only local track, as the track page does."""
+    (track,) = list(repo.iter_tracks("local"))
+    info = parse_license(code)
+    text = attribution_text(
+        title=track.title or "",
+        artist=track.artist,
+        license=info,
+        source_url=track.source_url,
+        extra=extra,
+    )
+    repo.set_track_license(track.id, info, text, flag)
+
+
+def _only(repo: CatalogRepository) -> StoredTrack:
+    (track,) = list(repo.iter_tracks("local"))
+    return track
+
+
+def test_the_flag_is_off_for_sidecar_and_unknown_licences(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    _sidecar(tmp_path / "lib", 'license = "CC0"\n')
+    write_audio(tmp_path / "lib" / "a.wav", 100)
+    write_audio(tmp_path / "loose" / "b.wav", 110)
+    _ingest(tmp_path, repo, FakeAnalyzer())
+    tracks = list(repo.iter_tracks("local"))
+    assert len(tracks) == 2 and not any(t.license_set_by_user for t in tracks)
+
+
+def test_a_licence_given_when_adding_sets_the_flag(tmp_path: Path, repo: CatalogRepository) -> None:
+    _sidecar(tmp_path / "lib", 'license = "CC-BY-4.0"\n')  # the override wins over it
+    write_audio(tmp_path / "lib" / "a.wav", 100)
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer(), license_override="CC0")
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("cc0", True)
+    # the unknown licence as an override sets nothing by hand
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer(), license_override="unknown")
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("unknown", False)
+
+
+def test_ingest_files_with_a_licence_sets_the_flag(tmp_path: Path, repo: CatalogRepository) -> None:
+    path = write_audio(tmp_path / "a.wav", 100)
+    stages = [AnalysisStage(FakeAnalyzer())]
+    ingest_files([(path, "A")], repo, stages=stages)
+    assert _only(repo).license_set_by_user is False
+    ingest_files([(path, "A")], repo, license_override="CC0", stages=stages)
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("cc0", True)
+
+
+def test_a_hand_set_licence_survives_adding_the_folder_again(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    old = write_audio(tmp_path / "old" / "song.wav", 100)
+    _ingest(tmp_path, repo, FakeAnalyzer())
+    first = _only(repo)
+    _set_by_hand(repo, "CC-BY-NC-4.0")
+    new = tmp_path / "renamed.wav"
+    old.rename(new)  # same content, same id; the title is the file name
+    report = _ingest(tmp_path, repo, FakeAnalyzer())
+    track = _only(repo)
+    assert track.id == first.id and report.updated == 1
+    assert (track.license_family, track.risk, track.license_set_by_user) == (
+        "cc-by-nc",
+        "red",
+        True,
+    )
+    assert track.license_url == "https://creativecommons.org/licenses/by-nc/4.0/"
+    assert track.title == "renamed" and track.local_path == str(new.resolve())
+    assert track.attribution_text is not None
+    assert track.attribution_text.startswith('"renamed" by Unknown artist, licensed under CC BY-NC')
+    # and a third time: nothing changes any more
+    assert _ingest(tmp_path, repo, FakeAnalyzer()).updated == 0
+    assert replace(_only(repo), updated_at=track.updated_at) == track
+
+
+def test_a_sidecar_does_not_replace_a_hand_set_licence(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    write_audio(tmp_path / "lib" / "song.wav", 100)
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer())
+    _set_by_hand(repo, "CC0")
+    _sidecar(
+        tmp_path / "lib",
+        'license = "CC-BY-NC-4.0"\nartist = "X"\nsource_url = "https://x.example"\n'
+        'attribution = "Music by X"\n',
+    )
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer())
+    track = _only(repo)
+    assert (track.license_family, track.risk, track.license_set_by_user) == ("cc0", "green", True)
+    assert track.artist == "X"  # the rest of the sidecar still applies
+    assert track.attribution_text == (
+        '"song" by X (https://x.example), dedicated to the public domain (CC0 1.0) Music by X'
+    )
+
+
+def test_the_text_after_the_credit_line_is_kept_when_the_item_has_none(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    root = tmp_path / "lib"
+    sidecar = _sidecar(root, 'license = "CC-BY-4.0"\nartist = "X"\nattribution = "Music by X"\n')
+    write_audio(root / "song.wav", 100)
+    _ingest(root, repo, FakeAnalyzer())
+    stored = _only(repo)
+    assert stored.attribution_text is not None and stored.attribution_text.endswith("Music by X")
+    _set_by_hand(repo, "CC0", extra="Music by X")
+    sidecar.unlink()  # the folder says nothing now; what the user set stays, with its text
+    _ingest(root, repo, FakeAnalyzer())
+    track = _only(repo)
+    assert track.license_family == "cc0" and track.license_set_by_user is True
+    assert track.artist is None
+    assert track.attribution_text == (
+        '"song" by Unknown artist, dedicated to the public domain (CC0 1.0) Music by X'
+    )
+
+
+def test_a_licence_given_when_adding_replaces_a_hand_set_one(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    write_audio(tmp_path / "a.wav", 100)
+    _ingest(tmp_path, repo, FakeAnalyzer())
+    _set_by_hand(repo, "CC-BY-NC-4.0")
+    _ingest(tmp_path, repo, FakeAnalyzer(), license_override="CC0")
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("cc0", True)
+    assert track.attribution_text is not None and "CC-BY-NC" not in track.attribution_text
+
+
+def test_a_licence_not_set_by_hand_still_follows_the_sidecar(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    write_audio(tmp_path / "lib" / "a.wav", 100)
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer())
+    _set_by_hand(repo, "unknown", flag=False)  # what unknown on the track page leaves behind
+    _sidecar(tmp_path / "lib", 'license = "CC0"\n')
+    _ingest(tmp_path / "lib", repo, FakeAnalyzer())
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("cc0", False)
+
+
+def test_ingest_files_adding_again_keeps_a_hand_set_licence(
+    tmp_path: Path, repo: CatalogRepository
+) -> None:
+    path = write_audio(tmp_path / "0123.wav", 100)
+    stages = [AnalysisStage(FakeAnalyzer())]
+    ingest_files([(path, "My Song")], repo, stages=stages)
+    _set_by_hand(repo, "CC0")
+    ingest_files([(path, "My Better Song")], repo, stages=stages)
+    track = _only(repo)
+    assert (track.license_family, track.license_set_by_user) == ("cc0", True)
+    assert track.title == "My Better Song"
+    assert track.attribution_text == (
+        '"My Better Song" by Unknown artist, dedicated to the public domain (CC0 1.0)'
+    )

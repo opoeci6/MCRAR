@@ -105,3 +105,16 @@
   font-size: var(--text-sm);
   font-weight: 550;
 }
+
+/* The label of a `compact` button: it stays in the accessibility tree and only leaves the screen. */
+@media (max-width: 900px) {
+  .compactLabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

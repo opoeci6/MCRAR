@@ -4,6 +4,8 @@ import { cx } from '../lib/cx'
 import fieldStyles from './Field.module.css'
 import styles from './Combobox.module.css'
 import { ChevronDownIcon } from './icons'
+import { DEFAULT_PLACEMENT, measurePlacement } from './popupPlacement'
+import type { Placement } from './popupPlacement'
 
 export interface ComboboxOption {
   value: string
@@ -36,19 +38,6 @@ export interface ComboboxProps
   emptyText: string
   /** The option an empty field stands for (for example a default), marked and scrolled to. */
   emptyValue?: string
-}
-
-const LIST_MAX_HEIGHT = 280
-const LIST_MIN_HEIGHT = 120
-/** Room below the input that the list should not use (the player bar sits at the window bottom). */
-const BOTTOM_MARGIN = 120
-/** Open upward when there is less than this below and more above. */
-const MIN_SPACE_BELOW = 200
-const EDGE_GAP = 12
-
-interface Placement {
-  up: boolean
-  maxHeight: number
 }
 
 /**
@@ -87,7 +76,7 @@ export function Combobox({
   const [active, setActive] = useState(-1)
   // Set only by typing, so a value that was not typed since the list opened never hides options.
   const [filterText, setFilterText] = useState<string | null>(null)
-  const [placement, setPlacement] = useState<Placement>({ up: false, maxHeight: LIST_MAX_HEIGHT })
+  const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT)
 
   const hasOptions = options.length > 0
   const current = value || emptyValue
@@ -111,16 +100,7 @@ export function Combobox({
   }, [activeIndex, isOpen])
 
   const measure = () => {
-    const input = inputRef.current
-    if (!input) return
-    const rect = input.getBoundingClientRect()
-    const below = window.innerHeight - rect.bottom - BOTTOM_MARGIN
-    // The sticky page header covers the top of the window.
-    const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-h'))
-    const above = rect.top - (Number.isFinite(header) ? header : 0) - EDGE_GAP
-    const up = below < MIN_SPACE_BELOW && above > below
-    const space = up ? above : below
-    setPlacement({ up, maxHeight: Math.min(LIST_MAX_HEIGHT, Math.max(LIST_MIN_HEIGHT, space)) })
+    if (inputRef.current) setPlacement(measurePlacement(inputRef.current))
   }
 
   /** Opens with every option shown; `index` is the option to make active (-1 for none). */

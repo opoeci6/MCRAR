@@ -33,6 +33,8 @@ export interface Health {
   models: HealthModel[]
   /** Null without a CUDA GPU. */
   gpu: { vram_allocated_mb: number; vram_reserved_mb: number } | null
+  /** The server listens on this computer only, so it may browse folders and read paths here. Absent from an older backend. */
+  local_files?: boolean
 }
 
 export interface VocabLabel {
@@ -273,6 +275,8 @@ export interface TrackLicense {
   attribution_required: boolean | null
   attribution_text: string | null
   commercial_license_url: string | null
+  /** True when the owner set the licence of a local track by hand (it is kept on a re-add). */
+  set_by_user: boolean
 }
 
 /** Audio features stored for a track (all may be missing for an unanalysed track). */
@@ -710,6 +714,72 @@ export interface LocalIngestRequest {
   license?: string | null
   force?: boolean
   embed?: boolean
+}
+
+/** One file that `uploadLibraryFile` copied into the library folder, and the title to show. */
+export interface IngestFileEntry {
+  /** The `file` the upload answered with. */
+  file: string
+  title: string
+}
+
+export interface FilesIngestRequest {
+  files: IngestFileEntry[]
+  license?: string | null
+  force?: boolean
+  embed?: boolean
+}
+
+export interface LibraryFileUpload {
+  file: string
+  name: string
+  size: number
+  /** True when the same bytes were in the library already (nothing was written). */
+  already: boolean
+}
+
+export interface FolderEntry {
+  name: string
+  path: string
+}
+
+export interface FileRoots {
+  /** The drives (or `/`) of the computer. */
+  roots: FolderEntry[]
+  /** Handy starting points such as the home folder. */
+  places: FolderEntry[]
+}
+
+export interface FolderListing {
+  path: string
+  /** Null at the top of a drive. */
+  parent: string | null
+  folders: FolderEntry[]
+  /** Audio files directly in this folder (not in its sub-folders). */
+  audio_files: number
+  /** The folder list was cut short because the folder has too many entries. */
+  truncated: boolean
+}
+
+/** What removing a track takes with it. */
+export interface TrackRemovalImpact {
+  ratings: number
+  scene_labels: number
+  projects: number
+  /** The file is a copy in MCRAR's own folder and is deleted with the track. */
+  copied_file: boolean
+}
+
+export interface MissingTrack {
+  id: number
+  title: string | null
+  local_path: string
+}
+
+export interface MissingTracks {
+  count: number
+  /** At most 200 of them. */
+  tracks: MissingTrack[]
 }
 
 export interface ReprocessRequest {

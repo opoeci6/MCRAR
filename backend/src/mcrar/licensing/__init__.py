@@ -10,6 +10,8 @@ from mcrar.licensing.credits import (
     CreditItem,
     project_credits,
     render_credits,
+    stored_attribution_extra,
+    stored_license,
     track_credit_item,
     track_credits,
 )
@@ -36,6 +38,8 @@ __all__ = [
     "project_credits",
     "render_credits",
     "risk_at_most",
+    "stored_attribution_extra",
+    "stored_license",
     "track_credit_item",
     "track_credits",
 ]

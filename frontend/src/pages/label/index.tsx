@@ -45,14 +45,9 @@ export default function LabelPage() {
           className={styles.part}
           label={t.who.part}
           value={part}
-          onChange={(event) => setPart(event.target.value as LabelPart)}
-        >
-          {PARTS.map((value) => (
-            <option key={value} value={value}>
-              {t.who.partOptions[value]}
-            </option>
-          ))}
-        </Select>
+          options={PARTS.map((value) => ({ value, label: t.who.partOptions[value] ?? value }))}
+          onValueChange={(next) => setPart(next as LabelPart)}
+        />
       </div>
 
       {labeller === null ? null : <Workspace key={`${labeller}\n${part}`} labeller={labeller} part={part} vocab={vocab} />}

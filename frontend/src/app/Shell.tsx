@@ -20,7 +20,7 @@ function BackendIndicator() {
   return (
     <div role="status" className={styles.status} title={title}>
       <span className={cx(styles.dot, styles[state])} aria-hidden="true" />
-      <span>{text}</span>
+      <span className={styles.statusText}>{text}</span>
     </div>
   )
 }

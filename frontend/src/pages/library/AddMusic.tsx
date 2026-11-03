@@ -20,8 +20,13 @@ const TABS = [
 ] as const
 type TabId = (typeof TABS)[number]['id']
 
+export interface AddMusicProps extends StartProps {
+  /** Tracks were removed from the catalog, so the track list is out of date. */
+  onCatalogChanged?: () => void
+}
+
 /** The ways to start a job. All panels stay mounted so a half-filled form survives a tab switch. */
-export function AddMusic(props: StartProps) {
+export function AddMusic({ onCatalogChanged, ...props }: AddMusicProps) {
   const [tab, setTab] = usePersistentState<TabId>('library.addTab', 'jamendo')
   const base = useId()
   return (
@@ -61,7 +66,7 @@ export function AddMusic(props: StartProps) {
           {item.id === 'freesound' ? <FreesoundForm {...props} /> : null}
           {item.id === 'links' ? <LinkForm {...props} /> : null}
           {item.id === 'local' ? <LocalForm {...props} /> : null}
-          {item.id === 'maintenance' ? <MaintenancePanel {...props} /> : null}
+          {item.id === 'maintenance' ? <MaintenancePanel {...props} onCatalogChanged={onCatalogChanged} /> : null}
         </div>
       ))}
     </section>

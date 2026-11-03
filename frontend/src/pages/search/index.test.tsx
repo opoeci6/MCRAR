@@ -9,6 +9,7 @@ import { FakeEventSource } from '../../test/eventSource'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import type { Routes } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
+import { chooseOption, optionsOf } from '../../test/select'
 import SearchPage from './index'
 
 const VOCAB = {
@@ -176,7 +177,7 @@ describe('Search page: filters', () => {
   it('maps the max risk select when the toggle is off', async () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(screen.getByLabelText('Max licence risk'), 'amber')
+    await chooseOption(userEvent.setup(), 'Max licence risk', 'Amber')
     await searchFor('rain')
     await screen.findByText('Track 1')
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ max_risk: 'amber' })
@@ -185,9 +186,8 @@ describe('Search page: filters', () => {
   it('offers Freesound as a source filter', async () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
-    const select = screen.getByLabelText('Source')
-    expect(within(select).getByRole('option', { name: 'Freesound' })).toHaveValue('freesound')
-    await userEvent.selectOptions(select, 'freesound')
+    expect(await optionsOf(userEvent.setup(), 'Source')).toContain('Freesound')
+    await chooseOption(userEvent.setup(), 'Source', 'Freesound')
     await searchFor('loop')
     await screen.findByText('Track 1')
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ sources: ['freesound'] })
@@ -197,8 +197,8 @@ describe('Search page: filters', () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
     await screen.findByRole('button', { name: 'Rock' })
-    await userEvent.selectOptions(screen.getByLabelText('Vocals'), 'instrumental')
-    await userEvent.selectOptions(screen.getByLabelText('Source'), 'local')
+    await chooseOption(userEvent.setup(), 'Vocals', 'Instrumental')
+    await chooseOption(userEvent.setup(), 'Source', 'Local')
     await userEvent.type(screen.getByLabelText('Min BPM'), '80')
     await userEvent.type(screen.getByLabelText('Max BPM'), '100')
     await userEvent.click(screen.getByRole('button', { name: 'Dark Ambient' }))
@@ -222,7 +222,7 @@ describe('Search page: filters', () => {
   ])('maps the duration preset %s', async (option, expected) => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(screen.getByLabelText('Duration'), option)
+    await chooseOption(userEvent.setup(), 'Duration', option)
     await searchFor('x')
     await screen.findByText('Track 1')
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual(expected)
@@ -231,7 +231,7 @@ describe('Search page: filters', () => {
   it('maps a custom duration range', async () => {
     const mock = setup({ 'POST /api/search': response([item(1)]) })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(screen.getByLabelText('Duration'), 'Custom')
+    await chooseOption(userEvent.setup(), 'Duration', 'Custom')
     await userEvent.type(screen.getByLabelText('Min seconds'), '20')
     await userEvent.type(screen.getByLabelText('Max seconds'), '90')
     await searchFor('x')
@@ -246,7 +246,7 @@ describe('Search page: filters', () => {
     expect(within(group).getAllByRole('button').map((chip) => chip.textContent)).toEqual(['Combat', 'Stealth'])
     await userEvent.click(within(group).getByRole('button', { name: 'Stealth' }))
     await userEvent.click(within(group).getByRole('button', { name: 'Combat' }))
-    await userEvent.selectOptions(screen.getByLabelText('Intensity'), 'High')
+    await chooseOption(userEvent.setup(), 'Intensity', 'High')
     await searchFor('sneaking')
     await screen.findByText('Track 1')
     expect(bodies(mock, 'POST /api/search')[0].filters).toEqual({ scenes: ['stealth', 'combat'], intensity: 'high' })
@@ -343,17 +343,17 @@ describe('Search page: filters', () => {
     renderWithProviders(<SearchPage />)
     const rock = await screen.findByRole('button', { name: 'Rock' })
     await userEvent.click(rock)
-    await userEvent.selectOptions(screen.getByLabelText('Vocals'), 'vocal')
+    await chooseOption(userEvent.setup(), 'Vocals', 'Vocal')
     expect(screen.getByRole('button', { name: 'Filters (2)' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Combat' }))
     expect(screen.getByRole('button', { name: 'Filters (3)' })).toBeInTheDocument()
-    await userEvent.selectOptions(screen.getByLabelText('Intensity'), 'Low')
+    await chooseOption(userEvent.setup(), 'Intensity', 'Low')
     expect(screen.getByRole('button', { name: 'Filters (4)' })).toBeInTheDocument()
     await userEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
     expect(screen.getByRole('button', { name: 'Rock' })).toHaveAttribute('aria-pressed', 'false')
     expect(screen.getByRole('button', { name: 'Combat' })).toHaveAttribute('aria-pressed', 'false')
-    expect(screen.getByLabelText('Vocals')).toHaveValue('')
-    expect(screen.getByLabelText('Intensity')).toHaveValue('')
+    expect(screen.getByLabelText('Vocals')).toHaveTextContent('Any')
+    expect(screen.getByLabelText('Intensity')).toHaveTextContent('Any')
     expect(screen.getByRole('button', { name: 'Filters' })).toBeInTheDocument()
   })
 })
@@ -1077,7 +1077,7 @@ describe('Search page: import from Jamendo and Freesound', () => {
       'POST /api/search/import': jsonResponse({ job: importJob({ params: { text: 'cozy town', limit: 50, sources: ['freesound'] } }) }, 202),
     })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'freesound')
+    await chooseOption(userEvent.setup(), 'Source', 'Freesound')
     await weakSearch()
     expect(await screen.findByText(/Find about 50 more on Freesound and rank them/)).toBeInTheDocument()
     expect(screen.queryByRole('button', both)).not.toBeInTheDocument()
@@ -1096,7 +1096,7 @@ describe('Search page: import from Jamendo and Freesound', () => {
       'POST /api/search': response([item(1)], { match: WEAK }),
     })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'freesound')
+    await chooseOption(userEvent.setup(), 'Source', 'Freesound')
     await weakSearch()
     expect(screen.queryByRole('button', { name: /for more$/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/Few close matches in your library/)).not.toBeInTheDocument()
@@ -1108,7 +1108,7 @@ describe('Search page: import from Jamendo and Freesound', () => {
       'POST /api/search': response([item(1)], { match: WEAK }),
     })
     renderWithProviders(<SearchPage />)
-    await userEvent.selectOptions(await screen.findByLabelText('Source'), 'local')
+    await chooseOption(userEvent.setup(), 'Source', 'Local')
     await weakSearch()
     expect(screen.queryByRole('button', { name: /for more$/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/Few close matches in your library/)).not.toBeInTheDocument()
@@ -1702,6 +1702,61 @@ describe('Search page: reference song', () => {
     expect(bodies(mock, 'POST /api/search')[1].reference).toEqual({ track_id: 1 })
     expect(chip('Track 1 — Artist 1')).toBeInTheDocument()
     await waitFor(() => expect(chip('Track 1 — Artist 1')).toHaveFocus())
+  })
+
+  it('drops a track removed from the track drawer out of the results and closes the drawer', async () => {
+    setup({
+      'POST /api/search': response([item(1), item(2)]),
+      'GET /api/tracks/1': TRACK_1,
+      'GET /api/tracks/1/removal': { ratings: 0, scene_labels: 0, projects: 0, copied_file: false },
+      'DELETE /api/tracks/1': new Response(null, { status: 204 }),
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    await userEvent.click(await screen.findByRole('button', { name: 'Track 1' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Remove from library' }))
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Remove' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(screen.queryByRole('button', { name: 'Track 1' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Track 2' })).toBeInTheDocument()
+  })
+
+  it('updates the licence of a result when it is changed in the track drawer', async () => {
+    const local = { source: 'local', risk: 'amber', license_code: 'CC BY-NC 4.0' }
+    const changed = {
+      ...TRACK_1,
+      source: 'local',
+      local_path: 'C:/music/a.mp3',
+      license: {
+        code: 'CC BY 4.0',
+        url: 'https://example.org/by',
+        risk: 'green',
+        attribution_text: 'Track 1 by Artist 1',
+        commercial_license_url: null,
+        family: 'cc',
+        set_by_user: true,
+      },
+    }
+    setup({
+      'POST /api/search': response([item(1, local), item(2)]),
+      'GET /api/tracks/1': { ...TRACK_1, source: 'local', local_path: 'C:/music/a.mp3' },
+      'PUT /api/tracks/1/license': changed,
+    })
+    renderWithProviders(<SearchPage />)
+    await searchFor('rain')
+    const row = () => screen.getByRole('button', { name: 'Track 1' }).closest('li') as HTMLElement
+    expect(within(row()).getByText('Check terms')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Track 1' }))
+    const dialog = await screen.findByRole('dialog')
+    await userEvent.click(await within(dialog).findByRole('button', { name: 'Edit licence' }))
+    const input = within(dialog).getByRole('combobox', { name: 'Licence' })
+    await userEvent.clear(input)
+    await userEvent.type(input, 'CC BY 4.0')
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }))
+    await waitFor(() => expect(within(row()).getByText('Safe')).toBeInTheDocument())
+    expect(within(row()).queryByText('Check terms')).not.toBeInTheDocument()
+    expect(within(row()).getByText('CC BY 4.0')).toBeInTheDocument()
   })
 
   it('sends the reference with the next pages too', async () => {

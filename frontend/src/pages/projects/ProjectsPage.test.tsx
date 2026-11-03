@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useHashRoute } from '../../app/route'
 import { jsonResponse, stubApi } from '../../test/fetch'
 import { renderWithProviders } from '../../test/render'
+import { chooseOption } from '../../test/select'
 import ProjectsPage from '.'
 
 function Routed() {
@@ -336,6 +337,104 @@ describe('Projects page', () => {
 
       await user.click(await screen.findByRole('button', { name: 'Play Rainy Window' }))
       expect(await screen.findByRole('button', { name: 'Pause Rainy Window' })).toBeInTheDocument()
+    })
+
+    it('takes a track off the shortlist when it is removed from the library in the drawer', async () => {
+      const user = userEvent.setup()
+      stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': DETAIL,
+        'GET /api/tracks/10': {
+          ...ITEMS[0]!.track,
+          album: null,
+          local_path: null,
+          vocal_instrumental: null,
+          features: null,
+          tags: [],
+          license: {
+            code: 'CC BY 4.0',
+            url: null,
+            risk: 'green',
+            attribution_text: null,
+            commercial_license_url: null,
+          },
+        },
+        'GET /api/tracks/10/removal': { ratings: 0, scene_labels: 0, projects: 1, copied_file: false },
+        'DELETE /api/tracks/10': NO_CONTENT,
+      })
+      renderWithProviders(<Routed />)
+
+      await user.click(await screen.findByRole('button', { name: 'Rainy Window' }))
+      const dialog = await screen.findByRole('dialog')
+      await user.click(await within(dialog).findByRole('button', { name: 'Remove from library' }))
+      await user.click(await within(dialog).findByRole('button', { name: 'Remove' }))
+
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+      expect(screen.queryByText('Rainy Window')).not.toBeInTheDocument()
+      expect(screen.getByText('Forest Walk')).toBeInTheDocument()
+    })
+
+    it('updates the licence of a shortlist row when it is changed in the drawer', async () => {
+      const user = userEvent.setup()
+      const local = entry(10, 'Rainy Window', 'red', null, { source: 'local', license_code: 'CC BY-NC 4.0' })
+      stubApi({
+        'GET /api/projects': PROJECTS,
+        'GET /api/projects/1': { ...DETAIL, items: [local, ITEMS[1]] },
+        'GET /api/tracks/10': {
+          ...local.track,
+          album: null,
+          local_path: 'C:/music/a.mp3',
+          vocal_instrumental: null,
+          features: null,
+          tags: [],
+          license: {
+            code: 'CC BY-NC 4.0',
+            url: null,
+            family: 'cc',
+            risk: 'red',
+            attribution_text: null,
+            commercial_license_url: null,
+            set_by_user: false,
+          },
+        },
+        'PUT /api/tracks/10/license': {
+          ...local.track,
+          risk: 'green',
+          license_code: 'CC BY 4.0',
+          album: null,
+          local_path: 'C:/music/a.mp3',
+          vocal_instrumental: null,
+          features: null,
+          tags: [],
+          license: {
+            code: 'CC BY 4.0',
+            url: 'https://example.org/by',
+            family: 'cc',
+            risk: 'green',
+            attribution_text: 'Rainy Window by Artist 10',
+            commercial_license_url: null,
+            set_by_user: true,
+          },
+        },
+      })
+      renderWithProviders(<Routed />)
+
+      const opener = await screen.findByRole('button', { name: 'Rainy Window' })
+      const row = opener.closest('li') as HTMLElement
+      await user.click(opener)
+      expect(within(row).getByText('CC BY-NC 4.0')).toBeInTheDocument()
+      expect(screen.getAllByText(/restricted/i).length).toBeGreaterThan(0)
+      const dialog = await screen.findByRole('dialog')
+      await user.click(await within(dialog).findByRole('button', { name: 'Edit licence' }))
+      const input = within(dialog).getByRole('combobox', { name: 'Licence' })
+      await user.clear(input)
+      await user.type(input, 'CC BY 4.0')
+      await user.click(within(dialog).getByRole('button', { name: 'Save' }))
+
+      await waitFor(() => expect(within(row).getByText('CC BY 4.0')).toBeInTheDocument())
+      expect(within(row).queryByText('CC BY-NC 4.0')).not.toBeInTheDocument()
+      // The summary above the list counts the track as safe now.
+      expect(screen.queryAllByText(/restricted/i)).toHaveLength(0)
     })
 
     it('saves a note when the field loses focus', async () => {
@@ -682,7 +781,7 @@ describe('Projects page', () => {
       expect(await screen.findByText('Copied to the clipboard')).toBeInTheDocument()
       expect(await navigator.clipboard.readText()).toBe('# Credits\n- Rainy Window')
 
-      await user.selectOptions(screen.getByLabelText('Preview format'), 'txt')
+      await chooseOption(user, 'Preview format', 'Plain text')
       expect(await screen.findByText('Plain credits')).toBeInTheDocument()
       expect(api.mock.calls.at(-1)?.[0]).toBe('/api/projects/1/credits?format=txt')
 

@@ -8,7 +8,11 @@ from mcrar.sources import SourceTrack
 
 
 def to_track_record(
-    src: SourceTrack, lic: LicenseInfo, *, attribution_extra: str | None = None
+    src: SourceTrack,
+    lic: LicenseInfo,
+    *,
+    attribution_extra: str | None = None,
+    license_set_by_user: bool = False,
 ) -> TrackRecord:
     """Build the row for ``src`` with every licence column filled from ``lic``.
 
@@ -47,4 +51,5 @@ def to_track_record(
         commercial_license_url=src.commercial_license_url,
         vocal_instrumental=src.vocal_instrumental,
         source_tags=dict(src.tags),
+        license_set_by_user=license_set_by_user,
     )

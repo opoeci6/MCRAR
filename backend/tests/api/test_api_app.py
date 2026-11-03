@@ -26,6 +26,7 @@ def test_health_reports_catalog_and_loaded_models(
             "models_loaded": [],
             "models": [],
             "gpu": None,
+            "local_files": True,
         }
         client.post("/api/search", json={"text": "tense stealth level"})
         body = client.get("/api/health").json()

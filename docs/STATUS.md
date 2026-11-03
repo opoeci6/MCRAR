@@ -4,7 +4,7 @@ The living record of what MCRAR has done, what was decided and why, what is open
 exists only on the owner's machine. `docs/PLAN.md` is the plan; this file is the state.
 **Update it whenever a milestone lands or a decision is made.**
 
-Last updated: 2026-10-30.
+Last updated: 2026-11-03.
 
 ## 1. Milestones
 
@@ -23,16 +23,17 @@ Last updated: 2026-10-30.
 | M10 Reference song | Done (2026-10-26) | `dev` | "Find similar" on a result, or upload a song; blends with a text. `POST /api/reference`, `mcrar search --like`; see §3.12 |
 | M9 Game-scene tags | Done (2026-10-28) | `dev` | 14 scenes, scene and intensity filters, Labelling tab, `mcrar scenes …`; 269 hand-labelled tracks (owner and Simon); the trained hybrid head `scene-logreg-hybrid@5f5ba48` is selected (cross-validated mean P@10 0.414 against 0.407 for the centered zero-shot). See §3.13 |
 | QoL batch 1 | Done (2026-10-27) | `dev` | Projects entries like result rows, notes with timestamps, source label, model switch status and VRAM release, repeat; see §3.14. Then tempo readings, tag chips in words, torch caches (§3.15) |
-| QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker and drop follow after the demo |
+| QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker followed on 2026-11-03 (§3.20) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: the local-music picker, then a desktop window (pywebview). See §3.19 and §5.3 |
+| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: a desktop window (pywebview). See §3.19 and §5.3 |
+| Local-music picker | Done (2026-11-03) | `local-picker` | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. See §3.20 |
 
-Test suite, counted on `m11-preview` (2026-10-30):
-- Backend, default env: 2,397 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,384 passed, 32 skipped.
+Test suite, counted on `local-picker` (2026-11-03):
+- Backend, default env: 2,499 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,486 passed, 32 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 509 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 597 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -795,12 +796,125 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
   - the console shows Hugging Face's "hf_xet is not installed" hint during the download;
   - the CPU model load takes about 50 s on this PC;
   - SmartScreen may warn about the unsigned `MCRAR.cmd` (`README.txt` explains "Run anyway").
+  - The "no embedding" notice was fixed on 2026-11-03 (§3.20); the next build has it.
+
+### 3.20 Local-music picker, removing tracks (2026-11-03)
+The owner's second item after the talk (§3.17): local music without typing a path. Branch
+`local-picker`. The owner chose to skip a preview zip for it; the desktop window comes next and
+gets the next build.
+- **Library → Add music → "Your files"** (the tab was "Local folder"; its id and remembered
+  choice are unchanged). Two cards, and the tab says how they differ:
+  - **Copy files into MCRAR.** Drop files or whole folders on the box, or "Choose files…". Files
+    that are not audio are skipped and counted. Each file goes up on its own
+    (`POST /api/library/files`, the raw bytes as the body, so nothing spools to `%TEMP%`), with a
+    "Copying 3 of 12" bar and Cancel. MCRAR stores it as `data/library/<sha256><ext>`, so the
+    same bytes are stored once. One `ingest-files` job then adds them, titled by their original
+    file names. The copies use disk space, and the originals can then move.
+  - **Use a folder where it is.** The path field as before, plus **Browse…**, a folder browser
+    drawn by MCRAR (`/api/files/roots`, `/api/files/list`): drives, home and Music, Up, the
+    sub-folders and how many audio files each folder holds. It leaves out names with a leading
+    dot and Windows hidden or system entries (the old "Application Data" junctions,
+    `$Recycle.Bin`). Nothing is copied. Moving the files later breaks playback until the new
+    folder is added again, which finds them by their content.
+  - **Browse is loopback-only.** It lists the server's folders, so it answers 403 and the
+    button is hidden (`/api/health` `local_files`) when the server listens elsewhere
+    (`--allow-remote`). Copying in still works there.
+  - A file dropped anywhere else on the Library page is refused, so the browser no longer opens
+    it and leaves MCRAR.
+  - The browser goes through one `useFolderPicker()` hook, which the desktop window can swap for
+    the native folder dialog.
+- **Remove a track** (§5.2): "Remove from library" in the track's details panel (Library, Search
+  and Projects). It first asks the backend what goes along (`GET /api/tracks/{id}/removal`) and
+  says so: "This also deletes 2 ratings, 1 scene label and its place in 1 project." The owner
+  chose this on 2026-11-03: delete with the track, warn first. A copy in `data/library/` is
+  deleted with its track. A file anywhere else is never touched ("The file on disk is kept.").
+  The delete is refused with 409 while a job runs.
+- **Moved or deleted files:** a Maintenance card lists the local tracks whose file is gone
+  (`GET /api/tracks/missing`) and removes them after a confirmation
+  (`POST /api/tracks/remove-missing`, which checks again). Re-adding a moved folder re-links
+  instead.
+- **Search notes:** the "no embedding" note now points to "Re-embed missing tracks" in
+  Library > Maintenance before `mcrar embed`. The reference-song error no longer says "in
+  Settings".
+- **Same content twice:** copying in a file whose bytes are already a browsed track moves that
+  track to the copy (one track per content; the copy is the sturdier one).
+- **Checked** on a copy of the real catalog (port 8011, built UI):
+  - Browse… into `Test Music 测试` (3 WAVs) and add them in place; they play.
+  - Drop two WAVs and a `.txt`: "Skipped 1 file that isn't audio"; copies named by hash, titles
+    from the file names.
+  - The same upload twice gives `already: true` and one file.
+  - Rename the folder: Maintenance finds 3 more missing; add the renamed folder: re-linked.
+  - Remove a copied track from its panel: copied-file line shown, file deleted, list and stats
+    reload. "Remove 5 tracks" in Maintenance.
+  - With `--host 0.0.0.0 --allow-remote`: `local_files` false, `/api/files/*` 403, Browse
+    hidden, copying in works.
+- **An accident during the check (2026-11-03).** The first scratch server ran with the real
+  home: `scripts/dev-env.ps1` sets `MCRAR_HOME` to the repository, overriding the scratch value
+  set before it. The first imports therefore went into the real `data/catalog.db`: 4 test
+  tracks (ids 1571 to 1574), two of them copied into `data/library/`. Nothing else was
+  touched: no rating, label or shortlist row. They were removed again the same day through the
+  new remove route, which also deleted the two copies and the empty `data/library/` folder. A
+  scratch server must set `MCRAR_HOME` *after* loading `dev-env.ps1`.
+- **Follow-ups:**
+  - Files copied in but never added (Cancel, or a failed job) stay in `data/library/`. Adding
+    them again is instant, but nothing lists or deletes orphans yet.
+  - Uploads go one at a time with no byte progress within a file (`fetch` has none); a very
+    large WAV shows only "Copying 1 of 1".
+  - Removing many tracks one by one is only possible from the details panel; the Library table
+    has no multi-select.
+- **Owner's requests after trying it (2026-11-03):**
+  - **The Library table fits a narrow window.** It was wider than its box, so its scrollbar sat
+    under all 50 rows and the page scrolled sideways.
+    - **The page's sideways scroll** came from the screen-reader-only texts (`position:
+      absolute`): the "Actions" header and the "Licence:" in each badge had no positioned
+      ancestor and pushed the page wider. The table box is now `position: relative`.
+    - **At 900 px and less,** Source and Length move to a line under the title ("Jamendo ·
+      4:12"), and "Add to project" shows only its + icon (same accessible name, menu opens
+      right-aligned).
+    - **Measured** in the in-app browser: at 1280, 920, 780 and 600 px the page is exactly as
+      wide as the window and the table as wide as its box.
+    - **The header** no longer pushes the page wider at 600 px: below 700 px the backend
+      status shows only its dot.
+  - **Edit a local track's licence** in its details panel ("Edit licence": a code such as CC BY
+    4.0, a licence URL, or Unknown; `PUT /api/tracks/{id}/license`). The risk, credit line,
+    stats and filters follow. The common licences are suggested in the same in-page list as the
+    model picker (`ui/Combobox`), also in the two Add cards; the native `<datalist>` popup first
+    used was drawn away from the box in the embedded browser (owner, 2026-11-03).
+  - **No browser-drawn popups left.** On Windows, Chromium draws an open `<select>` list as the
+    same kind of popup, so `ui/Select` (13 dropdowns: Library filters and import forms, Search
+    filters, Settings, Labelling, credits format) is now a select-only combobox drawn in the
+    page. It has the same look, keyboard behaviour (arrows, Home/End, type-ahead, Escape, Tab)
+    and screen-reader roles, and shares its up/down placement with `ui/Combobox`
+    (`ui/popupPlacement.ts`). Tests drive it through `test/select.ts`. Checked in the pane: the
+    Library Source filter and the Settings embedder list open under their box. Left as they
+    are: hover tooltips (`title`; the same text is on screen or read to screen readers),
+    sliders, and the file dialog. For the desktop window, check `window.open` (licence and
+    track downloads) under pywebview. Jamendo and Freesound tracks keep the source's licence (no
+    button; the API answers 422).
+  - **Hand-set licences stick** (owner's choice). Catalog schema v6 adds
+    `tracks.license_set_by_user`. A licence set in the panel, or typed into the licence field
+    when adding (CLI `--license` too), is kept when the same files are added again without a
+    licence, even over a `mcrar-license.toml`; the credit line is rebuilt with the current
+    title. Adding them with a licence replaces it. Setting Unknown clears the mark, so the
+    folder's licence applies again. The real catalog was upgraded to v6 on 2026-11-03 when the
+    owner restarted the server (a snapshot is in §4).
+  - **Checked** on the scratch copy:
+    - edit "calm piano tune" to CC BY 4.0 in the panel: the badge, "Set by you", credit line
+      and toast update;
+    - re-add the folder without a licence: kept (Safe filter, stats and the credits file
+      agree);
+    - re-add with CC0: replaced;
+    - Unknown: the mark is cleared;
+    - a Jamendo track: 422.
+  - **Not done:** the player bar keeps the old badge of a playing track until it is played
+    again.
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
 |---|---|---|
-| Catalog | `data/catalog.db` | 1,568 tracks (2026-10-28): 1,079 Jamendo (green 325, amber 414, red 337, unknown 3) and 489 Freesound (all green: CC0 214, CC BY 4.0 259, CC BY 3.0 16). Features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; `scene` from the hybrid head since 2026-10-28), schema v5 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26). Hand labels: 269 tracks (owner 150, Simon 149). Plus 2 local tracks the owner added on 2026-10-28 while testing local files (ids 1569 and 1570, "Unknown license"), so 1,570 in all |
+| Catalog | `data/catalog.db` | 1,568 tracks (2026-10-28): 1,079 Jamendo (green 325, amber 414, red 337, unknown 3) and 489 Freesound (all green: CC0 214, CC BY 4.0 259, CC BY 3.0 16). Features `audio-v2`, embeddings for all three models, `tag_probs` for every track (genre logreg, mood/theme MLP, valence and arousal MLP; `scene` from the hybrid head since 2026-10-28), schema v6 (v4: ratings table, names and credit lines decoded, 2026-10-15; v5: `scene_labels` and `label_pool`, 2026-10-26; v6: `license_set_by_user`, 2026-11-03). Hand labels: 269 tracks (owner 150, Simon 149). Plus 2 local tracks the owner added on 2026-10-28 while testing local files (ids 1569 and 1570, "Unknown license"), so 1,570 in all |
+| Catalog snapshot (v6) | `data/catalog.v6-2026-11-03.db` | Copy taken 2026-11-03 right after the catalog was upgraded to schema v6 (`license_set_by_user`; the owner's server restart did the upgrade before a pre-v6 copy was taken). 1,570 tracks, no hand-set licences yet. Code from before v6 refuses a v6 catalog; the newest v5 copy is `catalog.pre-m9-labels.db` (2026-10-28, before Simon's labels) |
 | Catalog backup | `data/catalog.pre-tag.db` | Copy taken before the first `mcrar tag`; can be deleted |
 | Catalog backup (M9) | `data/catalog.pre-m9.db` | Copy taken 2026-10-26 before the scene tags, schema v5 and the labelling pool |
 | Catalog backup (M12) | `data/catalog.pre-m12.db` | Copy taken 2026-10-28 before the Freesound library build for the demo |
@@ -819,6 +933,7 @@ The first M11 step after the presentation (plan agreed 2026-10-29; branch `m11-p
 | Talk script | `.cache/MCRAR presentation script.md`; private page https://claude.ai/artifact/QmeuMW87nxYMgoDwjRedMk | who says what, timings, the demo talk-along, likely and tricky questions (ranking, the ML, the slide numbers, CLAP's training data, the LLM and rerank) |
 | Presentation sources | `.cache/presentation-src/` (README inside) | deck builder, screenshot and video recorders, PowerPoint COM scripts, screenshots, the QR scripts (`make_qr.py`, `add_qr.ps1`) |
 | Preview build | `dist/MCRAR-0.1.0-preview-win64.zip`, `dist/release-notes-v0.1.0-preview.md`; stage `build/preview/` | the zip uploaded as `v0.1.0-preview` (2026-10-30) and its release notes; the stage (about 1 GB) can be deleted, `scripts/build-preview.ps1` rebuilds both |
+| Copied-in music | `data/library/` | Files added under "Your files" by copying, named `<sha256><ext>` (§3.20). Not created yet on the owner's machine (2026-11-03); created on the first copy. Deleting a file here by hand breaks its track |
 | No-ml test venv | `.cache/ci-venv-m11/` | scratch venv without the `ml` extra for the pre-push suite; recreated by `uv sync --locked` |
 
 ### 4.1 Cleanup candidates (measured 2026-10-28; nothing deleted yet)
@@ -900,19 +1015,14 @@ M3b is merged and the real catalog is tagged. Still open:
   "search for more" had added without them. Demo searches (dungeon, boss fight, calm town,
   8-bit menu, rainy forest, stealth) mix both sources sensibly; stealth is the weakest, as the
   M9 eval predicts.
-- **Library table on a narrow window:** the track table is wider than about 1,050 px, so the
-  page scrolls sideways in a narrow window (seen in the in-app browser; not new in batch 2).
-- **No way to remove a track** (found by the owner on 2026-10-28 while testing local files).
-  When a local file is moved or deleted, its track stays in the Library and in search results,
-  with its embeddings and tags, and playback fails; nothing in the UI, the API or the CLI
-  removes it. `CatalogRepository.delete_track` exists (it cascades to features, tags,
-  embeddings and shortlist rows) but has no caller. Wanted:
-  - a Remove action in the Library (and the track drawer), with a confirmation;
-  - a Maintenance step that finds local tracks whose file is gone and offers to remove them;
-  - the same for any track (for example an unwanted Jamendo or Freesound import);
-  - decide what happens to its ratings and scene labels, which reference the track id.
-  It fits with the after-demo local-music work (§3.17), where copied files under
-  `data/library/` would also be deleted.
+- **Library table on a narrow window: fixed 2026-11-03** (§3.20). The table now fits its box
+  from 560 px up, and the page no longer scrolls sideways.
+- **No way to remove a track** (found by the owner on 2026-10-28): **done 2026-11-03** (§3.20).
+  Any track can be removed from its details panel, ratings and scene labels go with it after a
+  warning that counts them, and Maintenance finds and removes local tracks whose file is gone.
+  The CLI still has no remove command. The owner's two test tracks 1569 and 1570
+  (from a test folder that is gone) are what that card finds on the real catalog; they
+  were left for the owner to remove or re-link.
 - **The weak-match notice rarely fires with the LLM on** (measured 2026-10-28 on the real
   catalog). `search.weak_cosine` (0.40) was calibrated in M4 on raw queries (§3.10). The LLM parse
   rewrites a request into a rich English description, which scores far higher: 日本のアニメの
@@ -960,7 +1070,8 @@ M3b is merged and the real catalog is tagged. Still open:
   - **Add-to-project menu.** It makes one request per project to find which projects already
     hold a track; a "projects containing track" endpoint would be cleaner if there are many
     projects.
-  - **Narrow windows.** Below about 900 px the header scrolls sideways; the UI is desktop-first.
+  - **Narrow windows.** The header fits down to 600 px since 2026-11-03: below 700 px the
+    status shows only its dot. Narrower than that is untested; the UI is desktop-first.
   - **Cancelled imports.** Tracks whose metadata was saved before a cancel stay in the catalog
     without analysis or embedding; "Re-embed missing tracks" completes them.
 - **QoL batch 1 follow-ups (2026-10-27):**
@@ -980,8 +1091,11 @@ The owner's order after the presentation (2026-10-28, §3.18):
    [`v0.1.0-preview`](https://github.com/opoeci6/MCRAR/releases/tag/v0.1.0-preview) (§3.19).
    Still untested: a Windows without the VC++ redistributable. Releases are manual for now (the
    owner uploads the zip); a GitHub Actions release workflow on a `v*` tag was deferred.
-2. **The local-music picker, next** ("Browse…" and drop/choose files, §3.17).
-3. **M11 desktop window** (pywebview, WebView2) around the same build.
+2. **The local-music picker: done** (2026-11-03, §3.20), with removing tracks and the
+   missing-files check. No preview zip for it (owner).
+3. **M11 desktop window, next** (pywebview, WebView2) around the same build. It can replace
+   the folder browser with the native folder dialog (`useFolderPicker`, §3.20), and its build
+   becomes the next release.
 
 These others can follow in any order:
 - **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with

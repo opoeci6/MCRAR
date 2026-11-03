@@ -18,6 +18,8 @@ Design
 - ``POST /api/ingest/links`` adds the tracks named by pasted Jamendo and Freesound links (kind
   ``ingest-links``, see :mod:`mcrar.sources.links`). No valid link is a 422, a needed key that is
   not set a 503.
+- ``POST /api/ingest/files`` adds files that ``POST /api/library/files`` copied into the library
+  folder (kind ``ingest-files``): each entry names the hash-named file and the title to show.
 - The job runs the same pipeline as the CLI (:mod:`mcrar.ingest.pipeline`) with the stages of
   :func:`mcrar.ingest.stages.build_stages`. Embedders come from the server's model pool, the same
   loaded model search uses; the job never closes it. Without torch an ingest still analyses the
@@ -46,6 +48,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from mcrar.api.jobs import FINAL_EVENTS, Job, JobBusyError, JobNotRunningError, ProgressSink
 from mcrar.api.models import NO_TORCH_MESSAGE
+from mcrar.api.routes.library_files import library_dir
 from mcrar.api.routes.search import FiltersBody, resolve_filters
 from mcrar.api.state import AppState, StateDep
 from mcrar.recommend import SearchRequest
@@ -154,6 +157,25 @@ class LocalIngestBody(BaseModel):
     license: str | None = Field(None, max_length=200)
     force: bool = False
     embed: bool = True
+
+
+LIBRARY_FILE_PATTERN = r"^[0-9a-f]{64}\.[a-z0-9]+$"
+
+
+class LibraryFileEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file: str = Field(pattern=LIBRARY_FILE_PATTERN)  # as answered by POST /api/library/files
+    title: str = Field(min_length=1, max_length=300)
+
+
+class FilesIngestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    files: list[LibraryFileEntry] = Field(min_length=1, max_length=1000)
+    license: str | None = Field(None, max_length=200)
+    embed: bool = True
+    force: bool = False
 
 
 class ReprocessBody(BaseModel):
@@ -583,6 +605,33 @@ def ingest_local_route(body: LocalIngestBody, state: StateDep) -> dict[str, Any]
 
     params = {**body.model_dump(exclude_none=True), "path": str(folder)}
     return _start(state, "ingest-local", params, run)
+
+
+@router.post("/api/ingest/files", status_code=202)
+def ingest_files_route(body: FilesIngestBody, state: StateDep) -> dict[str, Any]:
+    """Add files of the library folder (kind ``ingest-files``), each with the title given."""
+    from mcrar.ingest import ingest_files
+    from mcrar.sources.local_folder import parse_override
+
+    parse_override(body.license)  # validates the licence now (ValueError)
+    library = library_dir(state.settings)
+    entries = [(library / entry.file, entry.title) for entry in body.files]
+    missing = [path.name for path, _ in entries if not path.is_file()]
+    if missing:
+        more = f" and {len(missing) - 1} more" if len(missing) > 1 else ""
+        raise ValueError(f"not in the library: {missing[0]}{more}")
+
+    def run(sink: ProgressSink) -> IngestReport:
+        return ingest_files(
+            entries,
+            state.repo,
+            license_override=body.license,
+            force=body.force,
+            stages=_ingest_stages(state, body.embed, sink),
+            on_progress=sink.on_event,
+        )
+
+    return _start(state, "ingest-files", body.model_dump(exclude_none=True), run)
 
 
 @router.post("/api/ingest/reprocess", status_code=202)

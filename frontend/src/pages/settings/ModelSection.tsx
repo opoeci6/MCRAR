@@ -50,14 +50,9 @@ export function ModelSection({ view, onUpdated }: SectionProps) {
         hint={t.model.hint}
         value={selected}
         disabled={pinned || pending}
-        onChange={(event) => setDraft(event.target.value)}
-      >
-        {view.embedders.map((embedder) => (
-          <option key={embedder.key} value={embedder.key}>
-            {embedderName(embedder)}
-          </option>
-        ))}
-      </Select>
+        options={view.embedders.map((embedder) => ({ value: embedder.key, label: embedderName(embedder) }))}
+        onValueChange={setDraft}
+      />
       {pinned ? <p className={styles.note}>{t.envPinned(envVarName('default_embedder'))}</p> : null}
       {model?.state === 'error' ? (
         <Notice kind="error" title={s.errorTitle}>

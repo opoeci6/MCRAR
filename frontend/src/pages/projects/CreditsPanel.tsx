@@ -49,12 +49,13 @@ export function CreditsPanel({ projectId }: { projectId: number }) {
           <Select
             label={t.previewFormat}
             value={format}
-            onChange={(event) => setFormat(event.target.value as PreviewFormat)}
+            options={[
+              { value: 'md', label: t.previewFormats.md },
+              { value: 'txt', label: t.previewFormats.txt },
+            ]}
+            onValueChange={(next) => setFormat(next as PreviewFormat)}
             className={styles.previewFormat}
-          >
-            <option value="md">{t.previewFormats.md}</option>
-            <option value="txt">{t.previewFormats.txt}</option>
-          </Select>
+          />
           <CreditsPreview key={format} projectId={projectId} format={format} />
         </>
       ) : null}

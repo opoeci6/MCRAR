@@ -297,7 +297,8 @@ class SearchService:
             by = "text search" if parsed.semantic_text or reference is None else "reference search"
             notes.append(
                 f"{outcome.unembedded} matching track(s) have no {self.model_id} embedding, so "
-                f"{by} cannot find them; run: mcrar embed"
+                f"{by} cannot find them; "
+                'use "Re-embed missing tracks" in Library > Maintenance, or run: mcrar embed'
             )
         if not outcome.ranked:
             notes.append(_empty_note(attempt.filters))
@@ -336,7 +337,7 @@ class SearchService:
         if vector is None:
             raise SearchError(
                 f'"{label}" has no {self.model_id} embedding yet, so it cannot be a reference '
-                'song; use "Re-embed missing tracks" in Settings, or run: mcrar embed'
+                'song; use "Re-embed missing tracks" in Library > Maintenance, or run: mcrar embed'
             )
         return ReferenceQuery(vector, label, "track", track_id, weight)
 

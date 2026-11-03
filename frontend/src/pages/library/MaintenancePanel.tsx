@@ -1,12 +1,18 @@
 import { reprocess } from '../../api'
 import { Button } from '../../ui/Button'
+import { MissingFilesCard } from './MissingFilesCard'
 import { libraryStrings as t } from './strings'
 import { StartError } from '../../features/jobs/StartError'
 import type { StartProps } from './startJob'
 import { useStartJob } from '../../features/jobs/useStartJob'
 import styles from './Forms.module.css'
 
-export function MaintenancePanel({ busy, onStarted, onShowRunning }: StartProps) {
+export interface MaintenancePanelProps extends StartProps {
+  /** Tracks were removed, so the track list is out of date. */
+  onCatalogChanged?: () => void
+}
+
+export function MaintenancePanel({ busy, onStarted, onShowRunning, onCatalogChanged }: MaintenancePanelProps) {
   const { pending, error, start } = useStartJob(onStarted)
   return (
     <div className={styles.form}>
@@ -26,6 +32,7 @@ export function MaintenancePanel({ busy, onStarted, onShowRunning }: StartProps)
             {t.maintenance.tagAction}
           </Button>
         </div>
+        <MissingFilesCard busy={busy} onChanged={onCatalogChanged} />
       </div>
       <StartError error={error} onShowRunning={onShowRunning} />
     </div>

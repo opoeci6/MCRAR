@@ -23,6 +23,9 @@
 }
 
 .scroll {
+  /* The anchor for the `sr-only` texts in the table, which are absolutely positioned and would
+     otherwise widen the page. */
+  position: relative;
   overflow-x: auto;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -56,6 +59,37 @@
 .number {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+/* Above 560 px the table fits, so the box does not scroll and the add-to-project menu is not clipped. */
+@media (min-width: 561px) {
+  .scroll {
+    overflow: visible;
+  }
+}
+
+.wrap,
+.titleButton {
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: none;
+  margin-top: 2px;
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* In a narrow window the Source and Length columns give way to a line under the title. */
+@media (max-width: 900px) {
+  .wideOnly {
+    display: none;
+  }
+
+  .meta {
+    display: block;
+  }
 }
 
 .titleButton {
