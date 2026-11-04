@@ -30,7 +30,7 @@ export function AddMusic({ onCatalogChanged, ...props }: AddMusicProps) {
   const [tab, setTab] = usePersistentState<TabId>('library.addTab', 'jamendo')
   const base = useId()
   return (
-    <section className={styles.section} aria-labelledby={`${base}-heading`}>
+    <section className={styles.section} aria-labelledby={`${base}-heading`} data-tour="add-music">
       <h2 id={`${base}-heading`}>{t.add.heading}</h2>
       <div role="tablist" aria-label={t.add.tabs} className={styles.tabs}>
         {TABS.map((item) => (

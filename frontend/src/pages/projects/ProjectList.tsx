@@ -26,7 +26,7 @@ export function ProjectList({ projects, selectedId }: ProjectListProps) {
   const [creating, setCreating] = useState(false)
 
   return (
-    <aside className={styles.list} aria-label={t.listLabel}>
+    <aside className={styles.list} aria-label={t.listLabel} data-tour="projects-list">
       <div className={styles.listHeader}>
         <h2 className={styles.listTitle}>{t.listLabel}</h2>
         {creating ? null : (

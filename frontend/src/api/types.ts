@@ -496,9 +496,17 @@ export interface LlmPreset {
   docs_url: string
 }
 
+/** Interface state kept with the install (config/settings.toml), not in the browser. */
+export interface UiSettings {
+  /** The first-run tour was finished or skipped. */
+  tutorial_seen: boolean
+}
+
 export interface EditableSettings {
   default_embedder: string
   llm: LlmSettings
+  /** Absent from an older backend. */
+  ui?: UiSettings
   search: {
     pool_size: number
     max_per_artist: number
@@ -526,6 +534,7 @@ export interface SettingsView {
 export interface SettingsUpdate {
   default_embedder?: string
   llm?: Partial<LlmSettings>
+  ui?: Partial<UiSettings>
   search?: {
     pool_size?: number
     max_per_artist?: number

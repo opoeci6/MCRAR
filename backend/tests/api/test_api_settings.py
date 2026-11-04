@@ -22,7 +22,8 @@ def test_get_returns_editable_read_only_env_and_embedders(tmp_path: Path) -> Non
         body = client.get("/api/settings").json()
         settings = client.app.state.mcrar.settings
     assert set(body) == {"editable", "read_only", "overridden_by_env", "embedders", "llm_presets"}
-    assert set(body["editable"]) == {"default_embedder", "search", "llm"}
+    assert set(body["editable"]) == {"default_embedder", "search", "llm", "ui"}
+    assert body["editable"]["ui"] == {"tutorial_seen": False}
     assert body["editable"]["default_embedder"] == "clap"
     assert set(body["editable"]["search"]) == {
         "pool_size",
@@ -143,6 +144,9 @@ def test_a_field_pinned_by_the_environment_is_a_409_naming_it(
         {"search": {"weights": {"tags": -1}}},
         {"search": {"weights": {"semantic": 0, "tags": 0, "bpm": 0, "energy": 0}}},
         {"default_embedder": ""},
+        {"ui": {"unknown": True}},
+        {"ui": {"tutorial_seen": "maybe"}},
+        {"ui": True},
     ],
 )
 def test_invalid_bodies_are_422_and_change_nothing(tmp_path: Path, body: dict) -> None:
@@ -173,3 +177,27 @@ def test_the_weak_match_threshold_is_editable_and_unset_by_default(tmp_path: Pat
         assert response.json()["editable"]["search"]["weak_cosine"] == 0.5
         assert state.settings.search.weak_cosine == 0.5
         assert disk(state.settings.home) == {"search": {"weak_cosine": 0.5}}
+
+
+def test_the_tour_flag_is_saved_with_the_install_and_touches_nothing_else(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        state = client.app.state.mcrar
+        response = client.put("/api/settings", json={"ui": {"tutorial_seen": True}})
+        assert response.status_code == 200
+        assert response.json()["editable"]["ui"] == {"tutorial_seen": True}
+        assert state.settings.ui.tutorial_seen is True
+        home = state.settings.home
+        assert disk(home) == {"ui": {"tutorial_seen": True}}
+    # a fresh server on the same home reads it back
+    with make_client(tmp_path) as client:
+        assert client.get("/api/settings").json()["editable"]["ui"]["tutorial_seen"] is True
+
+
+def test_the_tour_flag_can_be_set_by_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MCRAR_UI__TUTORIAL_SEEN", "true")
+    with make_client(tmp_path) as client:
+        body = client.get("/api/settings").json()
+        assert body["editable"]["ui"]["tutorial_seen"] is True
+        assert body["overridden_by_env"] == ["ui.tutorial_seen"]
