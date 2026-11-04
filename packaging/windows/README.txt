@@ -1,9 +1,9 @@
-MCRAR - preview build for Windows 10/11 (64-bit)
-================================================
+MCRAR for Windows 10/11 (64-bit)
+================================
 
 MCRAR finds music from a text description ("calm piano for a rainy city level")
-and runs entirely on your PC. This preview needs no installation, no Python and
-no admin rights.
+and runs entirely on your PC. It needs no installation, no Python and no admin
+rights.
 
 First steps
 -----------
@@ -11,8 +11,8 @@ First steps
    deep folders: some of the bundled files have long names. It needs about
    2.5 GB free (1.1 GB unzipped, 0.8 GB for the model). Unzipping 30,000
    files can take several minutes: wait until it has finished.
-2. Double-click MCRAR.cmd. A window opens and, after a few seconds, your
-   browser shows MCRAR. If Windows blocks the file (SmartScreen, "Windows
+2. Double-click MCRAR.cmd. MCRAR opens in its own window after a few
+   seconds. If Windows blocks the file (SmartScreen, "Windows
    protected your PC"), click "More info" and then "Run anyway". If the zip
    was downloaded, you can also right-click it before unzipping, open
    Properties and tick "Unblock".
@@ -21,7 +21,12 @@ First steps
    work offline.
 4. A short tour of the main tabs opens on the first start. To see it again,
    open Settings, then Tutorial.
-5. Close the window to stop MCRAR.
+5. Close the MCRAR window to stop MCRAR. If an import is still running, it
+   asks first.
+
+The window uses Microsoft Edge WebView2, which Windows 10/11 already has. On a
+PC without it, MCRAR says so and opens in your web browser instead; then the
+message that stays open is the way to quit.
 
 Adding music
 ------------
@@ -41,13 +46,18 @@ Options
 -------
 Run MCRAR.cmd from a command prompt to pass options:
   MCRAR.cmd --port 8010     use another port (default 8000)
-  MCRAR.cmd --no-open       do not open the browser
+  MCRAR.cmd --console       keep a console open and show the log in it
+                            (for troubleshooting)
+
+Something went wrong? MCRAR writes a log to logs\mcrar.log in this folder.
+Start-up problems are also shown in a message box.
 
 Where things are stored
 -----------------------
 Everything stays in this folder: the music library (data\), settings
-(config\), downloaded models (.cache\) and API keys (.secrets\). Nothing is
-written to your user profile or the registry. To remove MCRAR, delete the
+(config\), downloaded models and the window's browser data (.cache\), API
+keys (.secrets\) and the log (logs\). Nothing is written to your user
+profile or the registry. To remove MCRAR, delete the
 folder. To move it, close the window and move the whole folder.
 
 Licences

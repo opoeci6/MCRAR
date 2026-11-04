@@ -90,9 +90,19 @@ def test_launcher_cache_variables_match_the_dev_environment() -> None:
 
 
 def test_launcher_runs_the_bundled_python_isolated() -> None:
-    assert '"%APP%\\python\\python.exe" -I -m mcrar serve --open --warm %*' in launcher_text(), (
-        "the launcher must run the bundled python with -I and pass the user's options on"
-    )
+    text = launcher_text()
+    # Normal start: the window, no console (pythonw), the user's options passed on.
+    start = r'start "" "%APP%\python\pythonw.exe" -I -m mcrar desktop --warm %*'
+    assert start in text, "start the bundled pythonw with -I and pass the user's options on"
+    # --console: the same command in this console, with the log printed there.
+    console = r'"%APP%\python\python.exe" -I -m mcrar desktop --warm --console-log %1 %2 %3 %4 %5'
+    assert console in text
+    assert 'if /i "%~1"=="--console" goto console' in text
+    assert "\nshift\n" in text.replace("\r\n", "\n")  # %* still holds --console: list the rest
+
+
+def test_launcher_checks_that_pythonw_is_there() -> None:
+    assert r'if not exist "%APP%\python\pythonw.exe"' in launcher_text()
 
 
 def load_zip_script():  # noqa: ANN201 - a module object
@@ -106,7 +116,7 @@ def test_launcher_refuses_a_cut_off_unzip_before_starting_python() -> None:
     marker = load_zip_script().COMPLETE_MARKER.replace("/", "\\")
     text = launcher_text()
     check = text.index(f'if not exist "%APP%\\{marker}"')
-    assert check < text.index("-m mcrar serve"), "check the marker before starting MCRAR"
+    assert check < text.index("-m mcrar desktop"), "check the marker before starting MCRAR"
 
 
 def test_the_complete_marker_is_the_last_entry_of_the_zip(tmp_path: Path) -> None:

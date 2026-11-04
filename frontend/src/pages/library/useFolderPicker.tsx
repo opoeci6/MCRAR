@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useDesktopApi } from '../../lib/desktop'
 import { FolderBrowser } from './FolderBrowser'
 
 export interface FolderPicker {
@@ -18,11 +19,29 @@ interface Request {
 }
 
 /**
- * The one way the Library asks for a folder. Today it opens the folder browser in a side panel,
- * which walks the folders through the backend. A desktop window can replace this hook with one
- * that calls the native folder dialog and renders no `element`; the callers do not change.
+ * The one way the Library asks for a folder. In the desktop window (`mcrar desktop`) it opens the
+ * native folder dialog and renders nothing; in a browser it opens the folder browser in a side
+ * panel, which walks the folders through the backend. The callers do not change.
  */
 export function useFolderPicker(): FolderPicker {
+  const desktop = useDesktopApi()
+  const browser = useBrowserFolderPicker()
+  const native = useCallback(
+    async (initialPath?: string) => {
+      if (!desktop) return null
+      try {
+        return (await desktop.pick_folder(initialPath ?? null)) || null
+      } catch {
+        return null // the dialog failed: as if cancelled, the path field still works
+      }
+    },
+    [desktop],
+  )
+  return desktop ? { pick: native, element: null } : browser
+}
+
+/** The folder browser in a side panel (the browser, where there is no native dialog). */
+function useBrowserFolderPicker(): FolderPicker {
   const [request, setRequest] = useState<Request | null>(null)
   const latest = useRef<Request | null>(null)
 

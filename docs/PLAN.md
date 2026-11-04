@@ -20,7 +20,9 @@
 > its own Python and CPU PyTorch that opens the UI in the browser, then a desktop window
 > (pywebview) after the local-music picker. PyInstaller is no longer the plan. The current state
 > is in STATUS §1 and §5.3. Update 2026-10-30: the preview zip is built by
-> `scripts/build-preview.ps1` (STATUS §3.19).
+> `scripts/build-preview.ps1` (STATUS §3.19). Update 2026-11-04: the desktop window is
+> `mcrar desktop` (pywebview, in `backend/src/mcrar/desktop.py`, not a separate `desktop/` shell),
+> and the zip starts it (STATUS §3.22).
 
 ## Context
 
@@ -184,7 +186,7 @@ These are different things.
 | Model weights | `.cache/huggingface/`, `.cache/torch/` | `HF_HOME`, `TORCH_HOME` |
 | Datasets / catalog DB / trained heads | `data/`, `models/` | config paths are relative to the repo |
 | Dev secrets (API keys) | `.secrets/secrets.toml` | `SecretStore` backend `file` is the dev default. The OS keyring backend is opt-in, for the packaged app only, because keyring writes to Windows Credential Manager. |
-| Build output | `build/`, `dist/` | PyInstaller |
+| Build output | `build/`, `dist/` | `scripts/build-preview.ps1` (the portable zip) |
 
 **Scripts (M0):**
 - `scripts/bootstrap.ps1` (plus a `bootstrap.sh` for Git Bash): downloads the pinned versions of uv, Node and ffmpeg (optional) into `.tools/`, **verifies their SHA-256 checksums**, and is idempotent.
@@ -225,7 +227,7 @@ Every milestone needs:
 | M8 | Spotify (`sources/spotify.py`): Client Credentials with the user's own keys; `/search?type=track`; 429 handling with backoff; disabled cleanly when no keys are set; metadata only | Mocked tests pass; the UI shows a separate section with links out |
 | M9 | Game-scene tags (see §6): prompt sets plus a ~200–300-track hand-labelled eval set using a small labelling page in the UI; head trained only if it beats zero-shot | Per-scene precision@10 reported in the model card |
 | M10 | Reference song: upload a file or pick a track; audio→audio similarity, optionally blended with text (`α·text + (1−α)·ref`) | API and UI work; covered by tests |
-| M11 | Desktop packaging: pywebview launcher, PyInstaller one-folder build, models downloaded on first run with progress, CPU build by default | Packaged app searches on a clean Windows machine |
+| M11 | Desktop packaging: pywebview launcher, a portable zip with its own Python (PyInstaller dropped, see the note above), models downloaded on first run with progress, CPU build by default | Packaged app searches on a clean Windows machine |
 | Later | Freesound source (API key, license filter); loop-point and jingle-vs-BGM analysis; image/concept-art → music description via a vision LLM; ONNX export to shrink the build | — |
 
 **M2 details:**
