@@ -1,7 +1,8 @@
 """The settings page: ``GET/PUT /api/settings`` and the secrets store under ``/api/secrets``.
 
-Settings: only the keys the page may edit (default embedder, search knobs, the LLM section) are
-accepted, as a partial body. A change is checked (known embedder, no field that an ``MCRAR_*``
+Settings: only the keys the page may edit (default embedder, search knobs, the LLM section, and
+the interface state ``ui``, e.g. whether the first-run tour was seen) are accepted, as a partial
+body. A change is checked (known embedder, no field that an ``MCRAR_*``
 variable pins, because the variable would win anyway), merged into ``config/settings.toml`` with
 :func:`mcrar.config.save_settings_update`, and then the settings are rebuilt from disk and
 environment and handed to the running :class:`~mcrar.api.state.AppState`, so the change takes
@@ -92,10 +93,15 @@ class LLMUpdate(_Body):
     rerank_top_n: int | None = None
 
 
+class UiUpdate(_Body):
+    tutorial_seen: bool | None = None
+
+
 class SettingsUpdate(_Body):
     default_embedder: str | None = None
     search: SearchUpdate | None = None
     llm: LLMUpdate | None = None
+    ui: UiUpdate | None = None
 
 
 def _flatten(value: dict[str, Any], prefix: str = "") -> list[str]:
@@ -126,6 +132,7 @@ def settings_view(settings: Settings) -> dict[str, Any]:
                 "weights": search.weights.model_dump(),
             },
             "llm": llm.model_dump(),
+            "ui": settings.ui.model_dump(),
         },
         "read_only": {name: _plain(getattr(settings, name)) for name in READ_ONLY_FIELDS},
         "overridden_by_env": env_overrides(),

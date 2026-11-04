@@ -129,6 +129,12 @@ export const settingsStrings = {
     removeFailed: "Couldn't remove the key",
   },
 
+  tutorial: {
+    heading: 'Tutorial',
+    hint: 'A short walk through the main tabs.',
+    start: 'Take the tour again',
+  },
+
   about: {
     heading: 'About',
     version: 'Version',

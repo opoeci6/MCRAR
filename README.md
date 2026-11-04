@@ -69,7 +69,8 @@ track metadata, never audio or keys.
 
 The first start downloads the CLAP model (about 0.8 GB), once. The preview runs on the CPU and
 needs no installation: Python, PyTorch, your library, settings, keys and models all stay inside
-that folder. Delete the folder to remove it. Then add music as described below (keys, then
+that folder. Delete the folder to remove it. A short tour of the main tabs opens on the first
+start; Settings → Tutorial shows it again. Then add music as described below (keys, then
 Library → Add music). The `README.txt` in the zip has the details.
 
 ## Run it from source (Windows 10/11)
@@ -90,7 +91,7 @@ uv run --directory backend mcrar serve --warm    # start MCRAR
 ```
 
 Open <http://127.0.0.1:8000>. On the first start MCRAR downloads the CLAP model (about 0.8 GB),
-once.
+once, and a short tour shows the main tabs (Settings → Tutorial shows it again).
 
 Then add music:
 

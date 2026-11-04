@@ -8,7 +8,7 @@ const FREESOUND = 'freesound_api_key'
 /** The API keys that are not tied to a setting (today: the Jamendo client id and the Freesound API key). */
 export function SecretsSection() {
   return (
-    <section className={styles.section} aria-labelledby="settings-secrets-heading">
+    <section className={styles.section} aria-labelledby="settings-secrets-heading" data-tour="settings-keys">
       <h2 id="settings-secrets-heading">{t.secrets.heading}</h2>
       <SecretField
         name={JAMENDO}

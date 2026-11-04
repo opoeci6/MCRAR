@@ -590,7 +590,7 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
         </div>
       ) : null}
 
-      <form className={styles.queryBar} role="search" onSubmit={onSubmit}>
+      <form className={styles.queryBar} role="search" onSubmit={onSubmit} data-tour="search-box">
         <div className={styles.queryRow}>
           <TextInput
             className={styles.queryField}
@@ -631,7 +631,7 @@ export default function SearchPage({ params }: Partial<PageProps> = {}) {
       </form>
 
       <div className={styles.layout}>
-        <aside className={styles.filters} aria-label={s.filters.heading}>
+        <aside className={styles.filters} aria-label={s.filters.heading} data-tour="search-filters">
           <Button
             className={styles.filtersToggle}
             aria-expanded={filtersOpen}

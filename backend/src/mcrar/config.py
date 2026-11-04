@@ -157,6 +157,16 @@ class LLMSettings(BaseModel):
         return value
 
 
+class UiSettings(BaseModel):
+    """Interface state kept with the install (not in the browser), so it survives the desktop
+    window's private WebView and a change of browser."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    # The first-run tour has been finished or skipped; Settings > Tutorial shows it again.
+    tutorial_seen: bool = False
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MCRAR_", env_nested_delimiter="__", extra="forbid"
@@ -176,6 +186,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     search: SearchSettings = SearchSettings()
     llm: LLMSettings = LLMSettings()
+    ui: UiSettings = UiSettings()
 
     @classmethod
     def settings_customise_sources(
@@ -207,7 +218,7 @@ def get_settings(**overrides: Any) -> Settings:
 
 # -- editing the settings file (the settings page) ----------------------------------------------
 
-EDITABLE_KEYS = frozenset({"default_embedder", "search", "llm"})
+EDITABLE_KEYS = frozenset({"default_embedder", "search", "llm", "ui"})
 _ENV_PREFIX = "MCRAR_"
 
 
@@ -219,6 +230,7 @@ class _EditableSettings(BaseModel):
     default_embedder: str = Field("clap", min_length=1)
     search: SearchSettings = SearchSettings()
     llm: LLMSettings = LLMSettings()
+    ui: UiSettings = UiSettings()
 
 
 def settings_file(home: Path) -> Path:
@@ -248,8 +260,8 @@ def save_settings_update(home: Path, update: Mapping[str, Any]) -> None:
     """Merge ``update`` into ``<home>/config/settings.toml`` and write it atomically.
 
     ``update`` holds only editable keys (``default_embedder``, ``search`` with its nested
-    ``weights``, ``llm``); nested tables are merged key by key and every other key already in the
-    file is kept, except a legacy key (:data:`_LEGACY_KEYS`), which is dropped. Raises
+    ``weights``, ``llm``, ``ui``); nested tables are merged key by key and every other key already
+    in the file is kept, except a legacy key (:data:`_LEGACY_KEYS`), which is dropped. Raises
     ``ValueError`` (file untouched) for a key that is not editable or a value that does not
     validate.
     """

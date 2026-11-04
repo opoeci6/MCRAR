@@ -26,14 +26,15 @@ Last updated: 2026-11-03.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker followed on 2026-11-03 (§3.20) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. Next: a first-run tutorial, then a desktop window (pywebview). See §3.19 and §5.3 |
-| Local-music picker | Done (2026-11-03) | `dev` (merged locally, not pushed) | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. Next: a first-run tutorial (§5.3). See §3.20 |
+| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. First-run tour built (§3.21); next a desktop window (pywebview). See §3.19 and §5.3 |
+| Local-music picker | Done (2026-11-03) | `dev` (merged locally, not pushed) | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. The first-run tour followed (§3.21). See §3.20 |
+| First-run tour | Done (2026-11-03) | `dev` (merged locally, not pushed) | A welcome card and a 7-step spotlight tour over the real tabs, shown once on the first start and again from Settings → Tutorial; "seen" is kept in `config/settings.toml`. See §3.21 |
 
-Test suite, counted on `local-picker` (2026-11-03):
-- Backend, default env: 2,499 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,486 passed, 32 skipped.
+Test suite, counted on `tutorial` (2026-11-03):
+- Backend, default env: 2,504 passed, 30 skipped.
+- Without the `ml` extra (as CI runs it): 2,491 passed, 32 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 597 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 634 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -909,6 +910,40 @@ gets the next build.
   - **Not done:** the player bar keeps the old badge of a playing track until it is played
     again.
 
+### 3.21 First-run tour (2026-11-03)
+The owner asked for a step-by-step tutorial for new users, revisitable from Settings, before the
+desktop window. Their choice of form: a welcome card, then a spotlight tour over the real UI.
+Built on branch `tutorial`.
+- **What it does.** On the first start a welcome card explains MCRAR (and that the search model
+  downloads in the background). "Take the tour" then walks 7 steps: the tabs, Settings → API
+  keys, Library → Add music, the search box, the filters, Projects, and Settings → Tutorial.
+  Each step opens its tab, dims the page and outlines the control; the card has Skip, Back and
+  Next/Done. Keys: Escape = Skip, ← → = Back/Next. Closing it in any way goes back to the tab
+  the user was on and returns focus there. Settings → Tutorial → "Take the tour again" starts it
+  again.
+- **Where "seen" is kept: `config/settings.toml`** (`[ui] tutorial_seen`, editable through
+  `PUT /api/settings`, overridable by `MCRAR_UI__TUTORIAL_SEEN`), not localStorage. pywebview
+  runs WebView2 in private mode by default, so browser storage would not survive a restart of
+  the desktop window, and the zip opens whichever browser is the default. The UI starts the
+  tour only when `GET /api/settings` says `tutorial_seen: false` explicitly; a failed load or
+  an older backend never starts it. A failed save is ignored, so the tour shows again. An
+  existing install (the owner's) sees the welcome once; Skip ends it for good.
+- **How it is built** (`frontend/src/features/tour/`, React only, no tour library):
+  - the targets carry `data-tour="…"` attributes;
+  - the overlay is a portal above everything that swallows clicks; the spotlight is a box with a
+    large shadow;
+  - the card is a modal dialog with a focus trap (`ui/focusTrap.ts`, shared with the Drawer);
+  - a step waits up to 3 s for its target and otherwise shows the card centred without a
+    spotlight;
+  - a target taller than 45% of the window (a whole section) is scrolled up under the header
+    and only its top part is lit; the card never covers the sticky header;
+  - at 560 px and narrower the card is a sheet at the bottom.
+- **Checked** in the in-app browser on a scratch home with an empty catalog, at 1280, 600 and
+  390 px, light and dark: every step lands on its tab with the right control lit and the card
+  on screen; Done, Skip and Escape go back and save the flag, and a reload does not show it
+  again; Settings restarts it; focus returns to the Settings button.
+- **Wording** is a first draft (`features/tour/strings.ts`); the owner may want to adjust it.
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -1093,10 +1128,9 @@ The owner's order after the presentation (2026-10-28, §3.18):
    owner uploads the zip); a GitHub Actions release workflow on a `v*` tag was deferred.
 2. **The local-music picker: done** (2026-11-03, §3.20), with removing tracks and the
    missing-files check. No preview zip for it (owner).
-3. **A first-run tutorial, next** (owner, 2026-11-03; before the desktop window). New users
-   get a step-by-step walkthrough of the app, as an overlay or a better form (to be designed).
-   It must be possible to see it again from Settings. Not started; no design decided yet.
-4. **M11 desktop window** (pywebview, WebView2) around the same build. It can replace
+3. **A first-run tutorial: built** (2026-11-03, §3.21): a welcome card and a 7-step spotlight
+   tour, revisitable from Settings → Tutorial. Merged into `dev` locally, not pushed.
+4. **M11 desktop window, next** (pywebview, WebView2) around the same build. It can replace
    the folder browser with the native folder dialog (`useFolderPicker`, §3.20), and its build
    becomes the next release. To check under pywebview: downloads that use `window.open`
    (licence and track files).

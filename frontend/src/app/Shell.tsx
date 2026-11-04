@@ -55,7 +55,7 @@ export function Shell() {
           <a href={hrefFor('search')} className={styles.brand}>
             {strings.app.name}
           </a>
-          <nav aria-label={strings.app.mainNav} className={styles.nav}>
+          <nav aria-label={strings.app.mainNav} className={styles.nav} data-tour="nav">
             {PAGES.map((p) => (
               <a
                 key={p.id}

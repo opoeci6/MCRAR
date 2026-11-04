@@ -19,7 +19,9 @@ First steps
 3. The first start downloads the search model once (about 0.8 GB), so it needs
    an internet connection and a few minutes. Later starts are much faster and
    work offline.
-4. Close the window to stop MCRAR.
+4. A short tour of the main tabs opens on the first start. To see it again,
+   open Settings, then Tutorial.
+5. Close the window to stop MCRAR.
 
 Adding music
 ------------

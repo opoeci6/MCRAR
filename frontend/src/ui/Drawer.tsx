@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { strings } from '../strings'
 import { IconButton } from './Button'
 import { CloseIcon } from './icons'
+import { focusableIn, trapTabKey } from './focusTrap'
 import styles from './Drawer.module.css'
 
 export interface DrawerProps {
@@ -17,9 +18,6 @@ export interface DrawerProps {
   /** CSS width of the panel. Default 480px (never wider than the window). */
   width?: string
 }
-
-const FOCUSABLE =
-  'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])'
 
 /**
  * A modal side panel. Moves focus in when it opens and back to the opener when it closes, keeps
@@ -41,8 +39,8 @@ export function Drawer({ open, onClose, title, children, footer, width = '480px'
 
     const panel = panelRef.current
     // The first control after the close button, else the close button, else the panel.
-    const focusables = panel?.querySelectorAll<HTMLElement>(FOCUSABLE)
-    ;(focusables?.[1] ?? focusables?.[0] ?? panel)?.focus()
+    const focusables = focusableIn(panel)
+    ;(focusables[1] ?? focusables[0] ?? panel)?.focus()
 
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape' && !event.defaultPrevented) {
@@ -60,25 +58,6 @@ export function Drawer({ open, onClose, title, children, footer, width = '480px'
 
   if (!open) return null
 
-  const trapTab = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Tab') return
-    const items = Array.from(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
-    if (items.length === 0) {
-      event.preventDefault()
-      return
-    }
-    const first = items[0]
-    const last = items[items.length - 1]
-    const active = document.activeElement
-    if (event.shiftKey && (active === first || active === panelRef.current)) {
-      event.preventDefault()
-      last?.focus()
-    } else if (!event.shiftKey && active === last) {
-      event.preventDefault()
-      first?.focus()
-    }
-  }
-
   return createPortal(
     <div className={styles.root}>
       <div className={styles.backdrop} onClick={onClose} aria-hidden="true" />
@@ -90,7 +69,7 @@ export function Drawer({ open, onClose, title, children, footer, width = '480px'
         tabIndex={-1}
         className={styles.panel}
         style={{ width }}
-        onKeyDown={trapTab}
+        onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => trapTabKey(event, panelRef.current)}
       >
         <div className={styles.header}>
           <h2 id={titleId} className={styles.title}>

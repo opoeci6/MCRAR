@@ -13,6 +13,7 @@ import { ModelSection } from './ModelSection'
 import { SecretsSection } from './SecretsSection'
 import { settingsStrings as t } from './strings'
 import { TuningSection } from './TuningSection'
+import { TutorialSection } from './TutorialSection'
 import styles from './Section.module.css'
 
 export default function SettingsPage() {
@@ -46,6 +47,7 @@ export default function SettingsPage() {
           </>
         )}
         <SecretsSection />
+        <TutorialSection />
         {view ? <AboutSection view={view} /> : null}
       </div>
     </>
