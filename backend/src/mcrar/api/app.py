@@ -45,8 +45,16 @@ def frontend_dist(settings: Settings) -> Path:
     return settings.home / "frontend" / "dist"
 
 
+_INDEX_HEADERS = {"Cache-Control": "no-cache"}
+
+
 def _mount_frontend(app: FastAPI, dist: Path) -> None:
-    """Serve the built frontend: real files as they are, any other non-API path as index.html."""
+    """Serve the built frontend: real files as they are, any other non-API path as index.html.
+
+    index.html is sent with ``Cache-Control: no-cache``: it names the hashed bundle of the current
+    build, and a copy the browser kept would load the old interface after an update until the
+    page is reloaded. The hashed assets keep the default caching.
+    """
     root = dist.resolve()
     index = root / "index.html"
 
@@ -54,9 +62,9 @@ def _mount_frontend(app: FastAPI, dist: Path) -> None:
         if path == "api" or path.startswith("api/"):
             raise HTTPException(status_code=404)
         candidate = (root / path).resolve()
-        if path and candidate.is_file() and candidate.is_relative_to(root):
+        if path and candidate != index and candidate.is_file() and candidate.is_relative_to(root):
             return FileResponse(candidate)
-        return FileResponse(index)
+        return FileResponse(index, headers=_INDEX_HEADERS)
 
     app.add_api_route("/{path:path}", page, methods=["GET", "HEAD"], include_in_schema=False)
 

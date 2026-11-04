@@ -82,6 +82,17 @@ def test_built_frontend_is_served_with_spa_fallback(tmp_path: Path, dist: Path) 
         assert escape.status_code == 200 and escape.text == "<html>app</html>"
 
 
+def test_the_page_is_revalidated_but_the_hashed_assets_are_not(tmp_path: Path, dist: Path) -> None:
+    # After an update the browser must fetch the new index.html, which names the new bundle.
+    with make_client(tmp_path) as client:
+        for path in ("/", "/index.html", "/projects/3"):
+            response = client.get(path)
+            assert response.text == "<html>app</html>"
+            assert response.headers["cache-control"] == "no-cache", path
+        assert client.head("/").headers["cache-control"] == "no-cache"
+        assert "cache-control" not in client.get("/assets/app.js").headers
+
+
 def test_no_frontend_routes_without_a_build(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         assert client.get("/").status_code == 404
