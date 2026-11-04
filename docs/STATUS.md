@@ -943,6 +943,10 @@ Built on branch `tutorial`.
   on screen; Done, Skip and Escape go back and save the flag, and a reload does not show it
   again; Settings restarts it; focus returns to the Settings button.
 - **Wording** is a first draft (`features/tour/strings.ts`); the owner may want to adjust it.
+- **Found while installing it:** after the restart the browser showed its cached copy of the old
+  `index.html` (and so the old bundle, without the tour) until a reload. The server now sends
+  `index.html` with `Cache-Control: no-cache`; the hashed assets keep the default caching. This
+  matters for anyone who replaces the zip with a newer one.
 
 ## 4. State that lives only on the owner's machine (git-ignored)
 
