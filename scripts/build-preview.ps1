@@ -1,18 +1,18 @@
 <#
 .SYNOPSIS
-  Builds the Windows portable preview: dist\MCRAR-<version>-preview-win64.zip (own Python 3.11,
+  Builds the Windows portable app: dist\MCRAR-<version>-win64.zip (own Python 3.11,
   CPU-only PyTorch, the built frontend, the tag heads and a MCRAR.cmd launcher).
 
 .DESCRIPTION
   Run:  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-preview.ps1
   Needs the project toolchain from scripts\bootstrap.ps1 (uv, Node, the managed Python) and
   internet access (PyPI and download.pytorch.org). Nothing is installed system-wide: the stage is
-  build\preview\MCRAR-<version>-preview, the uv cache is .cache\uv, the zip goes to dist\.
+  build\preview\MCRAR-<version>, the uv cache is .cache\uv, the zip goes to dist\.
   Compatible with Windows PowerShell 5.1.
 
 .PARAMETER Dev
   Stage from the working tree (tracked and untracked files that are not ignored) instead of
-  `git archive HEAD`, allow a dirty tree and name the zip MCRAR-<version>-preview-dev-win64.zip.
+  `git archive HEAD`, allow a dirty tree and name the zip MCRAR-<version>-dev-win64.zip.
 
 .PARAMETER FrontendDist
   Copy this existing frontend build (relative paths are resolved from the repo root) instead of
@@ -62,8 +62,8 @@ $pyproject = Get-Content -LiteralPath (Join-Path $Root 'backend\pyproject.toml')
 $m = [regex]::Match($pyproject, '(?m)^version\s*=\s*"([^"]+)"')
 if (-not $m.Success) { throw 'cannot read the version from backend\pyproject.toml' }
 $Version = $m.Groups[1].Value
-$FolderName = "MCRAR-$Version-preview"
-$ZipName = if ($Dev) { "MCRAR-$Version-preview-dev-win64.zip" } else { "MCRAR-$Version-preview-win64.zip" }
+$FolderName = "MCRAR-$Version"
+$ZipName = if ($Dev) { "MCRAR-$Version-dev-win64.zip" } else { "MCRAR-$Version-win64.zip" }
 
 $BuildDir = Join-Path $Root 'build\preview'
 $Stage = Join-Path $BuildDir $FolderName
@@ -168,7 +168,7 @@ Write-Host "    CPU wheels: $($cpu -join ', ')"
 
 $requirements = Join-Path $Tmp 'requirements.txt'
 Invoke-Checked 'uv export (locked dependencies, hashes kept, torch left out)' {
-    & uv export --directory (Join-Path $Root 'backend') --frozen --no-dev --extra ml --no-emit-project `
+    & uv export --directory (Join-Path $Root 'backend') --frozen --no-dev --extra ml --extra desktop --no-emit-project `
         --no-emit-package torch --no-emit-package torchaudio --no-emit-package torchvision -o $requirements | Out-Null
 }
 # The export lists every transitive dependency, so --no-deps; with hashes uv then checks each wheel.
@@ -230,7 +230,7 @@ Remove-Bytecode
 function Test-Stage {
     $problems = New-Object Collections.Generic.List[string]
     $stageLen = $Stage.Length + 1
-    foreach ($top in '.secrets', 'data', '.cache', '.venv', 'node_modules') {
+    foreach ($top in '.secrets', 'data', 'logs', '.cache', '.venv', 'node_modules') {
         if (Test-Path -LiteralPath (Join-Path $Stage $top)) { $problems.Add("top-level $top must not be shipped") }
     }
     if (Test-Path -LiteralPath (Join-Path $Stage 'config\settings.toml')) { $problems.Add('config\settings.toml must not be shipped') }
@@ -296,6 +296,7 @@ function Invoke-CleanPython([string[]]$PyArgs) {
 $selftest = Join-Path $PSScriptRoot 'preview_selftest.py'
 foreach ($check in @(
         @{ What = 'python -m mcrar --help'; PyArgs = @('-m', 'mcrar', '--help') },
+        @{ What = 'python -m mcrar desktop --help'; PyArgs = @('-m', 'mcrar', 'desktop', '--help') },
         @{ What = 'imports and package data'; PyArgs = @($selftest) })) {
     Write-Host "==> self-test: $($check.What)  [$('{0:n0}' -f $timer.Elapsed.TotalSeconds)s]"
     $result = Invoke-CleanPython $check.PyArgs
@@ -305,7 +306,7 @@ foreach ($check in @(
     if ($result.Code -ne 0) { throw "self-test '$($check.What)' failed with exit code $($result.Code)" }
 }
 # The runs may have created runtime folders and bytecode; the zip must not carry them.
-foreach ($runtime in 'data', 'config', '.cache', '.secrets') { Remove-Tree (Join-Path $Stage $runtime) }
+foreach ($runtime in 'data', 'config', 'logs', '.cache', '.secrets') { Remove-Tree (Join-Path $Stage $runtime) }
 Remove-Bytecode
 Test-Stage
 

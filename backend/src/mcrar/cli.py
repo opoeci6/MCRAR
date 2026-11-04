@@ -240,7 +240,11 @@ def doctor() -> None:
         if webview:
             report("ok", f"WebView2 runtime found (version {webview})")
         else:
-            report("warn", "WebView2 runtime not found; the desktop app (M11) will need it")
+            report(
+                "warn",
+                "WebView2 runtime not found; MCRAR's own window needs it "
+                "(without it, MCRAR opens in the browser)",
+            )
     else:
         report("info", "WebView2 check skipped (not Windows)")
 
@@ -2435,3 +2439,35 @@ def serve(
     import uvicorn
 
     uvicorn.run("mcrar.api.app:create_app", factory=True, host=host, port=port, reload=reload)
+
+
+@app.command()
+def desktop(
+    port: Annotated[
+        int | None,
+        typer.Option(
+            min=1, max=65535, help="Port to listen on. Default: api_port from the settings."
+        ),
+    ] = None,
+    warm: Annotated[
+        bool, typer.Option("--warm", help="Load the text embedding model in the background.")
+    ] = False,
+    console_log: Annotated[
+        bool, typer.Option("--console-log", help="Also write the server log to this console.")
+    ] = False,
+) -> None:
+    """Run MCRAR in its own window (Windows, WebView2). Closing the window stops MCRAR."""
+    from mcrar import desktop as window  # lazy: keeps the CLI start light
+
+    try:
+        settings = get_settings()
+    except ConfigError as exc:
+        if window.uses_log_file(console_log):  # no console to read the error from
+            window.show_error(f"MCRAR could not start.\n\n{exc}")
+            raise typer.Exit(2) from None
+        raise _fail(str(exc)) from None
+    code = window.run_desktop(
+        settings, port=port or settings.api_port, warm=warm, console_log=console_log
+    )
+    if code:
+        raise typer.Exit(code)

@@ -26,15 +26,15 @@ Last updated: 2026-11-03.
 | QoL batch 2 | Done (2026-10-28) | `dev` | Library search, drop a song to find similar, add tracks by link, and the review fixes (search import per source and by Source filter); see §3.17. The local-music picker followed on 2026-11-03 (§3.20) |
 | M8 Spotify section | **On hold (2026-10-27)**: the owner will discuss it with the collaborator | — | Spotify facts and the owner's choices in §3.1; other platforms in §5.3 |
 | M12 Freesound | Done (2026-10-28) | `dev` | Music-like sounds from Freesound: Library tab, `mcrar ingest freesound`, and "search for more" on Jamendo and Freesound; see §3.16 |
-| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. First-run tour built (§3.21); next a desktop window (pywebview). See §3.19 and §5.3 |
+| M11 Packaging | Preview released (2026-10-30) | `dev`, `main` | Portable Windows zip (own Python, CPU PyTorch, UI in the browser), `scripts/build-preview.ps1`; GitHub pre-release `v0.1.0-preview`, runs on a school machine without admin rights. First-run tour (§3.21). Desktop window built 2026-11-04 (`mcrar desktop`, pywebview; the zip starts it without a console), version 0.2.0 (§3.22). See §3.19 and §5.3 |
 | Local-music picker | Done (2026-11-03) | `dev` (merged locally, not pushed) | Library → Add music → "Your files": copy files in (drop or choose; kept in `data/library/`) or use a folder in place (Browse…, loopback only); remove a track; find tracks whose file is gone; edit a local track's licence (kept on re-add; schema v6); the track table fits a narrow window. No preview zip for it (owner); the desktop window gets the next build. The first-run tour followed (§3.21). See §3.20 |
 | First-run tour | Done (2026-11-03) | `dev` (merged locally, not pushed) | A welcome card and a 7-step spotlight tour over the real tabs, shown once on the first start and again from Settings → Tutorial; "seen" is kept in `config/settings.toml`. See §3.21 |
 
-Test suite, counted on `tutorial` (2026-11-03):
-- Backend, default env: 2,504 passed, 30 skipped.
-- Without the `ml` extra (as CI runs it): 2,491 passed, 32 skipped.
+Test suite, counted on `desktop-window` (2026-11-04):
+- Backend, default env (with the `ml` and `desktop` extras): 2,548 passed, 30 skipped.
+- Without any extra (as CI runs it): 2,535 passed, 32 skipped.
 - 29 real-model tests run with `-m models`.
-- Frontend: 634 vitest tests, plus oxlint and the build. CI runs all three.
+- Frontend: 637 vitest tests, plus oxlint and the build. CI runs all three.
 CI: GitHub Actions on Windows (`.github/workflows/ci.yml`); runs #5 onwards are green.
 
 ## 2. How we work
@@ -948,6 +948,56 @@ Built on branch `tutorial`.
   `index.html` with `Cache-Control: no-cache`; the hashed assets keep the default caching. This
   matters for anyone who replaces the zip with a newer one.
 
+### 3.22 M11 desktop window and v0.2.0 (2026-11-04)
+MCRAR runs in its own window instead of a browser tab plus a console. Built on branch
+`desktop-window`.
+- **Owner's decisions (2026-11-03):**
+  - no console window: `MCRAR.cmd` starts `pythonw.exe` and ends; `MCRAR.cmd --console` keeps
+    a console for troubleshooting;
+  - no WebView2 runtime: a message, then the browser;
+  - closing while a job runs: ask first;
+  - version 0.2.0, zip `MCRAR-0.2.0-win64.zip` ("preview" dropped from the names), published as
+    a GitHub pre-release and promoted to a regular release once it has run on another PC
+    without fixes (my recommendation, which the owner took).
+- **How it works** (`backend/src/mcrar/desktop.py`, `mcrar desktop [--port] [--warm]
+  [--console-log]`):
+  - pywebview 6.2.1 in a new optional extra `desktop` (pulls in pythonnet). CI installs no
+    extras and is unchanged; every import of `webview` is lazy, and a test checks that the CLI
+    does not load it.
+  - The API server (uvicorn) runs in a background thread on 127.0.0.1; the window shows a
+    "Starting MCRAR..." page and loads the app once `/api/health` answers (up to 120 s, else an
+    error page naming the log).
+  - When MCRAR already runs on the port, the window opens on that server and closing it stops
+    nothing; another program on the port gets a free port instead.
+  - Closing asks `/api/jobs` and, when a job runs, asks "Quit MCRAR?" (pywebview only offers
+    OK/Cancel); then the server is told to stop and the thread joined.
+  - The window's browser data (localStorage) is kept in `<home>/.cache/webview`
+    (`private_mode=False`), so preferences survive restarts and nothing goes to
+    `%APPDATA%\pywebview`. Downloads are allowed (a save dialog); external links open in the
+    default browser.
+  - Without a console, stdout, stderr and all logging go to `<home>/logs/mcrar.log` (1 MB,
+    3 old files kept), and start-up errors show in a message box. `logs/` is git-ignored and
+    never shipped.
+  - Without WebView2 (or `MCRAR_DESKTOP_FORCE_BROWSER=1`), MCRAR opens in the browser. Without
+    a console, the message box that stays open is the way to quit.
+  - The page gets `window.pywebview.api.pick_folder`, and Library → Your files → Browse… then
+    opens the native folder dialog instead of the folder browser (`lib/desktop.ts`,
+    `useFolderPicker`).
+- **Packaging:** `build-preview.ps1` exports `--extra desktop`, names the folder `MCRAR-<ver>`
+  and the zip `MCRAR-<ver>-win64.zip`, and its self-test also runs `mcrar desktop --help` and
+  loads the desktop stack (pywebview, pythonnet, the WebView2 DLLs). `bootstrap.ps1` syncs
+  `--extra ml --extra desktop`. `proxy-tools` and `bottle` (pywebview's dependencies) have no
+  wheels, so the build compiles them (pure Python).
+- **Checked on this PC** (scratch home, run under `pythonw` like the zip): the window loads the
+  app, the log is written inside the home, the storage goes to `.cache\webview` and nothing to
+  `%APPDATA%\pywebview`; a normal close (WM_CLOSE) asks `/api/jobs`, the server shuts down
+  cleanly and the port is free. The implementer also checked the console mode and that
+  `pick_folder` reaches the page. **Not seen by me** (screen access was declined): the native
+  folder dialog, the save dialog for a download, the quit question during a job, and the
+  browser fallback; tests cover them with fakes, and the owner checks them in the zip.
+- **Follow-ups:** an MCRAR icon (the favicon is still Vite's default, so the window has
+  Python's icon); a wrong option under `pythonw` fails silently (use `--console` to see it).
+
 ## 4. State that lives only on the owner's machine (git-ignored)
 
 | What | Where | Notes |
@@ -1134,10 +1184,10 @@ The owner's order after the presentation (2026-10-28, §3.18):
    missing-files check. No preview zip for it (owner).
 3. **A first-run tutorial: built** (2026-11-03, §3.21): a welcome card and a 7-step spotlight
    tour, revisitable from Settings → Tutorial. Merged into `dev` locally, not pushed.
-4. **M11 desktop window, next** (pywebview, WebView2) around the same build. It can replace
-   the folder browser with the native folder dialog (`useFolderPicker`, §3.20), and its build
-   becomes the next release. To check under pywebview: downloads that use `window.open`
-   (licence and track files).
+4. **M11 desktop window: built** (2026-11-04, §3.22): `mcrar desktop`, started by the zip
+   without a console, with the native folder dialog. Version 0.2.0, zip
+   `MCRAR-0.2.0-win64.zip`, to be published by the owner as a pre-release and promoted to a
+   regular release once it has run on another PC without fixes.
 
 These others can follow in any order:
 - **M8, the Spotify metadata section: on hold (2026-10-27).** The owner will discuss it with

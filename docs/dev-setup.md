@@ -131,25 +131,32 @@ Manage them with `mcrar secrets set|list|delete`. The `keyring` backend is opt-i
   4. Try it: `mcrar ingest freesound --query "calm ambient pad" --limit 5`. Freesound allows about
      60 requests a minute and 2,000 a day; the command prints today's request count.
 
-## Build the Windows preview zip
+## Build the Windows zip
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\build-preview.ps1
 ```
 
 It needs a clean working tree (it stages from `git archive HEAD`; `-Dev` uses the working tree
-and names the zip `…-preview-dev-win64.zip`, and `-FrontendDist <path>` reuses a frontend build).
+and names the zip `…-dev-win64.zip`, and `-FrontendDist <path>` reuses a frontend build).
 It copies the project's Python 3.11 into the stage and installs the locked dependencies, CPU-only
 PyTorch (same versions as `uv.lock`, from the PyTorch CPU index) and the `mcrar` wheel into it;
 `pyproject.toml` and `uv.lock` stay CUDA for development. It adds the VC++ runtime DLLs from
 System32, refuses to ship `.secrets`, `data`, `config/settings.toml`, `*.db` or caches, runs a
-self-test with a stripped environment and writes `dist/MCRAR-<version>-preview-win64.zip`
-(about 290 MB; 1 GB in 30,000 files unpacked; 4 to 7 minutes). It ships no precompiled
+self-test with a stripped environment and writes `dist/MCRAR-<version>-win64.zip`
+(about 300 MB; 1 GB in 30,000 files unpacked; 4 to 7 minutes). It ships no precompiled
 bytecode, and its last entry is `python/.complete`. The launcher is
 `packaging/windows/MCRAR.cmd`: it refuses to start without that marker (an unzip that was cut
-off), sets `MCRAR_HOME` and every cache variable to the app folder, and runs
-`python -I -m mcrar serve --open --warm`. Its first-steps text is
-`packaging/windows/README.txt`.
+off), sets `MCRAR_HOME` and every cache variable to the app folder, and starts
+`pythonw.exe -I -m mcrar desktop --warm` (no console; the log goes to `logs\mcrar.log`, start-up
+errors to a message box). `MCRAR.cmd --console` runs it in the console instead, for
+troubleshooting. Its first-steps text is `packaging/windows/README.txt`.
+
+`mcrar desktop` (the `desktop` extra, pywebview) runs the API server in a background thread on
+127.0.0.1 and shows the UI in a WebView2 window; closing the window stops the server, and asks
+first while a job runs. The browser data of the window is kept in `<home>/.cache/webview`, not
+the user profile. Without the WebView2 runtime (or with `MCRAR_DESKTOP_FORCE_BROWSER=1`) it
+opens the browser instead. When MCRAR already runs on the port, the window opens on that server.
 
 ## Never install globally
 
@@ -169,7 +176,8 @@ Rules for everyone, including agents:
 
 - The **NVIDIA GPU driver** (PyTorch wheels bundle the CUDA runtime, so no CUDA toolkit is needed).
   `mcrar doctor` looks for `nvidia-smi`; without it everything still runs on CPU.
-- The **WebView2 runtime**, for the planned desktop window (M11; ships with Windows 10/11).
+- The **WebView2 runtime**, for the desktop window (`mcrar desktop`; ships with Windows 10/11;
+  without it MCRAR opens in the browser).
   `mcrar doctor` does a read-only registry lookup.
 
 Both produce a warning, not a failure, when missing.

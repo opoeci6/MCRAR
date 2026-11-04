@@ -19,8 +19,9 @@ MUST_BE_IGNORED = [
     "backend/.venv/x",
     "frontend/node_modules/x",
     ".claude/CLAUDE.md",
-    "build/preview/MCRAR-0.1.0-preview/MCRAR.cmd",
-    "dist/MCRAR-0.1.0-preview-win64.zip",
+    "build/preview/MCRAR-0.2.0/MCRAR.cmd",
+    "dist/MCRAR-0.2.0-win64.zip",
+    "logs/mcrar.log.1",
     "frontend/dist/index.html",
 ]
 

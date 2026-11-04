@@ -8,9 +8,9 @@ game.
 
 ![Search results for "tense stealth level, no vocals", each with a licence badge, tags and why it matched](docs/images/search.png)
 
-> **Status: early.** MCRAR runs on your own PC as a local web app, tested on Windows. It was
-> built in three weeks for ShiftKey Labs' Build It! Machine Learning program (Fall 2026). A
-> Windows preview build runs without any setup (below); a desktop window is planned.
+> **Status: early.** MCRAR runs on your own PC, tested on Windows. It was built in three weeks
+> for ShiftKey Labs' Build It! Machine Learning program (Fall 2026). The Windows build runs in
+> its own window without any setup (below).
 
 ## What it does
 
@@ -59,17 +59,18 @@ The tag models and their scores are in [docs/model_card.md](docs/model_card.md).
 described in [docs/llm.md](docs/llm.md): it only receives your search text, your filters and
 track metadata, never audio or keys.
 
-## Download the preview (Windows 10/11, 64-bit)
+## Download (Windows 10/11, 64-bit)
 
-1. Download `MCRAR-0.1.0-preview-win64.zip` (about 290 MB) from
+1. Download `MCRAR-0.2.0-win64.zip` (about 300 MB) from
    [Releases](https://github.com/opoeci6/MCRAR/releases).
 2. Unzip it to a short path such as `C:\MCRAR` (about 1 GB in 30,000 files). Wait until
    unzipping has finished.
-3. Double-click `MCRAR.cmd`. Your browser opens MCRAR; close the window to stop it.
+3. Double-click `MCRAR.cmd`. MCRAR opens in its own window; close the window to stop it.
 
-The first start downloads the CLAP model (about 0.8 GB), once. The preview runs on the CPU and
-needs no installation: Python, PyTorch, your library, settings, keys and models all stay inside
-that folder. Delete the folder to remove it. A short tour of the main tabs opens on the first
+The first start downloads the CLAP model (about 0.8 GB), once. MCRAR runs on the CPU and needs
+no installation: Python, PyTorch, your library, settings, keys, models and the log all stay
+inside that folder. Delete the folder to remove it. The window uses Microsoft Edge WebView2,
+which Windows 10/11 already has; on a PC without it MCRAR opens in the browser instead. A short tour of the main tabs opens on the first
 start; Settings → Tutorial shows it again. Then add music as described below (keys, then
 Library → Add music). The `README.txt` in the zip has the details.
 
@@ -90,8 +91,10 @@ npm --prefix frontend run build                  # build the UI
 uv run --directory backend mcrar serve --warm    # start MCRAR
 ```
 
-Open <http://127.0.0.1:8000>. On the first start MCRAR downloads the CLAP model (about 0.8 GB),
-once, and a short tour shows the main tabs (Settings → Tutorial shows it again).
+Open <http://127.0.0.1:8000>, or run `uv run --directory backend mcrar desktop --warm` instead
+to get MCRAR in its own window (closing it stops MCRAR; the log is `logs/mcrar.log`). On the
+first start MCRAR downloads the CLAP model (about 0.8 GB), once, and a short tour shows the main
+tabs (Settings → Tutorial shows it again).
 
 Then add music:
 

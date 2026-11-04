@@ -1,6 +1,7 @@
 """Zip a staged app folder for scripts/build-preview.ps1.
 
 Usage: python -I make_preview_zip.py <stage parent> <folder name> <out.zip>
+For example: make_preview_zip.py build/preview MCRAR-0.2.0 dist/MCRAR-0.2.0-win64.zip
 
 Writes ``<out.zip>`` (ZIP64, deflate) holding ``<folder name>/...`` from ``<stage parent>``, with
 forward-slash names and entries for empty folders, then prints ``files=N unpacked=B zip=B``.

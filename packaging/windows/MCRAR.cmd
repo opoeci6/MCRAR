@@ -1,7 +1,10 @@
 @echo off
-rem MCRAR portable launcher. Runs MCRAR from this folder with the bundled Python.
-rem Everything (data, models, caches, API keys) stays inside this folder: nothing is written
-rem to the user profile or the registry. Options: MCRAR.cmd --port 8010 / --no-open.
+rem MCRAR portable launcher. Runs MCRAR in its own window with the bundled Python.
+rem Everything (data, models, caches, API keys, the log) stays inside this folder: nothing is
+rem written to the user profile or the registry.
+rem Options: MCRAR.cmd --port 8010
+rem          MCRAR.cmd --console    (keep this console and print the log in it; for troubleshooting)
+rem Without --console this script starts MCRAR and ends; the log is logs\mcrar.log.
 setlocal
 
 set "APP=%~dp0"
@@ -11,6 +14,13 @@ title MCRAR
 
 if not exist "%APP%\python\python.exe" (
     echo MCRAR cannot start: python\python.exe is missing next to MCRAR.cmd.
+    echo Unzip the whole MCRAR folder first, then double-click MCRAR.cmd inside it.
+    echo.
+    pause
+    exit /b 1
+)
+if not exist "%APP%\python\pythonw.exe" (
+    echo MCRAR cannot start: python\pythonw.exe is missing next to MCRAR.cmd.
     echo Unzip the whole MCRAR folder first, then double-click MCRAR.cmd inside it.
     echo.
     pause
@@ -41,10 +51,20 @@ set "MPLCONFIGDIR=%APP%\.cache\matplotlib"
 set "XDG_CACHE_HOME=%APP%\.cache"
 set "PYTHONNOUSERSITE=1"
 
-echo MCRAR is starting. The first start downloads the search model (about 0.8 GB). Close this window to stop MCRAR.
+if /i "%~1"=="--console" goto console
+
+rem pythonw has no console window: the window is MCRAR's own, the log goes to logs\mcrar.log and
+rem a start-up problem shows in a message box. This script does not wait for it.
+start "" "%APP%\python\pythonw.exe" -I -m mcrar desktop --warm %*
+endlocal & exit /b 0
+
+:console
+rem shift drops --console; %* is not changed by it, so the rest is listed one by one.
+shift
+echo MCRAR is starting. The first start downloads the search model (about 0.8 GB). Close the MCRAR window to stop it.
 echo.
 
-"%APP%\python\python.exe" -I -m mcrar serve --open --warm %*
+"%APP%\python\python.exe" -I -m mcrar desktop --warm --console-log %1 %2 %3 %4 %5 %6 %7 %8 %9
 set "RC=%ERRORLEVEL%"
 
 if not "%RC%"=="0" (

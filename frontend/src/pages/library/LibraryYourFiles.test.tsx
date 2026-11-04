@@ -508,6 +508,48 @@ describe('Your files: use a folder where it is', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(folder.getByLabelText('Folder path')).toHaveValue('E:\\Mine')
   })
+
+  describe('in the desktop window', () => {
+    afterEach(() => {
+      delete window.pywebview
+    })
+
+    it('uses the native folder dialog, starting at the typed path, and opens no side panel', async () => {
+      const pickFolder = vi.fn().mockResolvedValue('D:\\Picked')
+      window.pywebview = { api: { pick_folder: pickFolder } }
+      const { api, user, folder } = await setup()
+      await user.type(folder.getByLabelText('Folder path'), 'E:\\Start')
+      await user.click(folder.getByRole('button', { name: 'Browse…' }))
+      await waitFor(() => expect(folder.getByLabelText('Folder path')).toHaveValue('D:\\Picked'))
+      expect(pickFolder).toHaveBeenCalledWith('E:\\Start')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+      expect(listed(api)).toEqual([])
+    })
+
+    it('keeps the path on cancel or when the dialog fails', async () => {
+      const pickFolder = vi.fn().mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('no dialog'))
+      window.pywebview = { api: { pick_folder: pickFolder } }
+      const { user, folder } = await setup()
+      await user.click(folder.getByRole('button', { name: 'Browse…' }))
+      await waitFor(() => expect(pickFolder).toHaveBeenCalledWith(null))
+      expect(folder.getByLabelText('Folder path')).toHaveValue('')
+      await user.type(folder.getByLabelText('Folder path'), 'E:\\Mine')
+      await user.click(folder.getByRole('button', { name: 'Browse…' }))
+      await waitFor(() => expect(pickFolder).toHaveBeenCalledTimes(2))
+      expect(folder.getByLabelText('Folder path')).toHaveValue('E:\\Mine')
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+
+    it('switches to the native dialog when pywebview arrives after the page', async () => {
+      const pickFolder = vi.fn().mockResolvedValue('C:\\Late')
+      const { user, folder } = await setup()
+      window.pywebview = { api: { pick_folder: pickFolder } }
+      fireEvent(window, new Event('pywebviewready'))
+      await user.click(folder.getByRole('button', { name: 'Browse…' }))
+      await waitFor(() => expect(folder.getByLabelText('Folder path')).toHaveValue('C:\\Late'))
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
 })
 
 describe('Maintenance: moved or deleted files', () => {

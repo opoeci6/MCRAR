@@ -1,6 +1,6 @@
 [project]
 name = "mcrar"
-version = "0.1.0"
+version = "0.2.0"
 description = "ML music recommender for listeners and indie game devs"
 license = "MIT"
 requires-python = ">=3.11"
@@ -40,6 +40,9 @@ ml = [
     "scikit-learn>=1.9.1",
     "gdown>=6.4.2",
 ]
+# The desktop window (`mcrar desktop`, M11): pywebview drives the WebView2 runtime on Windows.
+# Optional so CI and a plain dev install need no GUI stack; every import of it is lazy.
+desktop = ["pywebview>=5,<7"]
 
 [project.scripts]
 mcrar = "mcrar.cli:app"
