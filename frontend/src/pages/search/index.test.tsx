@@ -108,6 +108,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Unmount first: a job panel's effect still pending would otherwise open an EventSource
+  // after the stub is gone (the shared cleanup in test/setup.ts runs after this hook).
+  cleanup()
   vi.unstubAllGlobals()
 })
 

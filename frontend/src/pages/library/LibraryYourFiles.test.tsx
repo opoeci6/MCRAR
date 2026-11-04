@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Health } from '../../api/types'
@@ -71,6 +71,9 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  // Unmount first: a job panel's effect still pending would otherwise open an EventSource
+  // after the stub is gone (the shared cleanup in test/setup.ts runs after this hook).
+  cleanup()
   vi.unstubAllGlobals()
 })
 
